@@ -41,7 +41,7 @@ export const SideNavRail: React.FC = () => {
     { label: 'Finance & Savings', route: '#/finance', icon: CreditCard },
     { label: 'Studio', route: '#/studio', icon: Music },
     { label: 'Library', route: '#/library', icon: Bookmark },
-    { label: 'Hero Sheet', route: '#/hero', icon: Award },
+    { label: 'XP & Levels', route: '#/levels', icon: Award },
     { label: 'Rituals', route: '#/rituals', icon: RefreshCw },
     { label: 'Themes', route: '#/themes', icon: Palette },
     { label: 'Settings', route: '#/settings', icon: Settings },

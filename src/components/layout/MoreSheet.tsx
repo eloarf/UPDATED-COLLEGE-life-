@@ -52,7 +52,7 @@ export const MoreSheet: React.FC = () => {
     { name: 'Finance & Savings', subtitle: 'Spending Charts & Goal Vault', route: '#/finance', icon: CreditCard, accent: '#E5C04B' },
     { name: 'Studio', subtitle: 'Song/Beat & Writing Pipelines', route: '#/studio', icon: Music, accent: '#BBA6E0' },
     { name: 'Library', subtitle: 'Morning Brief & Reading Queue', route: '#/library', icon: Bookmark, accent: '#8FD3B6' },
-    { name: 'Hero Sheet', subtitle: 'RPG Level, Stats & Badges', route: '#/hero', icon: Award, accent: '#B6E63E' },
+    { name: 'XP & Levels', subtitle: '50-Level Ranks, XP Progress & Ledger', route: '#/levels', icon: Award, accent: '#B6E63E' },
     { name: 'Rituals', subtitle: 'Sunday Review & Reset Day', route: '#/rituals', icon: RefreshCw, accent: '#F5B58A' },
     { name: 'Themes', subtitle: 'Six Storybook Color Palettes', route: '#/themes', icon: Palette, accent: '#F6A8BE' },
     { name: 'Settings', subtitle: 'Sync, JSON Backup & Storage', route: '#/settings', icon: Settings, accent: '#7A5A66' },

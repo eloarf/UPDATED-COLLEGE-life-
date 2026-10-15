@@ -30,6 +30,7 @@ import {
   DailyQuest,
   RitualRun,
   AppSettings,
+  DEFAULT_ACCOUNT_BALANCES,
 } from '../types';
 
 export class CollegeLifeOSDatabase extends Dexie {
@@ -134,6 +135,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     { letter: 'F', gpa: 0.0, minPercent: 0 },
   ],
   attendanceThresholdPercent: 80,
+  accountBalances: DEFAULT_ACCOUNT_BALANCES,
 };
 
 // Initialize base settings if not exists
@@ -141,6 +143,9 @@ export async function initializeDatabase() {
   const existing = await db.settings.get('current_user');
   if (!existing) {
     await db.settings.put(DEFAULT_SETTINGS);
+  } else if (!existing.accountBalances) {
+    // Non-destructive backward-compatible hydration for existing installations
+    await db.settings.update('current_user', { accountBalances: DEFAULT_ACCOUNT_BALANCES });
   }
   if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
     try {

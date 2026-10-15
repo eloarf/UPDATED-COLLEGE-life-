@@ -14,7 +14,10 @@ import {
   ensureDailyQuests,
   awardXp,
   reverseXp,
+  getQuestXpReward,
+  triggerLevelUpConfetti,
 } from '../services/rpgService';
+import { Task, DailyQuest } from '../types';
 import {
   CheckCircle2,
   Circle,
@@ -34,6 +37,9 @@ import {
   PiggyBank,
   CreditCard,
   TrendingDown,
+  Award,
+  X,
+  AlertCircle,
 } from 'lucide-react';
 
 export const LobbyPage: React.FC = () => {
@@ -65,6 +71,10 @@ export const LobbyPage: React.FC = () => {
   const [lowEnergy, setLowEnergy] = useState(false);
   const [isDormDay, setIsDormDay] = useState(true);
 
+  // Confirmation modals state for XP integrity
+  const [taskToConfirm, setTaskToConfirm] = useState<Task | null>(null);
+  const [dailyQuestToConfirm, setDailyQuestToConfirm] = useState<DailyQuest | null>(null);
+
   useEffect(() => {
     ensureDailyQuests();
   }, [todayKey]);
@@ -95,27 +105,76 @@ export const LobbyPage: React.FC = () => {
     .sort((a, b) => a.examDate.localeCompare(b.examDate));
   const nextExam = upcomingExams[0];
 
-  const handleToggleTask = async (taskId: string, currentStatus: string) => {
-    const isNowDone = currentStatus !== 'done';
-    const newStatus = isNowDone ? 'done' : 'todo';
+  const handleTaskClick = async (task: Task) => {
+    if (task.status === 'done') {
+      // Undo completion
+      const xpAmount = getQuestXpReward(task);
+      await db.tasks.update(task.id, {
+        status: 'todo',
+        completedAt: undefined,
+        updatedAt: new Date().toISOString(),
+      });
+      await reverseXp('task', task.id);
+      showToast(`Quest re-opened. -${xpAmount} XP reversed.`, 'info');
+    } else {
+      // Require confirmation step before completing and awarding XP
+      setTaskToConfirm(task);
+    }
+  };
 
-    await db.tasks.update(taskId, {
-      status: newStatus,
-      completedAt: isNowDone ? new Date().toISOString() : undefined,
+  const handleConfirmTaskCompletion = async () => {
+    if (!taskToConfirm) return;
+    const task = taskToConfirm;
+    const now = new Date().toISOString();
+    const xpAmount = getQuestXpReward(task);
+
+    await db.tasks.update(task.id, {
+      status: 'done',
+      completedAt: now,
+      updatedAt: now,
     });
 
-    if (isNowDone) {
-      await awardXp({
-        source: 'task',
-        sourceId: taskId,
-        amount: 25,
-        stat: 'discipline',
-      });
-      showToast('Quest checked off! +25 XP', 'success');
-    } else {
-      await reverseXp('task', taskId);
-      showToast('Task re-opened.', 'info');
+    const awarded = await awardXp({
+      source: 'task',
+      sourceId: task.id,
+      amount: xpAmount,
+      stat: 'discipline',
+      dayKey: task.dueDate || todayKey,
+    });
+
+    if (awarded) {
+      triggerLevelUpConfetti();
+      showToast(`Quest conquered! +${xpAmount} XP awarded to ledger`, 'success');
     }
+
+    setTaskToConfirm(null);
+  };
+
+  const handleDailyQuestClick = (quest: DailyQuest) => {
+    if (!quest.isDone) {
+      setDailyQuestToConfirm(quest);
+    }
+  };
+
+  const handleConfirmDailyQuest = async () => {
+    if (!dailyQuestToConfirm) return;
+    const quest = dailyQuestToConfirm;
+
+    await db.quests.update(quest.id, { isDone: true });
+    const awarded = await awardXp({
+      source: 'daily_quest',
+      sourceId: quest.id,
+      amount: quest.xpReward,
+      stat: quest.stat,
+      dayKey: quest.dayKey,
+    });
+
+    if (awarded) {
+      triggerLevelUpConfetti();
+      showToast(`Daily quest completed! +${quest.xpReward} XP`, 'success');
+    }
+
+    setDailyQuestToConfirm(null);
   };
 
   const handleToggleHabit = async (habitId: string) => {
@@ -159,62 +218,86 @@ export const LobbyPage: React.FC = () => {
   return (
     <div className="space-y-6 sm:space-y-8 pb-28 animate-pop">
       {/* Grand Arch Welcome Header */}
-      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-6 sm:p-8 text-center relative overflow-hidden shadow-xs">
-        {/* Storybook Flourish Corner */}
-        <div className="absolute top-3 left-4 text-[10px] uppercase font-heading tracking-widest text-[rgb(var(--c-muted))]">
-          Concierge Suite • Addis Ababa
-        </div>
-        <div className="absolute top-3 right-4 flex items-center gap-2">
-          <button
-            onClick={toggleLowEnergy}
-            className={`px-2 py-0.5 rounded-full text-[10px] font-heading font-bold border transition flex items-center gap-1 ${
-              lowEnergy
-                ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border-amber-300'
-                : 'border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))]'
-            }`}
-            title="Toggle Low Energy Day (minimum viable day)"
-          >
-            <Battery className="w-3 h-3" />
-            <span>{lowEnergy ? 'Low Energy' : 'Full Power'}</span>
-          </button>
-          <button
-            onClick={toggleDormDay}
-            className="px-2 py-0.5 rounded-full text-[10px] font-heading font-bold border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] transition flex items-center gap-1"
-            title="Switch between Dorm Day (phone only) and Home Day (PC available)"
-          >
-            {isDormDay ? <Smartphone className="w-3 h-3" /> : <Laptop className="w-3 h-3" />}
-            <span>{isDormDay ? 'Dorm Day' : 'Home Day'}</span>
-          </button>
-        </div>
-
-        <div className="mt-3">
-          <div className="text-xs font-flourish text-[rgb(var(--c-primary))] font-semibold">
+      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-5 sm:p-7 text-center relative overflow-hidden shadow-xs">
+        {/* Top Controls Row - Cleanly separated so it never overlaps greeting or date */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[rgb(var(--c-border))]/60">
+          <div className="text-xs font-flourish text-[rgb(var(--c-primary))] font-semibold text-left">
             {getEthiopicDateString()}
           </div>
-          <h2 className="text-xl sm:text-2xl font-heading font-bold text-[rgb(var(--c-text))] tracking-wide mt-1">
-            {getTimeGreeting(settings?.userName || 'Scholar')}
-          </h2>
+          <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+            <button
+              onClick={toggleLowEnergy}
+              className={`px-3 py-1.5 rounded-full text-xs font-heading font-bold border transition flex items-center gap-1.5 ${
+                lowEnergy
+                  ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-400 shadow-xs ring-2 ring-amber-400/40'
+                  : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))]'
+              }`}
+              title="Toggle Low Energy Day (minimum viable day)"
+            >
+              <Battery className="w-3.5 h-3.5" />
+              <span>{lowEnergy ? 'Low Power: ON' : 'Full Power'}</span>
+            </button>
+            <button
+              onClick={toggleDormDay}
+              className={`py-1.5 rounded-full text-xs font-heading font-bold border transition-all flex items-center justify-center gap-1.5 ${
+                !isDormDay
+                  ? 'min-w-[115px] px-3.5 bg-[#7A2E4A] text-white border-[#7A2E4A] shadow-xs ring-2 ring-[#7A2E4A]/30'
+                  : 'min-w-[95px] px-3 bg-[#7A2E4A] text-white border-[#7A2E4A] shadow-xs ring-2 ring-[#7A2E4A]/30'
+              }`}
+              title="Switch between Dorm Day (phone only) and Home Day / PC Day"
+            >
+              {isDormDay ? <Smartphone className="w-3.5 h-3.5" /> : <Laptop className="w-3.5 h-3.5" />}
+              <span>{isDormDay ? 'Dorm Day' : 'PC Day'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Interactive Greeting - Navigates to Levels Page */}
+        <div className="mt-4 text-center">
+          <button
+            onClick={() => setCurrentRoute('#/levels')}
+            className="group inline-flex items-center justify-center gap-1.5 hover:opacity-90 transition-all focus:outline-none cursor-pointer"
+            title="Open XP & Levels Progression"
+          >
+            <h2 className="text-xl sm:text-2xl font-heading font-bold text-[rgb(var(--c-text))] tracking-wide group-hover:text-[rgb(var(--c-primary))] transition-colors">
+              {getTimeGreeting(settings?.userName || 'Scholar')}
+            </h2>
+            <ChevronRight className="w-4 h-4 opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all text-[rgb(var(--c-primary))]" />
+          </button>
           <p className="text-xs text-[rgb(var(--c-muted))] font-flourish mt-0.5">
             {settings?.universityName || 'Addis Ababa Science & Technology University'} • {settings?.currentTermName}
           </p>
         </div>
 
-        {/* Level XP Bar */}
+        {/* Level XP Bar - Interactive Button navigating to Levels Page */}
         <div className="mt-4 max-w-sm mx-auto">
-          <div className="flex items-center justify-between text-xs font-heading font-bold mb-1">
-            <span className="text-[rgb(var(--c-primary))]">
-              Level {heroInfo.level} — {heroInfo.title}
-            </span>
-            <span className="text-[rgb(var(--c-muted))]">
-              {heroInfo.currentLevelXp} / {heroInfo.xpNeededForNext} XP
-            </span>
-          </div>
-          <div className="w-full h-2.5 bg-[rgb(var(--c-surface2))] rounded-full overflow-hidden p-0.5 border border-[rgb(var(--c-border))]">
-            <div
-              className="h-full bg-[rgb(var(--c-xp))] rounded-full transition-all duration-500"
-              style={{ width: `${heroInfo.progressPercent}%` }}
-            />
-          </div>
+          <button
+            onClick={() => setCurrentRoute('#/levels')}
+            className="w-full text-left p-3 rounded-2xl bg-[rgb(var(--c-surface2))]/60 border border-[rgb(var(--c-border))] hover:border-[rgb(var(--c-primary))] transition-all group focus:outline-none cursor-pointer shadow-2xs hover:shadow-xs"
+            title="Inspect full Levels Progression and Rank System"
+          >
+            <div className="flex items-center justify-between text-xs font-heading font-bold mb-1.5">
+              <span className="text-[rgb(var(--c-primary))] flex items-center gap-1.5 group-hover:underline">
+                <Award className="w-3.5 h-3.5" />
+                <span>Level {heroInfo.level} — {heroInfo.title}</span>
+              </span>
+              <span className="text-[rgb(var(--c-muted))] text-[11px]">
+                {heroInfo.currentLevelXp} / {heroInfo.xpNeededForNext} XP ({heroInfo.progressPercent}%)
+              </span>
+            </div>
+            <div className="w-full h-2.5 bg-[rgb(var(--c-bg))] rounded-full overflow-hidden p-0.5 border border-[rgb(var(--c-border))]">
+              <div
+                className="h-full bg-[rgb(var(--c-xp))] rounded-full transition-all duration-500 group-hover:brightness-110"
+                style={{ width: `${heroInfo.progressPercent}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between mt-1.5 text-[10px] text-[rgb(var(--c-muted))] font-heading">
+              <span>Next: {heroInfo.nextRankTitle}</span>
+              <span className="text-[rgb(var(--c-primary))] font-bold flex items-center gap-0.5">
+                XP &amp; Levels Page <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+              </span>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -282,6 +365,7 @@ export const LobbyPage: React.FC = () => {
                 const isLaptopOnly = task.contextTag === 'laptop';
                 const isDimmed = isDormDay && isLaptopOnly;
                 const isDone = task.status === 'done';
+                const xpAmount = getQuestXpReward(task);
 
                 return (
                   <div
@@ -291,13 +375,14 @@ export const LobbyPage: React.FC = () => {
                     }`}
                   >
                     <button
-                      onClick={() => handleToggleTask(task.id, task.status)}
-                      className="mt-0.5 text-[rgb(var(--c-primary))] shrink-0 hover:scale-110 active:scale-95 transition"
+                      onClick={() => handleTaskClick(task)}
+                      className="mt-0.5 text-[rgb(var(--c-primary))] shrink-0 hover:scale-110 active:scale-95 transition focus:outline-none"
+                      title={isDone ? 'Undo completion (reverses XP)' : 'Confirm completion (+XP)'}
                     >
                       {isDone ? (
-                        <CheckCircle2 className="w-5 h-5 text-emerald-500 fill-emerald-100" />
+                        <CheckCircle2 className="w-5 h-5 text-emerald-500 fill-emerald-100 dark:fill-emerald-950" />
                       ) : (
-                        <Circle className="w-5 h-5" />
+                        <Circle className="w-5 h-5 hover:text-emerald-600" />
                       )}
                     </button>
                     <div className="min-w-0 flex-1">
@@ -310,6 +395,7 @@ export const LobbyPage: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-2 text-[10px] text-[rgb(var(--c-muted))] mt-1.5 flex-wrap">
                         <span className="capitalize">{task.effort} effort</span>
+                        <span className="font-heading font-bold text-[rgb(var(--c-xp))]">+{xpAmount} XP</span>
                         {isLaptopOnly && <span>• 💻 Needs Laptop</span>}
                         {task.dueTime && <span>• Due {task.dueTime}</span>}
                       </div>
@@ -326,7 +412,7 @@ export const LobbyPage: React.FC = () => {
           <div className="flex items-center justify-between pb-3 mb-3 border-b border-[rgb(var(--c-border))]">
             <div className="flex items-center gap-2 font-heading text-xs font-bold uppercase text-[rgb(var(--c-primary))]">
               <Sparkles className="w-4 h-4 text-[rgb(var(--c-xp))]" />
-              <span>Daily Quests (Auto-Rewarding)</span>
+              <span>Daily Quests (RPG Rewards)</span>
             </div>
             <button
               onClick={() => ensureDailyQuests()}
@@ -341,14 +427,27 @@ export const LobbyPage: React.FC = () => {
             {quests.map((quest) => (
               <div
                 key={quest.id}
-                className="flex items-center justify-between p-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))]"
+                className="flex items-center justify-between p-2.5 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] gap-2"
               >
-                <div>
-                  <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
-                    {quest.title}
-                  </div>
-                  <div className="text-[10px] text-[rgb(var(--c-muted))]">
-                    {quest.description}
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <button
+                    onClick={() => handleDailyQuestClick(quest)}
+                    className="shrink-0 text-[rgb(var(--c-primary))] hover:scale-110 active:scale-95 transition"
+                    title={quest.isDone ? 'Completed' : 'Complete daily quest'}
+                  >
+                    {quest.isDone ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 fill-emerald-100 dark:fill-emerald-950" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-[rgb(var(--c-muted))] hover:text-emerald-600" />
+                    )}
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <div className={`text-xs font-heading font-bold truncate ${quest.isDone ? 'line-through text-[rgb(var(--c-muted))]' : 'text-[rgb(var(--c-text))]'}`}>
+                      {quest.title}
+                    </div>
+                    <div className="text-[10px] text-[rgb(var(--c-muted))] truncate">
+                      {quest.description}
+                    </div>
                   </div>
                 </div>
                 <div className="text-[11px] font-heading font-bold text-[rgb(var(--c-xp))] px-2 py-0.5 rounded-full bg-[rgb(var(--c-surface2))] border border-[rgb(var(--c-border))] shrink-0">
@@ -492,6 +591,119 @@ export const LobbyPage: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {/* Task Completion Confirmation Modal */}
+      {taskToConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[#7A2E4A] rounded-3xl shadow-2xl p-6 text-[rgb(var(--c-text))] space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-[#7A2E4A]/15 text-[#7A2E4A] flex items-center justify-center shrink-0">
+                <Award className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-heading font-bold tracking-wider text-[#7A2E4A]">
+                  Confirmation of Victory
+                </div>
+                <h3 className="text-base font-heading font-bold text-[rgb(var(--c-text))]">
+                  Conquer Priority Quest?
+                </h3>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-1.5 text-xs">
+              <div className="font-heading font-bold text-sm text-[rgb(var(--c-text))]">
+                {taskToConfirm.title}
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-[rgb(var(--c-border))]">
+                <span className="text-[11px] font-heading text-[rgb(var(--c-muted))]">
+                  Experience to Award:
+                </span>
+                <span className="font-heading font-bold text-sm text-[rgb(var(--c-xp))]">
+                  +{getQuestXpReward(taskToConfirm)} XP
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+              Are you sure you completed this quest? Confirming credits the XP receipt to your append-only ledger.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setTaskToConfirm(null)}
+                className="px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))] text-xs font-heading"
+              >
+                Not yet
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmTaskCompletion}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-heading font-bold text-xs hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Confirm &amp; Award +{getQuestXpReward(taskToConfirm)} XP</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Daily Quest Completion Confirmation Modal */}
+      {dailyQuestToConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-primary))] rounded-3xl shadow-2xl p-6 text-[rgb(var(--c-text))] space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-[rgb(var(--c-primary))]/15 text-[rgb(var(--c-primary))] flex items-center justify-center shrink-0">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-heading font-bold tracking-wider text-[rgb(var(--c-primary))]">
+                  Daily Bonus Quest
+                </div>
+                <h3 className="text-base font-heading font-bold text-[rgb(var(--c-text))]">
+                  Complete Daily Objective?
+                </h3>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-1.5 text-xs">
+              <div className="font-heading font-bold text-sm text-[rgb(var(--c-text))]">
+                {dailyQuestToConfirm.title}
+              </div>
+              <div className="text-[11px] text-[rgb(var(--c-muted))]">
+                {dailyQuestToConfirm.description}
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-[rgb(var(--c-border))]">
+                <span className="text-[11px] font-heading text-[rgb(var(--c-muted))]">
+                  Reward:
+                </span>
+                <span className="font-heading font-bold text-sm text-[rgb(var(--c-xp))]">
+                  +{dailyQuestToConfirm.xpReward} XP ({dailyQuestToConfirm.stat})
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDailyQuestToConfirm(null)}
+                className="px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))] text-xs font-heading"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDailyQuest}
+                className="px-5 py-2.5 rounded-xl bg-[rgb(var(--c-primary))] text-white font-heading font-bold text-xs hover:opacity-90 active:scale-95 transition shadow-xs flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Confirm &amp; Award +{dailyQuestToConfirm.xpReward} XP</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

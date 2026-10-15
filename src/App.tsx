@@ -33,6 +33,7 @@ import { FinancePage } from './pages/FinancePage';
 import { StudioPage } from './pages/StudioPage';
 import { LibraryPage } from './pages/LibraryPage';
 import { HeroPage } from './pages/HeroPage';
+import { LevelsPage } from './pages/LevelsPage';
 import { RitualsPage } from './pages/RitualsPage';
 import { ThemesPage } from './pages/ThemesPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -96,8 +97,9 @@ export default function App() {
         return <StudioPage />;
       case '#/library':
         return <LibraryPage />;
+      case '#/levels':
       case '#/hero':
-        return <HeroPage />;
+        return <LevelsPage />;
       case '#/rituals':
         return <RitualsPage />;
       case '#/themes':

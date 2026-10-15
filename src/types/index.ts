@@ -6,7 +6,8 @@ export interface Course {
   name: string;
   creditHours: number;
   instructor?: string;
-  room?: string;
+  room?: string; // Class number / Hall
+  building?: string; // Block number
   color: string;
   term: string;
   links?: { title: string; url: string }[];
@@ -344,4 +345,19 @@ export interface AppSettings {
   storageProtected: boolean;
   gradingScale: { letter: string; gpa: number; minPercent: number }[];
   attendanceThresholdPercent: number;
+  accountBalances?: AccountBalancesConfig;
 }
+
+export interface AccountBalancesConfig {
+  initialCash: number;
+  initialBank: number; // Commercial Bank of Ethiopia (CBE)
+  initialMobileMoney: number; // Telebirr
+  lowBalanceThreshold: number; // Default: 150 ETB
+}
+
+export const DEFAULT_ACCOUNT_BALANCES: AccountBalancesConfig = {
+  initialCash: 500,
+  initialBank: 2500,
+  initialMobileMoney: 1200,
+  lowBalanceThreshold: 150,
+};

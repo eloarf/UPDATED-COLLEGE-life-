@@ -86,3 +86,34 @@ export function applyTheme(themeId: string) {
     // Ignore
   }
 }
+
+export interface CourseNeonColor {
+  hex: string;
+  name: string;
+}
+
+// Exactly 12 predefined bright vivid neon colors curated to complement
+// the Grand Budapest Hotel palette (pink, cream, lime, muted reds, navy, dark charcoal)
+export const PRESET_COURSE_NEON_COLORS: CourseNeonColor[] = [
+  { hex: '#CCFF00', name: 'Electric Lime' },
+  { hex: '#FF2D78', name: 'Neon Pink' },
+  { hex: '#00F0FF', name: 'Electric Cyan' },
+  { hex: '#FF7700', name: 'Neon Tangerine' },
+  { hex: '#B026FF', name: 'Electric Violet' },
+  { hex: '#00FFA3', name: 'Neon Mint' },
+  { hex: '#FFEA00', name: 'Highlighter Yellow' },
+  { hex: '#FF3355', name: 'Coral Flame' },
+  { hex: '#2979FF', name: 'Electric Azure' },
+  { hex: '#05FFE2', name: 'Ice Teal' },
+  { hex: '#FF8A65', name: 'Neon Peach' },
+  { hex: '#76FF03', name: 'Neon Chartreuse' },
+];
+
+export function getContrastTextColor(hex: string): string {
+  const c = hex.replace('#', '');
+  const r = parseInt(c.substring(0, 2), 16) || 0;
+  const g = parseInt(c.substring(2, 4), 16) || 0;
+  const b = parseInt(c.substring(4, 6), 16) || 0;
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 150 ? '#0e0d0c' : '#ffffff';
+}

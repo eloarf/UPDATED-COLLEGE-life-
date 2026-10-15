@@ -3,35 +3,19 @@ import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../store/uiStore';
 import { Course } from '../types';
-import { generateId } from '../utils/idGenerator';
+import { CourseModal } from '../components/common/CourseModal';
+import { getContrastTextColor } from '../theme/themeUtils';
 import {
   BookOpen,
   Plus,
   User,
   MapPin,
+  Building,
   Award,
-  Calendar,
   Trash2,
   Edit2,
-  X,
-  ExternalLink,
   CheckCircle,
 } from 'lucide-react';
-
-const PRESET_COLORS = [
-  '#A6D938', // lime
-  '#F6A8BE', // pink
-  '#8B5A3C', // milk chocolate
-  '#9B2D4F', // burgundy
-  '#E8C9A0', // cashew
-  '#8FD3B6', // mint
-  '#BBA6E0', // lavender
-  '#8EC5E8', // sky
-  '#F5B58A', // peach
-  '#E5C04B', // mustard
-  '#4FA3A5', // teal
-  '#D96C8F', // rose
-];
 
 export const CoursesPage: React.FC = () => {
   const { showToast, setCurrentRoute } = useUiStore();
@@ -39,86 +23,29 @@ export const CoursesPage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
 
-  // Form State
-  const [code, setCode] = useState('');
-  const [name, setName] = useState('');
-  const [credits, setCredits] = useState(3);
-  const [instructor, setInstructor] = useState('');
-  const [room, setRoom] = useState('');
-  const [color, setColor] = useState(PRESET_COLORS[0]);
-  const [term, setTerm] = useState('Year 1 - Semester II');
-
   const courses = useLiveQuery(() => db.courses.toArray()) || [];
   const selectedCourse = courses.find((c) => c.id === selectedCourseId) || courses[0];
 
   const tasks = useLiveQuery(() => db.tasks.toArray()) || [];
   const courseTasks = selectedCourse ? tasks.filter((t) => t.courseId === selectedCourse.id) : [];
 
-  const handleOpenModal = (course?: Course) => {
-    if (course) {
-      setEditingCourse(course);
-      setCode(course.code);
-      setName(course.name);
-      setCredits(course.creditHours);
-      setInstructor(course.instructor || '');
-      setRoom(course.room || '');
-      setColor(course.color);
-      setTerm(course.term);
-    } else {
-      setEditingCourse(null);
-      setCode('');
-      setName('');
-      setCredits(3);
-      setInstructor('');
-      setRoom('');
-      setColor(PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)]);
-      setTerm('Year 1 - Semester II');
-    }
+  const handleOpenAddModal = () => {
+    setEditingCourse(null);
     setIsModalOpen(true);
   };
 
-  const handleSaveCourse = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!code.trim() || !name.trim()) return;
-
-    const now = new Date().toISOString();
-
-    if (editingCourse) {
-      await db.courses.update(editingCourse.id, {
-        code: code.trim().toUpperCase(),
-        name: name.trim(),
-        creditHours: credits,
-        instructor: instructor.trim(),
-        room: room.trim(),
-        color,
-        term,
-        updatedAt: now,
-      });
-      showToast('Course updated successfully!', 'success');
-    } else {
-      const newId = generateId();
-      await db.courses.add({
-        id: newId,
-        code: code.trim().toUpperCase(),
-        name: name.trim(),
-        creditHours: credits,
-        instructor: instructor.trim(),
-        room: room.trim(),
-        color,
-        term,
-        createdAt: now,
-        updatedAt: now,
-      });
-      setSelectedCourseId(newId);
-      showToast('New course added to syllabus registry!', 'success');
-    }
-
-    setIsModalOpen(false);
+  const handleOpenEditModal = (course: Course) => {
+    setEditingCourse(course);
+    setIsModalOpen(true);
   };
 
-  const handleDeleteCourse = async (id: string) => {
+  const handleCourseSaved = (saved: Course) => {
+    setSelectedCourseId(saved.id);
+  };
+
+  const handleDeleteCourse = async (id: string, name: string) => {
     await db.courses.delete(id);
-    showToast('Course removed from database.', 'info');
+    showToast(`Course "${name}" removed from database.`, 'info');
     if (selectedCourseId === id) setSelectedCourseId(null);
   };
 
@@ -129,18 +56,18 @@ export const CoursesPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <div className="text-[10px] uppercase font-heading tracking-widest text-[#8B5A3C] font-bold">
-              Course Registry &amp; Tag Vault
+              Course Registry & Tag Vault
             </div>
             <h2 className="text-xl font-heading font-bold text-[rgb(var(--c-text))]">
-              Enrolled Modules &amp; Syllabi
+              Enrolled Modules & Syllabi
             </h2>
             <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
-              Single-source course colors follow each module across your timetable, tasks, and GPA.
+              Vivid neon course colors follow each module across your timetable, tasks, and GPA.
             </p>
           </div>
 
           <button
-            onClick={() => handleOpenModal()}
+            onClick={handleOpenAddModal}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#8B5A3C] text-white font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition shrink-0"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -153,6 +80,9 @@ export const CoursesPage: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {courses.map((course) => {
           const isSelected = selectedCourse?.id === course.id;
+          const contrast = getContrastTextColor(course.color);
+          const locationParts = [course.building, course.room].filter(Boolean);
+
           return (
             <div
               key={course.id}
@@ -168,11 +98,16 @@ export const CoursesPage: React.FC = () => {
               />
 
               <div className="pt-2 flex items-start justify-between gap-2">
-                <div>
-                  <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))] group-hover:text-[#8B5A3C] transition">
-                    {course.code}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span
+                      className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shadow-2xs"
+                      style={{ backgroundColor: course.color, color: contrast }}
+                    >
+                      {course.code}
+                    </span>
                   </div>
-                  <div className="text-sm font-heading font-bold text-[rgb(var(--c-text))] truncate max-w-[200px]">
+                  <div className="text-sm font-heading font-bold text-[rgb(var(--c-text))] truncate">
                     {course.name}
                   </div>
                 </div>
@@ -181,18 +116,20 @@ export const CoursesPage: React.FC = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleOpenModal(course);
+                      handleOpenEditModal(course);
                     }}
-                    className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))]"
+                    className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
+                    title="Edit course"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteCourse(course.id);
+                      handleDeleteCourse(course.id, course.name);
                     }}
-                    className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:text-rose-500 hover:bg-[rgb(var(--c-surface2))]"
+                    className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:text-rose-500 hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
+                    title="Delete course"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -210,10 +147,10 @@ export const CoursesPage: React.FC = () => {
                     <span>{course.instructor}</span>
                   </div>
                 )}
-                {course.room && (
+                {locationParts.length > 0 && (
                   <div className="flex items-center gap-1.5 truncate">
                     <MapPin className="w-3.5 h-3.5 text-[#8B5A3C]" />
-                    <span>{course.room}</span>
+                    <span>{locationParts.join(' • ')}</span>
                   </div>
                 )}
               </div>
@@ -228,7 +165,7 @@ export const CoursesPage: React.FC = () => {
           <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
             <div className="flex items-center gap-3">
               <span
-                className="w-4 h-12 rounded-full shrink-0"
+                className="w-4 h-12 rounded-full shrink-0 shadow-xs"
                 style={{ backgroundColor: selectedCourse.color }}
               />
               <div>
@@ -242,6 +179,13 @@ export const CoursesPage: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleOpenEditModal(selectedCourse)}
+                className="px-3 py-1 rounded-full border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))] flex items-center gap-1"
+              >
+                <Edit2 className="w-3 h-3" />
+                <span>Edit Course</span>
+              </button>
               <button
                 onClick={() => setCurrentRoute('#/tasks')}
                 className="px-3 py-1 rounded-full border border-[rgb(var(--c-border))] text-xs font-heading hover:bg-[rgb(var(--c-surface2))]"
@@ -270,136 +214,26 @@ export const CoursesPage: React.FC = () => {
             </div>
             <div className="p-3 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))]">
               <span className="text-[10px] font-heading text-[rgb(var(--c-muted))] uppercase">
-                Primary Lecture Room
+                Primary Lecture Room / Block
               </span>
               <div className="font-heading font-bold text-sm text-[rgb(var(--c-text))] mt-0.5 truncate">
-                {selectedCourse.room || 'Block 59 / B60'}
+                {[selectedCourse.building, selectedCourse.room].filter(Boolean).join(' • ') || 'Campus Hall'}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Add / Edit Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-pop">
-          <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5">
-            <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))] mb-3">
-              <div className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
-                {editingCourse ? 'Edit Academic Course' : 'Register New University Course'}
-              </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-1 rounded-full text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveCourse} className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    Course Code
-                  </label>
-                  <input
-                    type="text"
-                    value={code}
-                    onChange={(e) => setCode(e.target.value)}
-                    placeholder="e.g. MATH1011"
-                    className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    Credit Hours
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="8"
-                    value={credits}
-                    onChange={(e) => setCredits(parseInt(e.target.value, 10))}
-                    className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                  Course Title
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Applied Mathematics I"
-                  className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    Lecturer / Instructor
-                  </label>
-                  <input
-                    type="text"
-                    value={instructor}
-                    onChange={(e) => setInstructor(e.target.value)}
-                    placeholder="e.g. Dr. Tadesse"
-                    className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    Hall / Room
-                  </label>
-                  <input
-                    type="text"
-                    value={room}
-                    onChange={(e) => setRoom(e.target.value)}
-                    placeholder="e.g. B59-2-005"
-                    className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                  />
-                </div>
-              </div>
-
-              {/* Color Swatch Picker */}
-              <div>
-                <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1.5">
-                  Universal Course Color Tag
-                </label>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {PRESET_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setColor(c)}
-                      className={`w-6 h-6 rounded-full transition transform active:scale-90 flex items-center justify-center ${
-                        color === c ? 'ring-2 ring-stone-900 ring-offset-2 scale-110 shadow-xs' : 'hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: c }}
-                    >
-                      {color === c && <span className="text-[10px] text-stone-900 font-bold">✓</span>}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full mt-3 py-2 rounded-xl bg-[#8B5A3C] text-white font-heading text-xs font-bold hover:opacity-90 active:scale-98 transition shadow-xs"
-              >
-                {editingCourse ? 'Save Changes' : 'Enroll Module'}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Shared Course Creation & Edit Modal */}
+      <CourseModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingCourse(null);
+        }}
+        courseToEdit={editingCourse}
+        onCourseSaved={handleCourseSaved}
+      />
     </div>
   );
 };

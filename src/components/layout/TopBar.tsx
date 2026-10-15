@@ -29,9 +29,9 @@ export const TopBar: React.FC = () => {
         {/* Left: Brand & Hero Badge */}
         <div className="flex items-center gap-2.5 min-w-0">
           <button
-            onClick={() => setCurrentRoute('#/hero')}
-            className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-[rgb(var(--c-surface2))] border border-[rgb(var(--c-border))] hover:opacity-90 transition active:scale-95 group text-left"
-            title="Open Hero RPG Character Sheet"
+            onClick={() => setCurrentRoute('#/levels')}
+            className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-[rgb(var(--c-surface2))] border border-[rgb(var(--c-border))] hover:opacity-90 transition active:scale-95 group text-left cursor-pointer"
+            title="Open XP & Levels Progression"
           >
             <div className="w-7 h-7 rounded-full bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] flex items-center justify-center font-heading text-xs font-bold shadow-xs">
               {heroInfo.level}

@@ -7,11 +7,12 @@ import {
   DAY_NAMES,
   FULL_DAY_NAMES,
   getDayOfWeekIndex,
-  getTodayKey,
   checkTimeClash,
 } from '../utils/dateUtils';
 import { encodeShareCode, decodeShareCode } from '../utils/shareCode';
 import { generateId } from '../utils/idGenerator';
+import { CourseModal } from '../components/common/CourseModal';
+import { getContrastTextColor } from '../theme/themeUtils';
 import {
   Calendar,
   Clock,
@@ -20,25 +21,32 @@ import {
   Camera,
   AlertTriangle,
   MapPin,
+  Building,
   User,
   Trash2,
   Copy,
   X,
   Check,
+  BookOpen,
+  Edit2,
+  Sparkles,
 } from 'lucide-react';
 
 export const TimetablePage: React.FC = () => {
   const { showToast } = useUiStore();
   const [selectedDay, setSelectedDay] = useState<number>(getDayOfWeekIndex());
-  const [viewMode, setViewMode] = useState<'day' | 'week'>('day');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [shareInputCode, setShareInputCode] = useState('');
 
+  // Course Modal State
+  const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+
   const courses = useLiveQuery(() => db.courses.toArray()) || [];
   const sessions = useLiveQuery(() => db.classSessions.toArray()) || [];
 
-  // Form State
+  // Form State for Class Session
   const [courseId, setCourseId] = useState('');
   const [dayOfWeek, setDayOfWeek] = useState<number>(selectedDay);
   const [startTime, setStartTime] = useState('08:30');
@@ -67,6 +75,33 @@ export const TimetablePage: React.FC = () => {
     }
   }
 
+  const handleSelectCourse = (selectedId: string) => {
+    setCourseId(selectedId);
+    const selectedCourse = courseMap.get(selectedId);
+    if (selectedCourse) {
+      if (selectedCourse.building && !building) setBuilding(selectedCourse.building);
+      if (selectedCourse.room && !room) setRoom(selectedCourse.room);
+    }
+  };
+
+  const handleOpenAddCourse = () => {
+    setEditingCourse(null);
+    setIsCourseModalOpen(true);
+  };
+
+  const handleOpenEditCourse = (course: Course) => {
+    setEditingCourse(course);
+    setIsCourseModalOpen(true);
+  };
+
+  const handleCourseSaved = (savedCourse: Course) => {
+    if (isAddModalOpen) {
+      setCourseId(savedCourse.id);
+      if (savedCourse.building && !building) setBuilding(savedCourse.building);
+      if (savedCourse.room && !room) setRoom(savedCourse.room);
+    }
+  };
+
   const handleSaveSession = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!courseId) {
@@ -81,8 +116,8 @@ export const TimetablePage: React.FC = () => {
       startTime,
       endTime,
       type,
-      room,
-      building,
+      room: room.trim(),
+      building: building.trim(),
       repeat: 'all',
     });
 
@@ -137,11 +172,18 @@ export const TimetablePage: React.FC = () => {
 
           <div className="flex items-center gap-2 flex-wrap">
             <button
+              onClick={handleOpenAddCourse}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:border-[#CCFF00] hover:bg-[#CCFF00]/10 active:scale-95 transition"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-[#4F7A0A]" />
+              <span>+ Add Course</span>
+            </button>
+            <button
               onClick={() => setIsAddModalOpen(true)}
               className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#B6E63E] text-stone-900 font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Add Class</span>
+              <span>Schedule Class</span>
             </button>
             <button
               onClick={() => setIsShareModalOpen(true)}
@@ -150,19 +192,68 @@ export const TimetablePage: React.FC = () => {
               <Share2 className="w-3.5 h-3.5" />
               <span>Share Code</span>
             </button>
+          </div>
+        </div>
+
+        {/* Enrolled Courses Neon Bar */}
+        <div className="mt-4 pt-3 border-t border-[rgb(var(--c-border))]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] uppercase font-heading font-bold tracking-wider text-[rgb(var(--c-muted))] flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-[#4F7A0A]" />
+              Course Registry & Neon Color Tags ({courses.length})
+            </span>
+            <span className="text-[10px] text-[rgb(var(--c-muted))] font-flourish">
+              Tap any course to edit title, block, or neon tag
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {courses.map((course) => {
+              const contrast = getContrastTextColor(course.color);
+              const locationStr = [course.building, course.room].filter(Boolean).join(' • ');
+
+              return (
+                <button
+                  key={course.id}
+                  onClick={() => handleOpenEditCourse(course)}
+                  className="group flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] hover:border-[rgb(var(--c-text))] transition active:scale-95 shrink-0"
+                  title={`Edit ${course.name} (${course.code})`}
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0 shadow-2xs group-hover:scale-125 transition-transform"
+                    style={{ backgroundColor: course.color }}
+                  />
+                  <span
+                    className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md transition-colors"
+                    style={{ backgroundColor: course.color, color: contrast }}
+                  >
+                    {course.code}
+                  </span>
+                  <span className="text-xs font-heading font-bold text-[rgb(var(--c-text))] max-w-[120px] sm:max-w-[160px] truncate">
+                    {course.name}
+                  </span>
+                  {locationStr && (
+                    <span className="text-[10px] text-[rgb(var(--c-muted))] hidden sm:inline">
+                      ({locationStr})
+                    </span>
+                  )}
+                  <Edit2 className="w-3 h-3 text-[rgb(var(--c-muted))] group-hover:text-[rgb(var(--c-text))] ml-0.5" />
+                </button>
+              );
+            })}
+
             <button
-              disabled
-              className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-dashed border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] text-xs opacity-60 cursor-not-allowed"
-              title="Screenshot OCR parsing coming in future version"
+              onClick={handleOpenAddCourse}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-dashed border-[rgb(var(--c-border))] hover:border-[#4F7A0A] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] text-xs font-heading font-bold transition active:scale-95 shrink-0"
             >
-              <Camera className="w-3.5 h-3.5" />
-              <span className="text-[10px]">Photo OCR (Soon)</span>
+              <Plus className="w-3 h-3" />
+              <span>+ Add Course</span>
             </button>
           </div>
         </div>
 
         {/* Day Selector Pills */}
-        <div className="flex items-center gap-1.5 mt-4 overflow-x-auto pb-1 scrollbar-none">
+        <div className="flex items-center gap-1.5 mt-3 overflow-x-auto pb-1 scrollbar-none">
           {DAY_NAMES.map((name, idx) => {
             const isToday = idx === getDayOfWeekIndex();
             const isSelected = selectedDay === idx;
@@ -200,21 +291,33 @@ export const TimetablePage: React.FC = () => {
         </div>
 
         {daySessions.length === 0 ? (
-          <div className="text-center py-12 text-xs text-[rgb(var(--c-muted))] font-flourish space-y-2">
+          <div className="text-center py-12 text-xs text-[rgb(var(--c-muted))] font-flourish space-y-3">
             <div>No academic lectures scheduled on {FULL_DAY_NAMES[selectedDay]}.</div>
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="text-xs font-heading font-bold text-[rgb(var(--c-primary))] underline"
-            >
-              + Add a lecture or lab session
-            </button>
+            <div className="flex items-center justify-center gap-2">
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-full bg-[#B6E63E] text-stone-950 text-xs font-heading font-bold shadow-xs hover:opacity-90 transition"
+              >
+                + Schedule a Class Session
+              </button>
+              <button
+                onClick={handleOpenAddCourse}
+                className="px-3.5 py-1.5 rounded-full border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))] transition"
+              >
+                + Add Course
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
             {daySessions.map((session) => {
               const course = courseMap.get(session.courseId);
               const isClashing = clashes.includes(session.id);
-              const courseColor = course?.color || '#B6E63E';
+              const courseColor = course?.color || '#CCFF00';
+              const contrastColor = getContrastTextColor(courseColor);
+              const displayBlock = session.building || course?.building;
+              const displayRoom = session.room || course?.room;
+              const locationParts = [displayBlock, displayRoom].filter(Boolean);
 
               return (
                 <div
@@ -225,15 +328,23 @@ export const TimetablePage: React.FC = () => {
                 >
                   <div className="flex items-start gap-3 min-w-0 flex-1">
                     <span
-                      className="w-3.5 self-stretch rounded-full shrink-0 mt-0.5"
+                      className="w-3.5 self-stretch rounded-full shrink-0 mt-0.5 shadow-2xs"
                       style={{ backgroundColor: courseColor }}
                     />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
+                        {course && (
+                          <span
+                            className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shadow-2xs"
+                            style={{ backgroundColor: courseColor, color: contrastColor }}
+                          >
+                            {course.code}
+                          </span>
+                        )}
                         <span className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
-                          {course ? `${course.code} — ${course.name}` : 'Unknown Course'}
+                          {course ? course.name : 'Unassigned Course'}
                         </span>
-                        <span className="text-[9px] uppercase px-2 py-0.2 rounded-full border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))]">
+                        <span className="text-[9px] uppercase px-2 py-0.2 rounded-full border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] font-medium">
                           {session.type}
                         </span>
                         {isClashing && (
@@ -243,31 +354,43 @@ export const TimetablePage: React.FC = () => {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-3 text-xs text-[rgb(var(--c-muted))] mt-1 flex-wrap">
+                      <div className="flex items-center gap-3 text-xs text-[rgb(var(--c-muted))] mt-1.5 flex-wrap">
                         <span className="flex items-center gap-1 font-semibold text-[rgb(var(--c-primary))]">
                           <Clock className="w-3 h-3" /> {session.startTime} – {session.endTime}
                         </span>
-                        {session.room && (
+                        {locationParts.length > 0 && (
                           <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3" /> {session.room} {session.building && `(${session.building})`}
+                            <MapPin className="w-3 h-3 text-[rgb(var(--c-primary))]" />
+                            {locationParts.join(' • ')}
                           </span>
                         )}
                         {course?.instructor && (
                           <span className="flex items-center gap-1">
-                            <User className="w-3 h-3" /> {course.instructor}
+                            <User className="w-3 h-3 text-[rgb(var(--c-primary))]" /> {course.instructor}
                           </span>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => handleDeleteSession(session.id)}
-                    className="p-1.5 text-[rgb(var(--c-muted))] hover:text-rose-500 rounded-lg hover:bg-[rgb(var(--c-surface2))] transition active:scale-95 shrink-0"
-                    title="Remove class"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {course && (
+                      <button
+                        onClick={() => handleOpenEditCourse(course)}
+                        className="p-1.5 text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] rounded-lg hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
+                        title="Edit course details & neon color"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDeleteSession(session.id)}
+                      className="p-1.5 text-[rgb(var(--c-muted))] hover:text-rose-500 rounded-lg hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
+                      title="Remove class session from schedule"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -275,9 +398,9 @@ export const TimetablePage: React.FC = () => {
         )}
       </div>
 
-      {/* Add Class Modal */}
+      {/* Add Class Session Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-pop">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-pop">
           <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5">
             <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))] mb-3">
               <div className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
@@ -293,13 +416,23 @@ export const TimetablePage: React.FC = () => {
 
             <form onSubmit={handleSaveSession} className="space-y-3">
               <div>
-                <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                  Course
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-heading font-bold text-[rgb(var(--c-muted))]">
+                    Course <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleOpenAddCourse}
+                    className="text-[11px] font-heading font-bold text-[rgb(var(--c-primary))] hover:underline flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>+ New Course</span>
+                  </button>
+                </div>
                 <select
                   value={courseId}
-                  onChange={(e) => setCourseId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
+                  onChange={(e) => handleSelectCourse(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--c-primary))]"
                   required
                 >
                   <option value="">Select a Course...</option>
@@ -374,20 +507,9 @@ export const TimetablePage: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    Room / Hall
-                  </label>
-                  <input
-                    type="text"
-                    value={room}
-                    onChange={(e) => setRoom(e.target.value)}
-                    placeholder="e.g. B59-2-005"
-                    className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    Building
+                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1 flex items-center gap-1">
+                    <Building className="w-3 h-3 text-[rgb(var(--c-muted))]" />
+                    Block Number
                   </label>
                   <input
                     type="text"
@@ -397,13 +519,26 @@ export const TimetablePage: React.FC = () => {
                     className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                   />
                 </div>
+                <div>
+                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1 flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-[rgb(var(--c-muted))]" />
+                    Class Number / Room
+                  </label>
+                  <input
+                    type="text"
+                    value={room}
+                    onChange={(e) => setRoom(e.target.value)}
+                    placeholder="e.g. Room 2-005"
+                    className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
+                  />
+                </div>
               </div>
 
               <button
                 type="submit"
                 className="w-full mt-2 py-2 rounded-xl bg-[#B6E63E] text-stone-950 font-heading text-xs font-bold hover:opacity-90 active:scale-98 transition shadow-xs"
               >
-                Save Academic Class
+                Save Academic Class Session
               </button>
             </form>
           </div>
@@ -412,7 +547,7 @@ export const TimetablePage: React.FC = () => {
 
       {/* Share / Import Modal */}
       {isShareModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-pop">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-pop">
           <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5">
             <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))] mb-3">
               <div className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
@@ -466,6 +601,17 @@ export const TimetablePage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Dedicated Course Creation & Edit Modal */}
+      <CourseModal
+        isOpen={isCourseModalOpen}
+        onClose={() => {
+          setIsCourseModalOpen(false);
+          setEditingCourse(null);
+        }}
+        courseToEdit={editingCourse}
+        onCourseSaved={handleCourseSaved}
+      />
     </div>
   );
 };

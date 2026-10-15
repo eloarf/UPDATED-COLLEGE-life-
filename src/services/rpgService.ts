@@ -4,58 +4,201 @@ import { getTodayKey } from '../utils/dateUtils';
 import { Achievement, DailyQuest, StatKey, XpEvent } from '../types';
 import confetti from 'canvas-confetti';
 
-export function getXpForNextLevel(level: number): number {
-  if (level >= 50) return 999999;
-  return 100 + 20 * (level - 1) + 2 * Math.pow(level - 1, 2);
+export interface LevelThreshold {
+  level: number;
+  rankTitle: string;
+  rankFamily: string;
+  rankTier: string;
+  subtitle: string;
+  xpRequired: number; // XP to complete this level and advance
+  cumulativeXp: number; // Cumulative XP needed from 0 to reach this level
 }
 
-export function getCumulativeXpForLevel(targetLevel: number): number {
-  let sum = 0;
-  for (let l = 1; l < targetLevel; l++) {
-    sum += getXpForNextLevel(l);
-  }
-  return sum;
-}
-
-export function calculateLevelFromTotalXp(totalXp: number): {
+export interface UserLevelInfo {
   level: number;
   currentLevelXp: number;
   xpNeededForNext: number;
   progressPercent: number;
   title: string;
-} {
-  let currentLevel = 1;
-  let remainingXp = Math.max(0, totalXp);
+  rankFamily: string;
+  rankTier: string;
+  subtitle: string;
+  totalXp: number;
+  nextRankTitle: string;
+  isMaxLevel: boolean;
+}
 
-  while (currentLevel < 50) {
-    const cost = getXpForNextLevel(currentLevel);
-    if (remainingXp >= cost) {
-      remainingXp -= cost;
-      currentLevel++;
-    } else {
+// XP scaling formula: steady, rewarding, non-trivial progression
+export function getXpForNextLevel(level: number): number {
+  if (level >= 50) return 999999;
+  return 100 + 25 * (level - 1) + 3 * Math.pow(level - 1, 2);
+}
+
+// Pre-generated centralized definitions for all 50 levels
+const RAW_RANK_DATA: Array<{
+  family: string;
+  tier: string;
+  title: string;
+  subtitle: string;
+}> = [
+  // Rookie Family (Levels 1 - 5)
+  { family: 'Rookie', tier: 'V', title: 'Rookie 5', subtitle: 'Luggage Scout • First Arrival in the Lobby' },
+  { family: 'Rookie', tier: 'IV', title: 'Rookie 4', subtitle: 'Elevator Cadet • Floor & Schedule Traversal' },
+  { family: 'Rookie', tier: 'III', title: 'Rookie 3', subtitle: 'Lobby Attendant • Key Sorting & Syllabus Intake' },
+  { family: 'Rookie', tier: 'II', title: 'Rookie 2', subtitle: 'Bellhop Junior • Routine Execution & Note Keeping' },
+  { family: 'Rookie', tier: 'I', title: 'Rookie 1', subtitle: 'Doorperson First Class • Reliable Presence' },
+
+  // Novice Family (Levels 6 - 10)
+  { family: 'Novice', tier: 'V', title: 'Novice 5', subtitle: 'Courier Initiate • Daily Task Dispatcher' },
+  { family: 'Novice', tier: 'IV', title: 'Novice 4', subtitle: 'Desk Clerk • Class Attendance Tracker' },
+  { family: 'Novice', tier: 'III', title: 'Novice 3', subtitle: 'Suite Custodian • Study Space Architect' },
+  { family: 'Novice', tier: 'II', title: 'Novice 2', subtitle: 'Brass Key Keeper • Morning Momentum Maker' },
+  { family: 'Novice', tier: 'I', title: 'Novice 1', subtitle: 'Head Bellhop • Forgiving Habit Stamper' },
+
+  // Scholar Family (Levels 11 - 15)
+  { family: 'Scholar', tier: 'V', title: 'Scholar 5', subtitle: 'Library Scribe • Syllabus Explorer' },
+  { family: 'Scholar', tier: 'IV', title: 'Scholar 4', subtitle: 'Archive Archivist • Lab Report Crafter' },
+  { family: 'Scholar', tier: 'III', title: 'Scholar 3', subtitle: 'Research Assistant • Deep Focus Practitioner' },
+  { family: 'Scholar', tier: 'II', title: 'Scholar 2', subtitle: 'Symposium Fellow • Midterm Tactician' },
+  { family: 'Scholar', tier: 'I', title: 'Scholar 1', subtitle: 'Distinguished Scholar • 3.85 GPA Aspirant' },
+
+  // Apprentice Concierge Family (Levels 16 - 20)
+  { family: 'Apprentice', tier: 'V', title: 'Apprentice 5', subtitle: 'Silver Key Bearer • Weekly Review Architect' },
+  { family: 'Apprentice', tier: 'IV', title: 'Apprentice 4', subtitle: 'Floor Steward • Pomodoro Flow Master' },
+  { family: 'Apprentice', tier: 'III', title: 'Apprentice 3', subtitle: 'Protocol Liaison • Project Milestone Finisher' },
+  { family: 'Apprentice', tier: 'II', title: 'Apprentice 2', subtitle: 'Salon Dispatcher • Campus Treasury Keeper' },
+  { family: 'Apprentice', tier: 'I', title: 'Apprentice 1', subtitle: 'Associate Concierge • Unshakable Routine' },
+
+  // Vanguard Family (Levels 21 - 25)
+  { family: 'Vanguard', tier: 'V', title: 'Vanguard 5', subtitle: 'Night Overseer • Midnight Focus Commander' },
+  { family: 'Vanguard', tier: 'IV', title: 'Vanguard 4', subtitle: 'Executive Warden • Milestone Strategist' },
+  { family: 'Vanguard', tier: 'III', title: 'Vanguard 3', subtitle: 'Grand Tribune • Exam Boss Defeater' },
+  { family: 'Vanguard', tier: 'II', title: 'Vanguard 2', subtitle: 'High Chancellor • Campus Rhythm Master' },
+  { family: 'Vanguard', tier: 'I', title: 'Vanguard 1', subtitle: 'First Vanguard • Undefeated Streak' },
+
+  // Elite Family (Levels 26 - 30)
+  { family: 'Elite', tier: 'V', title: 'Elite 5', subtitle: 'Crossed Keys Initiate • High-Effort Conqueror' },
+  { family: 'Elite', tier: 'IV', title: 'Elite 4', subtitle: 'Crossed Keys Adept • University Diplomat' },
+  { family: 'Elite', tier: 'III', title: 'Elite 3', subtitle: 'Chancellery Envoy • Multi-Course Commander' },
+  { family: 'Elite', tier: 'II', title: 'Elite 2', subtitle: 'Grand Overseer • Creative Studio Producer' },
+  { family: 'Elite', tier: 'I', title: 'Elite 1', subtitle: 'Senior Concierge • Grand Budapest Veteran' },
+
+  // Paragon Family (Levels 31 - 35)
+  { family: 'Paragon', tier: 'V', title: 'Paragon 5', subtitle: 'Conservator of Knowledge • Syllabus Virtuoso' },
+  { family: 'Paragon', tier: 'IV', title: 'Paragon 4', subtitle: 'Sovereign Prefect • Zero Procrastination' },
+  { family: 'Paragon', tier: 'III', title: 'Paragon 3', subtitle: 'Grand Luminary • Peer Mentor & Leader' },
+  { family: 'Paragon', tier: 'II', title: 'Paragon 2', subtitle: 'Master of Protocols • Academic Dynamo' },
+  { family: 'Paragon', tier: 'I', title: 'Paragon 1', subtitle: 'Living Paragon • University Vanguard' },
+
+  // Grandmaster Family (Levels 36 - 40)
+  { family: 'Grandmaster', tier: 'V', title: 'Grandmaster 5', subtitle: 'Emerald Grandmaster • Resilient Scholar' },
+  { family: 'Grandmaster', tier: 'IV', title: 'Grandmaster 4', subtitle: 'Sapphire Grandmaster • Flawless Attendance' },
+  { family: 'Grandmaster', tier: 'III', title: 'Grandmaster 3', subtitle: 'Ruby Grandmaster • Exam Demolisher' },
+  { family: 'Grandmaster', tier: 'II', title: 'Grandmaster 2', subtitle: 'Diamond Grandmaster • Unbroken Resolve' },
+  { family: 'Grandmaster', tier: 'I', title: 'Grandmaster 1', subtitle: 'Crown Grandmaster • Order of the Keys' },
+
+  // Master Family (Levels 41 - 50)
+  { family: 'Master', tier: 'V', title: 'Master 5', subtitle: 'Grand Budapest Master V • Grand Architect' },
+  { family: 'Master', tier: 'IV', title: 'Master 4', subtitle: 'Grand Budapest Master IV • Legendary Pacing' },
+  { family: 'Master', tier: 'III', title: 'Master 3', subtitle: 'Grand Budapest Master III • Infinite Curiosity' },
+  { family: 'Master', tier: 'II', title: 'Master 2', subtitle: 'Grand Budapest Master II • Pillar of Excellence' },
+  { family: 'Master', tier: 'I', title: 'Master 1', subtitle: 'Grand Budapest Master I • Master of All Quests' },
+  { family: 'Master', tier: 'High', title: 'High Master', subtitle: 'Exalted Order • Unrivaled Focus' },
+  { family: 'Master', tier: 'Prime', title: 'Prime Master', subtitle: 'Prime Architect of the Grand Budapest' },
+  { family: 'Master', tier: 'Supreme', title: 'Supreme Master', subtitle: 'Supreme Scholar of Science & Tech' },
+  { family: 'Master', tier: 'Grand', title: 'Grand Budapest Master', subtitle: 'Peerless Legend of the Academy' },
+  { family: 'Master', tier: 'Apex', title: 'Sovereign Master', subtitle: 'Eternal Sovereign of the Grand Budapest' },
+];
+
+export const LEVEL_THRESHOLDS: LevelThreshold[] = (() => {
+  const list: LevelThreshold[] = [];
+  let cum = 0;
+  for (let l = 1; l <= 50; l++) {
+    const raw = RAW_RANK_DATA[l - 1] || {
+      family: 'Master',
+      tier: 'Apex',
+      title: `Master Lv.${l}`,
+      subtitle: 'Legendary Scholar of the House',
+    };
+    const req = getXpForNextLevel(l);
+    list.push({
+      level: l,
+      rankTitle: raw.title,
+      rankFamily: raw.family,
+      rankTier: raw.tier,
+      subtitle: raw.subtitle,
+      xpRequired: req,
+      cumulativeXp: cum,
+    });
+    cum += req;
+  }
+  return list;
+})();
+
+export function getAllLevelThresholds(): LevelThreshold[] {
+  return LEVEL_THRESHOLDS;
+}
+
+export function getLevelThreshold(level: number): LevelThreshold {
+  const clamped = Math.max(1, Math.min(50, level));
+  return LEVEL_THRESHOLDS[clamped - 1] || LEVEL_THRESHOLDS[0];
+}
+
+export function getCumulativeXpForLevel(targetLevel: number): number {
+  const threshold = getLevelThreshold(targetLevel);
+  return threshold.cumulativeXp;
+}
+
+export function calculateLevelFromTotalXp(totalXp: number): UserLevelInfo {
+  const safeTotalXp = Math.max(0, isNaN(totalXp) ? 0 : totalXp);
+  let currentLevel = 1;
+
+  for (let l = 1; l <= 50; l++) {
+    const th = LEVEL_THRESHOLDS[l - 1];
+    if (l === 50) {
+      currentLevel = 50;
+      break;
+    }
+    const nextTh = LEVEL_THRESHOLDS[l];
+    if (safeTotalXp < nextTh.cumulativeXp) {
+      currentLevel = l;
       break;
     }
   }
 
-  const xpNeeded = getXpForNextLevel(currentLevel);
-  const progressPercent = currentLevel >= 50 ? 100 : Math.min(100, Math.round((remainingXp / xpNeeded) * 100));
+  const currentTh = LEVEL_THRESHOLDS[currentLevel - 1];
+  const nextTh = currentLevel < 50 ? LEVEL_THRESHOLDS[currentLevel] : null;
 
-  let title = 'Lobby Initiate';
-  if (currentLevel >= 50) title = 'Legend of the House';
-  else if (currentLevel >= 40) title = 'Grand Concierge';
-  else if (currentLevel >= 30) title = 'Head Concierge';
-  else if (currentLevel >= 20) title = 'Concierge';
-  else if (currentLevel >= 15) title = 'Scholar';
-  else if (currentLevel >= 10) title = 'Porter';
-  else if (currentLevel >= 5) title = 'Bellhop';
+  const currentLevelXp = safeTotalXp - currentTh.cumulativeXp;
+  const xpNeeded = currentTh.xpRequired;
+  const progressPercent =
+    currentLevel >= 50
+      ? 100
+      : Math.min(100, Math.max(0, Math.round((currentLevelXp / xpNeeded) * 100)));
 
   return {
     level: currentLevel,
-    currentLevelXp: remainingXp,
+    currentLevelXp,
     xpNeededForNext: xpNeeded,
     progressPercent,
-    title,
+    title: currentTh.rankTitle,
+    rankFamily: currentTh.rankFamily,
+    rankTier: currentTh.rankTier,
+    subtitle: currentTh.subtitle,
+    totalXp: safeTotalXp,
+    nextRankTitle: nextTh ? nextTh.rankTitle : 'Maximum Rank Attained',
+    isMaxLevel: currentLevel >= 50,
   };
+}
+
+export function getQuestXpReward(task: { effort?: string; priority?: string }): number {
+  let base = 30;
+  if (task.effort === 'small') base = 15;
+  else if (task.effort === 'medium') base = 30;
+  else if (task.effort === 'large') base = 60;
+
+  if (task.priority === 'high') base += 10;
+  return base;
 }
 
 export async function awardXp(params: {
@@ -116,6 +259,50 @@ export async function reverseXp(source: string, sourceId: string) {
   if (existing) {
     await db.xpEvents.delete(existing.id);
   }
+}
+
+export async function reconcileXpLedger(): Promise<{
+  reversedCount: number;
+  totalValidEvents: number;
+  reconciledTotalXp: number;
+}> {
+  const allEvents = await db.xpEvents.toArray();
+  const allTasks = await db.tasks.toArray();
+  const taskMap = new Map(allTasks.map((t) => [t.id, t]));
+
+  let reversedCount = 0;
+  // Remove orphaned task events where task no longer exists or is not done
+  for (const event of allEvents) {
+    if (event.source === 'task') {
+      const task = taskMap.get(event.sourceId);
+      if (!task || task.status !== 'done') {
+        await db.xpEvents.delete(event.id);
+        reversedCount++;
+      }
+    }
+  }
+
+  // Deduplicate any repeated events for same source + sourceId
+  const remaining = await db.xpEvents.toArray();
+  const seen = new Set<string>();
+  for (const event of remaining) {
+    const key = `${event.source}__${event.sourceId}`;
+    if (seen.has(key)) {
+      await db.xpEvents.delete(event.id);
+      reversedCount++;
+    } else {
+      seen.add(key);
+    }
+  }
+
+  const finalEvents = await db.xpEvents.toArray();
+  const reconciledTotalXp = Math.max(0, finalEvents.reduce((acc, e) => acc + (e.amount || 0), 0));
+
+  return {
+    reversedCount,
+    totalValidEvents: finalEvents.length,
+    reconciledTotalXp,
+  };
 }
 
 export function triggerLevelUpConfetti() {
