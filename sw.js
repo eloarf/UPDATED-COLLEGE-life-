@@ -1,33 +1,45 @@
 // Service Worker for AASTU OS Tracker
-// Enables offline static asset caching & Web Push / Local Notification handling
+// Designed for offline-first PWA operation on GitHub Pages and custom subpaths
 
-const CACHE_NAME = 'aastu-os-v1';
-const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/script.js',
-  '/manifest.json'
+const CACHE_NAME = 'aastu-os-pwa-v2';
+
+// Core assets to pre-cache on install (using relative paths for subpath compatibility)
+const PRECACHE_ASSETS = [
+  './',
+  './index.html',
+  './manifest.json',
+  './icon.svg'
 ];
 
-// Install: Cache offline shell
+// Install: Cache offline app shell
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE).catch((err) => {
-        console.warn('SW cache.addAll non-critical warning:', err);
-      });
+      return Promise.allSettled(
+        PRECACHE_ASSETS.map((url) =>
+          fetch(new Request(url, { cache: 'reload' }))
+            .then((response) => {
+              if (response && response.status === 200) {
+                return cache.put(url, response);
+              }
+            })
+            .catch((err) => {
+              console.warn('[AASTU OS SW] Precache non-critical notice for', url, err);
+            })
+        )
+      );
     }).then(() => self.skipWaiting())
   );
 });
 
-// Activate: Clean up old caches
+// Activate: Clean up old caches and take immediate control of clients
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cache) => {
           if (cache !== CACHE_NAME) {
+            console.log('[AASTU OS SW] Purging old cache:', cache);
             return caches.delete(cache);
           }
         })
@@ -36,20 +48,49 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: Stale-while-revalidate or Network first for API/dynamic
+// Fetch: Network-first with offline fallback for navigation; stale-while-revalidate for assets
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+
+  // 1. Navigation requests (HTML page loads, home screen launch, routing)
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          // Offline fallback
+          const cached = await caches.match(event.request);
+          if (cached) return cached;
+          const indexFallback = (await caches.match('./index.html')) || (await caches.match('./'));
+          if (indexFallback) return indexFallback;
+          return new Response('AASTU OS is offline. Please connect to the internet to load initial assets.', {
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+          });
+        })
+    );
+    return;
+  }
+
+  // 2. Static assets & API/resources
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        }
-        return networkResponse;
-      }).catch(() => cachedResponse);
+      const fetchPromise = fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(() => cachedResponse);
 
       return cachedResponse || fetchPromise;
     })
@@ -62,11 +103,12 @@ self.addEventListener('message', (event) => {
 
   if (event.data.type === 'SHOW_NOTIFICATION') {
     const { title, options } = event.data;
+    const defaultUrl = self.registration.scope || './';
     self.registration.showNotification(title || 'AASTU OS Reminder', {
       body: options?.body || 'You have an upcoming academic task or streak alert!',
-      icon: options?.icon || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="%230e0d0c"/><text x="50" y="68" font-size="60" text-anchor="middle" fill="%23ccff00">⚡</text></svg>',
-      badge: options?.badge || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%23ccff00"/></svg>',
-      data: options?.data || { url: '/' },
+      icon: options?.icon || './icon.svg',
+      badge: options?.badge || './icon.svg',
+      data: options?.data || { url: defaultUrl },
       vibrate: [200, 100, 200],
       requireInteraction: options?.requireInteraction || false,
       tag: options?.tag || 'aastu-os-notice'
@@ -77,7 +119,7 @@ self.addEventListener('message', (event) => {
 // Handle Notification Click
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  const targetUrl = (event.notification.data && event.notification.data.url) || self.registration.scope || './';
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {

@@ -1,8 +1,10 @@
 {
+  "id": "./",
   "name": "AASTU OS Tracker - Academic & Goal Planner",
   "short_name": "AASTU OS",
   "description": "Zero-backend, offline-ready academic OS with customizable tasks, assignments, exam countdowns, calendar sync, local push notifications, and streak tracking.",
-  "start_url": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0e0d0c",
   "theme_color": "#ccff00",
@@ -10,7 +12,14 @@
     {
       "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230e0d0c'/><text x='50' y='68' font-size='60' text-anchor='middle' fill='%23ccff00'>⚡</text></svg>",
       "sizes": "192x192 512x512",
-      "type": "image/svg+xml"
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }

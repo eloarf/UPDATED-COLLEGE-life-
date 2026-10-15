@@ -223,7 +223,7 @@ function getDayName(dateObj) {
 
 function initServiceWorker() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js')
+    navigator.serviceWorker.register('./sw.js', { scope: './' })
       .then((reg) => {
         swRegistration = reg;
         console.log("AASTU OS ServiceWorker registered:", reg.scope);
