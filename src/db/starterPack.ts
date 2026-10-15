@@ -435,4 +435,70 @@ export async function loadStarterPackData() {
       updatedAt: now,
     },
   ]);
+
+  // 12. Savings Goals & Financial Ledger
+  const goal1Id = generateId();
+  const goal2Id = generateId();
+  const goal3Id = generateId();
+
+  await db.savingsGoals.bulkPut([
+    {
+      id: goal1Id,
+      title: 'Engineering Laptop Upgrade',
+      targetAmount: 30000,
+      currentAmount: 12500,
+      deadline: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10),
+      category: 'tech',
+      color: '#4FA3A5',
+      createdAt: now,
+    },
+    {
+      id: goal2Id,
+      title: 'Emergency Student Buffer',
+      targetAmount: 5000,
+      currentAmount: 3200,
+      deadline: new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10),
+      category: 'emergency',
+      color: '#B6E63E',
+      createdAt: now,
+    },
+    {
+      id: goal3Id,
+      title: 'Textbooks & Lab Apparatus Fund',
+      targetAmount: 2500,
+      currentAmount: 1800,
+      deadline: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      category: 'study',
+      color: '#E5C04B',
+      createdAt: now,
+    },
+  ]);
+
+  // Budgets
+  await db.budgets.bulkPut([
+    { id: generateId(), category: 'Food & Cafeteria', monthlyLimit: 2500, spent: 840 },
+    { id: generateId(), category: 'Coffee & Snacks', monthlyLimit: 600, spent: 180 },
+    { id: generateId(), category: 'Stationery & Prints', monthlyLimit: 500, spent: 160 },
+    { id: generateId(), category: 'Campus Transport', monthlyLimit: 700, spent: 210 },
+  ]);
+
+  // Sample transactions over the past days
+  const d0 = todayKey;
+  const d1 = new Date(Date.now() - 1 * 86400000).toISOString().slice(0, 10);
+  const d2 = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+  const d3 = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
+  const d4 = new Date(Date.now() - 4 * 86400000).toISOString().slice(0, 10);
+  const d5 = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+
+  await db.transactions.bulkPut([
+    { id: generateId(), type: 'income', amount: 5000, currency: 'ETB', category: 'Monthly Allowance', account: 'bank', date: d5, notes: 'Family support transfer' },
+    { id: generateId(), type: 'expense', amount: 140, currency: 'ETB', category: 'Food & Cafeteria', account: 'cash', date: d5, notes: 'Campus cafeteria lunch & juice' },
+    { id: generateId(), type: 'saving', amount: 800, currency: 'ETB', category: 'Savings Deposit', account: 'mobile_money', date: d4, notes: 'Telebirr transfer to Emergency Buffer', savingsGoalId: goal2Id },
+    { id: generateId(), type: 'expense', amount: 55, currency: 'ETB', category: 'Campus Transport', account: 'cash', date: d4, notes: 'Minibus to main gate' },
+    { id: generateId(), type: 'expense', amount: 85, currency: 'ETB', category: 'Coffee & Snacks', account: 'mobile_money', date: d3, notes: 'Afternoon macchiato with study group' },
+    { id: generateId(), type: 'expense', amount: 160, currency: 'ETB', category: 'Stationery & Prints', account: 'cash', date: d2, notes: 'Applied Math syllabus printouts' },
+    { id: generateId(), type: 'saving', amount: 1000, currency: 'ETB', category: 'Savings Deposit', account: 'bank', date: d1, notes: 'CBE deposit toward Laptop Upgrade', savingsGoalId: goal1Id },
+    { id: generateId(), type: 'expense', amount: 110, currency: 'ETB', category: 'Food & Cafeteria', account: 'mobile_money', date: d1, notes: 'Dinner at student lounge' },
+    { id: generateId(), type: 'expense', amount: 135, currency: 'ETB', category: 'Food & Cafeteria', account: 'cash', date: d0, notes: 'Lunch & mineral water' },
+  ]);
 }

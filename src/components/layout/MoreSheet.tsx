@@ -49,7 +49,7 @@ export const MoreSheet: React.FC = () => {
     { name: 'Master Week', subtitle: 'Dorm vs Home Timeblocks', route: '#/week', icon: LayoutGrid, accent: '#E8C9A0' },
     { name: 'Calendar', subtitle: '30-Day Grid & Ethiopic Dates', route: '#/calendar', icon: CalendarDays, accent: '#BBA6E0' },
     { name: 'Grades & GPA', subtitle: 'Target 3.85 & What-If Sandbox', route: '#/grades', icon: GraduationCap, accent: '#9B2D4F' },
-    { name: 'Wallet', subtitle: 'ETB Cash & Envelope Budgets', route: '#/wallet', icon: CreditCard, accent: '#E5C04B' },
+    { name: 'Finance & Savings', subtitle: 'Spending Charts & Goal Vault', route: '#/finance', icon: CreditCard, accent: '#E5C04B' },
     { name: 'Studio', subtitle: 'Song/Beat & Writing Pipelines', route: '#/studio', icon: Music, accent: '#BBA6E0' },
     { name: 'Library', subtitle: 'Morning Brief & Reading Queue', route: '#/library', icon: Bookmark, accent: '#8FD3B6' },
     { name: 'Hero Sheet', subtitle: 'RPG Level, Stats & Badges', route: '#/hero', icon: Award, accent: '#B6E63E' },
@@ -63,31 +63,31 @@ export const MoreSheet: React.FC = () => {
       {/* Backdrop tap to close */}
       <div className="absolute inset-0" onClick={() => setMoreSheetOpen(false)} />
 
-      {/* Sheet Content */}
-      <div className="relative w-full max-h-[85vh] bg-[rgb(var(--c-surface))] border-t-2 border-[rgb(var(--c-border))] rounded-t-3xl p-4 sm:p-6 shadow-2xl flex flex-col overflow-hidden max-w-[960px] mx-auto">
+      {/* Sheet Content with extra breathing space */}
+      <div className="relative w-full max-h-[88vh] bg-[rgb(var(--c-surface))] border-t-2 border-[rgb(var(--c-border))] rounded-t-3xl p-6 sm:p-8 shadow-2xl flex flex-col overflow-hidden max-w-[1040px] mx-auto space-y-5">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
+        <div className="flex items-center justify-between pb-4 border-b border-[rgb(var(--c-border))]">
           <div>
-            <div className="text-[11px] font-heading tracking-widest text-[rgb(var(--c-primary))]">
+            <div className="text-[11px] font-heading tracking-widest text-[rgb(var(--c-primary))] font-bold uppercase">
               The Grand Budapest Directory
             </div>
-            <h2 className="text-base sm:text-lg font-heading text-[rgb(var(--c-text))] font-bold">
-              All Chambers & Suites
+            <h2 className="text-xl sm:text-2xl font-heading text-[rgb(var(--c-text))] font-bold mt-1">
+              All Chambers &amp; Suites
             </h2>
           </div>
           <button
             onClick={() => setMoreSheetOpen(false)}
-            className="p-1.5 rounded-full hover:bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))] active:scale-95 transition"
+            className="p-2.5 rounded-full hover:bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))] active:scale-95 transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Directory Grid */}
-        <div className="overflow-y-auto py-4 grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
+        {/* Directory Grid with generous spacing */}
+        <div className="overflow-y-auto py-3 grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-5">
           {directory.map((item) => {
             const Icon = item.icon;
-            const isSelected = currentRoute === item.route;
+            const isSelected = currentRoute === item.route || (item.route === '#/finance' && currentRoute === '#/wallet');
             return (
               <button
                 key={item.route}
@@ -95,23 +95,23 @@ export const MoreSheet: React.FC = () => {
                   setCurrentRoute(item.route);
                   setMoreSheetOpen(false);
                 }}
-                className={`flex items-start gap-2.5 p-3 rounded-2xl border text-left transition-all active:scale-98 ${
+                className={`flex items-start gap-3.5 p-4 sm:p-5 rounded-2xl border text-left transition-all active:scale-98 ${
                   isSelected
-                    ? 'border-[rgb(var(--c-primary))] bg-[rgb(var(--c-surface2))] shadow-xs'
+                    ? 'border-[rgb(var(--c-primary))] bg-[rgb(var(--c-surface2))] shadow-xs ring-1 ring-[rgb(var(--c-primary))]'
                     : 'border-[rgb(var(--c-border))] hover:border-[rgb(var(--c-primary))] bg-[rgb(var(--c-surface))]'
                 }`}
               >
                 <div
-                  className="p-2 rounded-xl text-white shadow-xs shrink-0"
+                  className="p-2.5 rounded-xl text-white shadow-xs shrink-0"
                   style={{ backgroundColor: item.accent }}
                 >
                   <Icon className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <div className="font-heading text-xs font-bold text-[rgb(var(--c-text))] truncate">
+                  <div className="font-heading text-xs sm:text-sm font-bold text-[rgb(var(--c-text))] truncate">
                     {item.name}
                   </div>
-                  <div className="text-[10px] text-[rgb(var(--c-muted))] truncate font-flourish">
+                  <div className="text-[10px] sm:text-[11px] text-[rgb(var(--c-muted))] truncate font-flourish mt-0.5">
                     {item.subtitle}
                   </div>
                 </div>

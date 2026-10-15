@@ -24,8 +24,8 @@ export const TopBar: React.FC = () => {
   }, [userName]);
 
   return (
-    <header className="sticky top-0 z-30 px-3 py-2.5 sm:px-6 bg-[rgb(var(--c-surface))] border-b border-[rgb(var(--c-border))] shadow-xs transition-colors">
-      <div className="max-w-[960px] mx-auto flex items-center justify-between gap-2">
+    <header className="sticky top-0 z-30 px-4 py-3 sm:px-8 bg-[rgb(var(--c-surface))] border-b border-[rgb(var(--c-border))] shadow-xs transition-colors">
+      <div className="max-w-[1040px] mx-auto flex items-center justify-between gap-3">
         {/* Left: Brand & Hero Badge */}
         <div className="flex items-center gap-2.5 min-w-0">
           <button

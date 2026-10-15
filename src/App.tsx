@@ -29,7 +29,7 @@ import { JournalPage } from './pages/JournalPage';
 import { MasterWeekPage } from './pages/MasterWeekPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { GradesPage } from './pages/GradesPage';
-import { WalletPage } from './pages/WalletPage';
+import { FinancePage } from './pages/FinancePage';
 import { StudioPage } from './pages/StudioPage';
 import { LibraryPage } from './pages/LibraryPage';
 import { HeroPage } from './pages/HeroPage';
@@ -90,7 +90,8 @@ export default function App() {
       case '#/grades':
         return <GradesPage />;
       case '#/wallet':
-        return <WalletPage />;
+      case '#/finance':
+        return <FinancePage />;
       case '#/studio':
         return <StudioPage />;
       case '#/library':
@@ -114,11 +115,11 @@ export default function App() {
       {/* Side Navigation Rail (Desktop) */}
       <SideNavRail />
 
-      {/* Main Viewport Container */}
+      {/* Main Viewport Container with Spacious Layout */}
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar />
 
-        <main className="flex-1 w-full max-w-[960px] mx-auto p-3 sm:p-6 transition-all">
+        <main className="flex-1 w-full max-w-[1040px] mx-auto p-4 sm:p-8 space-y-6 sm:space-y-8 transition-all">
           {renderPage()}
         </main>
 

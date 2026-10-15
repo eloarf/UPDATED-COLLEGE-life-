@@ -216,13 +216,14 @@ export interface MasterWeekBlock {
 
 export interface Transaction {
   id: string;
-  type: 'expense' | 'income';
+  type: 'expense' | 'income' | 'saving';
   amount: number;
   currency: string;
   category: string;
   account: 'cash' | 'bank' | 'mobile_money';
   date: string; // YYYY-MM-DD
   notes?: string;
+  savingsGoalId?: string;
 }
 
 export interface Budget {
@@ -238,6 +239,9 @@ export interface SavingsGoal {
   targetAmount: number;
   currentAmount: number;
   deadline?: string;
+  category?: string;
+  color?: string;
+  createdAt?: string;
 }
 
 export interface CreativeProject {
