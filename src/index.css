@@ -109,6 +109,169 @@
     --c-danger: 248 113 113;
     --c-xp: 251 191 36;
   }
+
+  /* 9 New Daring 3 & 4 Color Combo Themes */
+  [data-theme="cyber-neon-blue"] {
+    --c-bg: 10 15 24;
+    --c-surface: 18 26 39;
+    --c-surface2: 26 37 56;
+    --c-border: 35 53 78;
+    --c-text: 224 242 254;
+    --c-muted: 125 211 252;
+    --c-primary: 0 240 255;
+    --c-on-primary: 10 15 24;
+    --c-accent: 57 255 20;
+    --c-accent2: 255 69 0;
+    --c-page-accent: 0 240 255;
+    --c-success: 57 255 20;
+    --c-warning: 255 184 0;
+    --c-danger: 255 42 109;
+    --c-xp: 255 184 0;
+  }
+
+  [data-theme="cyber-grid-amber"] {
+    --c-bg: 11 15 20;
+    --c-surface: 20 28 36;
+    --c-surface2: 30 43 56;
+    --c-border: 44 62 80;
+    --c-text: 241 245 249;
+    --c-muted: 148 163 184;
+    --c-primary: 255 184 0;
+    --c-on-primary: 11 15 20;
+    --c-accent: 5 217 232;
+    --c-accent2: 255 42 109;
+    --c-page-accent: 255 184 0;
+    --c-success: 5 217 232;
+    --c-warning: 255 184 0;
+    --c-danger: 255 42 109;
+    --c-xp: 255 184 0;
+  }
+
+  [data-theme="cyber-azure-overdrive"] {
+    --c-bg: 9 17 30;
+    --c-surface: 17 31 53;
+    --c-surface2: 26 47 79;
+    --c-border: 38 67 110;
+    --c-text: 226 232 240;
+    --c-muted: 126 162 206;
+    --c-primary: 0 180 216;
+    --c-on-primary: 9 17 30;
+    --c-accent: 255 230 0;
+    --c-accent2: 0 255 135;
+    --c-page-accent: 0 180 216;
+    --c-success: 0 255 135;
+    --c-warning: 255 230 0;
+    --c-danger: 255 59 48;
+    --c-xp: 255 230 0;
+  }
+
+  [data-theme="dark-walnut-emerald"] {
+    --c-bg: 28 18 11;
+    --c-surface: 42 27 16;
+    --c-surface2: 59 40 27;
+    --c-border: 85 58 39;
+    --c-text: 253 246 237;
+    --c-muted: 194 165 143;
+    --c-primary: 16 231 117;
+    --c-on-primary: 28 18 11;
+    --c-accent: 245 166 35;
+    --c-accent2: 255 110 64;
+    --c-page-accent: 16 231 117;
+    --c-success: 16 231 117;
+    --c-warning: 245 166 35;
+    --c-danger: 239 68 68;
+    --c-xp: 245 166 35;
+  }
+
+  [data-theme="teak-sunset-ember"] {
+    --c-bg: 33 19 11;
+    --c-surface: 48 29 18;
+    --c-surface2: 69 42 26;
+    --c-border: 97 60 38;
+    --c-text: 255 243 234;
+    --c-muted: 205 178 158;
+    --c-primary: 255 107 0;
+    --c-on-primary: 33 19 11;
+    --c-accent: 255 209 59;
+    --c-accent2: 255 61 0;
+    --c-page-accent: 255 107 0;
+    --c-success: 52 211 153;
+    --c-warning: 255 209 59;
+    --c-danger: 239 68 68;
+    --c-xp: 255 209 59;
+  }
+
+  [data-theme="ebony-neon-drift"] {
+    --c-bg: 20 16 13;
+    --c-surface: 33 27 22;
+    --c-surface2: 51 42 35;
+    --c-border: 79 65 55;
+    --c-text: 247 242 238;
+    --c-muted: 189 175 164;
+    --c-primary: 0 229 255;
+    --c-on-primary: 20 16 13;
+    --c-accent: 229 169 60;
+    --c-accent2: 0 255 163;
+    --c-page-accent: 0 229 255;
+    --c-success: 0 255 163;
+    --c-warning: 229 169 60;
+    --c-danger: 255 77 77;
+    --c-xp: 229 169 60;
+  }
+
+  [data-theme="solar-coral-turquoise"] {
+    --c-bg: 255 248 242;
+    --c-surface: 255 255 255;
+    --c-surface2: 255 228 232;
+    --c-border: 245 208 214;
+    --c-text: 61 33 40;
+    --c-muted: 155 104 115;
+    --c-primary: 255 51 102;
+    --c-on-primary: 255 255 255;
+    --c-accent: 0 210 196;
+    --c-accent2: 255 184 0;
+    --c-page-accent: 255 51 102;
+    --c-success: 0 210 196;
+    --c-warning: 255 184 0;
+    --c-danger: 255 51 102;
+    --c-xp: 255 184 0;
+  }
+
+  [data-theme="atomic-cobalt-lime"] {
+    --c-bg: 10 19 36;
+    --c-surface: 18 32 58;
+    --c-surface2: 26 47 84;
+    --c-border: 39 68 116;
+    --c-text: 240 246 252;
+    --c-muted: 139 158 183;
+    --c-primary: 204 255 0;
+    --c-on-primary: 10 19 36;
+    --c-accent: 56 189 248;
+    --c-accent2: 255 107 0;
+    --c-page-accent: 204 255 0;
+    --c-success: 204 255 0;
+    --c-warning: 255 184 0;
+    --c-danger: 248 113 113;
+    --c-xp: 204 255 0;
+  }
+
+  [data-theme="mahogany-mint-parlor"] {
+    --c-bg: 36 17 10;
+    --c-surface: 51 25 14;
+    --c-surface2: 71 36 21;
+    --c-border: 102 53 32;
+    --c-text: 255 245 238;
+    --c-muted: 194 159 141;
+    --c-primary: 0 245 160;
+    --c-on-primary: 36 17 10;
+    --c-accent: 255 163 81;
+    --c-accent2: 255 208 0;
+    --c-page-accent: 0 245 160;
+    --c-success: 0 245 160;
+    --c-warning: 255 163 81;
+    --c-danger: 239 68 68;
+    --c-xp: 255 208 0;
+  }
 }
 
 /* Typography mappings */

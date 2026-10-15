@@ -173,7 +173,8 @@ export interface FocusSession {
 export interface Habit {
   id: string;
   title: string;
-  category: 'study' | 'health' | 'creative' | 'mindset' | 'routine';
+  category: 'study' | 'health' | 'creative' | 'mindset' | 'routine' | 'other' | string;
+  customCategory?: string;
   type: 'daily' | 'weekly_target' | 'minutes';
   targetCount: number;
   minimumVersionText?: string;
@@ -194,6 +195,7 @@ export interface HabitLog {
 
 export interface JournalEntry {
   id: string;
+  title?: string;
   date: string; // YYYY-MM-DD
   moodScore: number; // 1-5
   energyScore: number; // 1-5
@@ -202,17 +204,33 @@ export interface JournalEntry {
   tags: string[];
   promptQuestion?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface MasterWeekBlock {
   id: string;
   title: string;
-  category: 'study' | 'creative' | 'health' | 'rest' | 'admin' | 'social';
+  category: 'study' | 'creative' | 'health' | 'rest' | 'admin' | 'social' | 'other' | string;
+  customCategory?: string;
   dayOfWeek: DayOfWeek;
   startTime: string; // HH:MM
   endTime: string; // HH:MM
   dayType: 'dorm' | 'home' | 'both';
   courseId?: string;
+  blockNumber?: string;
+  classNumber?: string;
+  color?: string;
+}
+
+export interface DepartmentOption {
+  id: string;
+  name: string;
+  code: string;
+  faculty: string;
+  cutoffGpa: number;
+  availableSeats?: number;
+  preferenceRank: number;
+  notes?: string;
 }
 
 export interface Transaction {
@@ -346,6 +364,7 @@ export interface AppSettings {
   gradingScale: { letter: string; gpa: number; minPercent: number }[];
   attendanceThresholdPercent: number;
   accountBalances?: AccountBalancesConfig;
+  departmentOptions?: DepartmentOption[];
 }
 
 export interface AccountBalancesConfig {
@@ -361,3 +380,66 @@ export const DEFAULT_ACCOUNT_BALANCES: AccountBalancesConfig = {
   initialMobileMoney: 1200,
   lowBalanceThreshold: 150,
 };
+
+export const DEFAULT_DEPARTMENTS: DepartmentOption[] = [
+  {
+    id: 'dept-se',
+    name: 'Software Engineering',
+    code: 'SE',
+    faculty: 'School of Electrical & Computer Engineering',
+    cutoffGpa: 3.80,
+    availableSeats: 65,
+    preferenceRank: 1,
+    notes: 'Primary target: Highest demand in engineering stream.',
+  },
+  {
+    id: 'dept-cs',
+    name: 'Computer Science',
+    code: 'CS',
+    faculty: 'College of Natural & Computational Sciences',
+    cutoffGpa: 3.75,
+    availableSeats: 80,
+    preferenceRank: 2,
+    notes: 'Secondary target: Strong algorithms & systems curriculum.',
+  },
+  {
+    id: 'dept-ece',
+    name: 'Electrical & Computer Engineering',
+    code: 'ECE',
+    faculty: 'School of Electrical & Computer Engineering',
+    cutoffGpa: 3.65,
+    availableSeats: 120,
+    preferenceRank: 3,
+    notes: 'Hardware, communications, embedded systems & electronics.',
+  },
+  {
+    id: 'dept-bme',
+    name: 'Biomedical Engineering',
+    code: 'BME',
+    faculty: 'School of Biomedical Engineering',
+    cutoffGpa: 3.55,
+    availableSeats: 45,
+    preferenceRank: 4,
+    notes: 'Medical instrumentation, biosensors, computational healthcare.',
+  },
+  {
+    id: 'dept-me',
+    name: 'Mechanical Engineering',
+    code: 'ME',
+    faculty: 'School of Mechanical & Industrial Engineering',
+    cutoffGpa: 3.40,
+    availableSeats: 140,
+    preferenceRank: 5,
+    notes: 'Thermodynamics, robotics, automotive & materials design.',
+  },
+  {
+    id: 'dept-ce',
+    name: 'Civil & Environmental Engineering',
+    code: 'CEE',
+    faculty: 'School of Civil & Environmental Engineering',
+    cutoffGpa: 3.30,
+    availableSeats: 160,
+    preferenceRank: 6,
+    notes: 'Structural engineering, hydraulics, urban infrastructure.',
+  },
+];

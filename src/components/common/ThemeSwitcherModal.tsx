@@ -54,20 +54,16 @@ export const ThemeSwitcherModal: React.FC = () => {
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  {/* Swatches preview */}
+                  {/* Swatches preview showing 3 or 4 color combo */}
                   <div className="flex -space-x-1.5 shrink-0">
-                    <span
-                      className="w-5 h-5 rounded-full border border-white/20 shadow-xs"
-                      style={{ backgroundColor: theme.bgHex }}
-                    />
-                    <span
-                      className="w-5 h-5 rounded-full border border-white/20 shadow-xs"
-                      style={{ backgroundColor: theme.primaryHex }}
-                    />
-                    <span
-                      className="w-5 h-5 rounded-full border border-white/20 shadow-xs"
-                      style={{ backgroundColor: theme.accentHex }}
-                    />
+                    {theme.swatches.map((hex, sIdx) => (
+                      <span
+                        key={sIdx}
+                        className="w-5 h-5 rounded-full border border-white/30 shadow-xs"
+                        style={{ backgroundColor: hex }}
+                        title={hex}
+                      />
+                    ))}
                   </div>
                   <div>
                     <div className="text-xs font-heading text-[rgb(var(--c-text))] flex items-center gap-1.5">
