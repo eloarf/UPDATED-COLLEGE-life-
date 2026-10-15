@@ -1,0 +1,343 @@
+export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
+
+export interface Course {
+  id: string;
+  code: string;
+  name: string;
+  creditHours: number;
+  instructor?: string;
+  room?: string;
+  color: string;
+  term: string;
+  links?: { title: string; url: string }[];
+  targetGrade?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClassSession {
+  id: string;
+  courseId: string;
+  dayOfWeek: DayOfWeek; // 0=Mon ... 6=Sun
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
+  type: 'lecture' | 'lab' | 'tutorial' | 'other';
+  room?: string;
+  building?: string;
+  instructor?: string;
+  repeat: 'all' | 'odd' | 'even';
+}
+
+export interface ClassException {
+  id: string;
+  sessionId: string;
+  date: string; // YYYY-MM-DD
+  action: 'cancelled' | 'moved';
+  newStartTime?: string;
+  newEndTime?: string;
+  newRoom?: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  courseId: string;
+  date: string; // YYYY-MM-DD
+  status: 'present' | 'absent' | 'late' | 'excused';
+  notes?: string;
+}
+
+export interface GradeComponent {
+  id: string;
+  courseId: string;
+  name: string;
+  weight: number; // percentage, e.g. 20
+  maxScore: number;
+  earnedScore?: number;
+  isCompleted: boolean;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  courseId?: string;
+  priority: 'low' | 'medium' | 'high';
+  effort: 'small' | 'medium' | 'large';
+  dueDate?: string; // YYYY-MM-DD
+  dueTime?: string; // HH:MM
+  status: 'todo' | 'done';
+  completedAt?: string;
+  isOverdueRolledOver?: boolean;
+  contextTag: 'phone' | 'laptop' | 'any';
+  notes?: string;
+  subtasks?: { id: string; title: string; done: boolean }[];
+  repeatRule?: 'daily' | 'weekly' | 'none';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Exam {
+  id: string;
+  courseId: string;
+  title: string;
+  examType: 'Midterm' | 'Final' | 'Quiz' | 'Lab Practical';
+  examDate: string; // YYYY-MM-DD
+  startTime: string; // HH:MM
+  hall?: string;
+  weight: number; // percentage
+  targetScore: number;
+  currentHp: number; // 0 to 100%
+  maxHp: number;
+  actualScore?: number;
+  postReflection?: string;
+  isDefeated: boolean;
+  createdAt: string;
+}
+
+export interface ExamTopic {
+  id: string;
+  examId: string;
+  title: string;
+  isStudied: boolean;
+  targetStudyDate?: string; // YYYY-MM-DD
+}
+
+export interface Project {
+  id: string;
+  title: string;
+  courseId?: string;
+  type: 'assignment' | 'lab' | 'group' | 'final' | 'research' | 'design';
+  description: string;
+  status: 'idea' | 'planning' | 'active' | 'review' | 'submitted' | 'graded';
+  startDate?: string;
+  deadline?: string;
+  weight?: number;
+  gradePercent?: number;
+  feedback?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectMilestone {
+  id: string;
+  projectId: string;
+  title: string;
+  dueDate?: string;
+  isDone: boolean;
+  order: number;
+}
+
+export interface ProjectTask {
+  id: string;
+  projectId: string;
+  title: string;
+  column: 'backlog' | 'todo' | 'doing' | 'review' | 'done';
+  assignee?: string;
+  priority: 'low' | 'medium' | 'high';
+  dueDate?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface ProjectMember {
+  id: string;
+  projectId: string;
+  name: string;
+  role: string;
+  contact?: string;
+  color: string;
+}
+
+export interface ProjectMeeting {
+  id: string;
+  projectId: string;
+  date: string;
+  title: string;
+  agenda: string;
+  notes: string;
+  actionItems: string[];
+}
+
+export interface FocusSession {
+  id: string;
+  courseId?: string;
+  projectId?: string;
+  taskId?: string;
+  mode: '25/5' | '45/10' | '15/3' | 'custom' | '2min';
+  minutesFocused: number;
+  startedAt: string;
+  completedAt: string;
+  notes?: string;
+}
+
+export interface Habit {
+  id: string;
+  title: string;
+  category: 'study' | 'health' | 'creative' | 'mindset' | 'routine';
+  type: 'daily' | 'weekly_target' | 'minutes';
+  targetCount: number;
+  minimumVersionText?: string;
+  color: string;
+  currentStreak: number;
+  bestStreak: number;
+  icon: string;
+  graceDaysLeft: number;
+}
+
+export interface HabitLog {
+  id: string;
+  habitId: string;
+  date: string; // YYYY-MM-DD
+  count: number;
+  isPartial: boolean;
+}
+
+export interface JournalEntry {
+  id: string;
+  date: string; // YYYY-MM-DD
+  moodScore: number; // 1-5
+  energyScore: number; // 1-5
+  content: string;
+  wordCount: number;
+  tags: string[];
+  promptQuestion?: string;
+  createdAt: string;
+}
+
+export interface MasterWeekBlock {
+  id: string;
+  title: string;
+  category: 'study' | 'creative' | 'health' | 'rest' | 'admin' | 'social';
+  dayOfWeek: DayOfWeek;
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
+  dayType: 'dorm' | 'home' | 'both';
+  courseId?: string;
+}
+
+export interface Transaction {
+  id: string;
+  type: 'expense' | 'income';
+  amount: number;
+  currency: string;
+  category: string;
+  account: 'cash' | 'bank' | 'mobile_money';
+  date: string; // YYYY-MM-DD
+  notes?: string;
+}
+
+export interface Budget {
+  id: string;
+  category: string;
+  monthlyLimit: number;
+  spent: number;
+}
+
+export interface SavingsGoal {
+  id: string;
+  title: string;
+  targetAmount: number;
+  currentAmount: number;
+  deadline?: string;
+}
+
+export interface CreativeProject {
+  id: string;
+  title: string;
+  type: 'song' | 'beat' | 'ep' | 'book' | 'story' | 'other';
+  currentStage: string;
+  stages: string[];
+  progressPercent: number;
+  targetDeadline?: string;
+  linesWritten?: number;
+  notes?: string;
+}
+
+export interface CreativeSession {
+  id: string;
+  creativeProjectId: string;
+  minutes: number;
+  date: string; // YYYY-MM-DD
+  outputSummary: string;
+}
+
+export interface ReadingItem {
+  id: string;
+  title: string;
+  author: string;
+  totalPages: number;
+  pagesRead: number;
+  rating?: number;
+  notes?: string;
+  isFinished: boolean;
+}
+
+export interface LearningTopic {
+  id: string;
+  title: string;
+  status: 'queued' | 'today' | 'done';
+  notes?: string;
+  order: number;
+}
+
+export type StatKey = 'knowledge' | 'discipline' | 'vitality' | 'creativity' | 'teamwork';
+
+export interface XpEvent {
+  id: string;
+  source: string;
+  sourceId: string;
+  amount: number;
+  stat: StatKey;
+  dayKey: string; // YYYY-MM-DD
+  timestamp: string;
+}
+
+export interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  category: 'academic' | 'focus' | 'rituals' | 'creativity' | 'meta';
+  isUnlocked: boolean;
+  unlockedAt?: string;
+}
+
+export interface DailyQuest {
+  id: string;
+  title: string;
+  description: string;
+  xpReward: number;
+  stat: StatKey;
+  isDone: boolean;
+  dayKey: string; // YYYY-MM-DD
+  type: string;
+}
+
+export interface RitualRun {
+  id: string;
+  type: 'weekly_review' | 'monthly_reset';
+  date: string;
+  answers: Record<string, string>;
+  isCompleted: boolean;
+}
+
+export interface AppSettings {
+  id: string;
+  userName: string;
+  universityName: string;
+  currentTermName: string;
+  targetCgpa: number;
+  yearlyBookGoal: number;
+  isLowEnergy: boolean;
+  isDormDay: boolean;
+  soundEnabled: boolean;
+  hapticsEnabled: boolean;
+  showXpPopups: boolean;
+  backupReminderDays: number;
+  lastBackupDate?: string;
+  theme: string;
+  pageAccents: Record<string, string>;
+  pinLock?: string;
+  storageProtected: boolean;
+  gradingScale: { letter: string; gpa: number; minPercent: number }[];
+  attendanceThresholdPercent: number;
+}
