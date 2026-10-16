@@ -32,7 +32,6 @@ import { GradesPage } from './pages/GradesPage';
 import { FinancePage } from './pages/FinancePage';
 import { StudioPage } from './pages/StudioPage';
 import { LibraryPage } from './pages/LibraryPage';
-import { HeroPage } from './pages/HeroPage';
 import { LevelsPage } from './pages/LevelsPage';
 import { RitualsPage } from './pages/RitualsPage';
 import { ThemesPage } from './pages/ThemesPage';

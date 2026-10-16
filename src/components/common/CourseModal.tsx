@@ -37,7 +37,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
   const [room, setRoom] = useState('');
   const [instructor, setInstructor] = useState('');
   const [credits, setCredits] = useState(3);
-  const [term, setTerm] = useState('Year 1 - Semester II');
+  const [term, setTerm] = useState('Year 1 - Semester I');
   const [color, setColor] = useState(PRESET_COURSE_NEON_COLORS[0].hex);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -49,7 +49,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
       setRoom(courseToEdit.room || '');
       setInstructor(courseToEdit.instructor || '');
       setCredits(courseToEdit.creditHours || 3);
-      setTerm(courseToEdit.term || 'Year 1 - Semester II');
+      setTerm(courseToEdit.term || 'Year 1 - Semester I');
       setColor(courseToEdit.color || PRESET_COURSE_NEON_COLORS[0].hex);
       setConfirmDelete(false);
     } else {
@@ -59,7 +59,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
       setRoom('');
       setInstructor('');
       setCredits(3);
-      setTerm('Year 1 - Semester II');
+      setTerm('Year 1 - Semester I');
       // Pick a random vibrant neon color on open
       const randomColor =
         PRESET_COURSE_NEON_COLORS[Math.floor(Math.random() * PRESET_COURSE_NEON_COLORS.length)].hex;
@@ -331,7 +331,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
                 type="text"
                 value={term}
                 onChange={(e) => setTerm(e.target.value)}
-                placeholder="e.g. Year 1 - Semester II"
+                placeholder="e.g. Year 1 - Semester I"
                 className="w-full px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--c-primary))] transition"
               />
             </div>

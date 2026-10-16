@@ -3,7 +3,7 @@ import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../store/uiStore';
 import { Project, ProjectMilestone, ProjectTask, ProjectMember, Course } from '../types';
-import { getTodayKey, formatDisplayDate } from '../utils/dateUtils';
+import { getTodayKey, formatDisplayDate, addDaysToKey } from '../utils/dateUtils';
 import { awardXp, reverseXp, triggerLevelUpConfetti } from '../services/rpgService';
 import { generateId } from '../utils/idGenerator';
 import {
@@ -192,7 +192,7 @@ export const ProjectsPage: React.FC = () => {
     setProjectType('group');
     setProjectStatus('active');
     setDescription('');
-    setDeadline(new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10));
+    setDeadline(addDaysToKey(getTodayKey(), 14));
     setWeight(20);
     setIsNewProjectModalOpen(true);
   };

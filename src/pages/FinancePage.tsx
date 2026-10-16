@@ -3,7 +3,7 @@ import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../store/uiStore';
 import { Transaction, Budget, SavingsGoal, DEFAULT_ACCOUNT_BALANCES } from '../types';
-import { getTodayKey, formatDisplayDate } from '../utils/dateUtils';
+import { getTodayKey, formatDisplayDate, addDaysToKey, parseDayKey } from '../utils/dateUtils';
 import { awardXp, triggerLevelUpConfetti } from '../services/rpgService';
 import { generateId } from '../utils/idGenerator';
 import {
@@ -132,7 +132,7 @@ export const FinancePage: React.FC = () => {
   const [goalTitle, setGoalTitle] = useState('');
   const [goalTargetAmount, setGoalTargetAmount] = useState('');
   const [goalDeadline, setGoalDeadline] = useState(
-    new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10)
+    addDaysToKey(getTodayKey(), 60)
   );
   const [goalCategory, setGoalCategory] = useState('tech');
 
@@ -211,8 +211,8 @@ export const FinancePage: React.FC = () => {
 
   // Chart Data: dynamic based on chartDays (7, 14, or 30 days)
   const chartDaysData = Array.from({ length: chartDays }, (_, i) => {
-    const d = new Date(Date.now() - (chartDays - 1 - i) * 86400000);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = addDaysToKey(todayKey, -(chartDays - 1 - i));
+    const d = parseDayKey(dateStr);
     const dayName =
       chartDays <= 7
         ? d.toLocaleDateString('en-US', { weekday: 'short' })

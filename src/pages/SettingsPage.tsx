@@ -4,8 +4,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../store/uiStore';
 import {
   triggerBackupDownload,
-  restoreDatabaseFromJson,
   exportTasksToCsv,
+  validateBackupFile,
+  restoreDatabase,
+  type ValidationSuccess,
 } from '../services/backupService';
 import { loadStarterPackData } from '../db/starterPack';
 import {
@@ -38,6 +40,13 @@ export const SettingsPage: React.FC = () => {
   const [hapticsEnabled, setHapticsEnabled] = useState(settings?.hapticsEnabled ?? true);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
 
+  // Safe restore preview state
+  const [pendingRestore, setPendingRestore] = useState<{
+    filename: string;
+    validation: ValidationSuccess;
+  } | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     await db.settings.update('current_user', {
@@ -65,17 +74,44 @@ export const SettingsPage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const filename = file.name;
     const reader = new FileReader();
-    reader.onload = async (event) => {
-      const text = event.target?.result as string;
-      const res = await restoreDatabaseFromJson(text, 'replace');
-      if (res.success) {
-        showToast('Backup restored successfully!', 'success');
-      } else {
-        showToast(res.message, 'danger');
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const res = validateBackupFile(text);
+        if (!res.valid) {
+          showToast(`Backup rejected: ${res.error}`, 'danger');
+          return;
+        }
+        setPendingRestore({ filename, validation: res });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Unknown read error';
+        showToast(`Could not read file: ${msg}`, 'danger');
+      } finally {
+        e.target.value = '';
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleConfirmRestore = async () => {
+    if (!pendingRestore) return;
+    setIsRestoring(true);
+    try {
+      const res = await restoreDatabase(pendingRestore.validation.backup, 'replace');
+      if (res.success) {
+        showToast('🎉 Database restored successfully! All tables updated.', 'success');
+        setPendingRestore(null);
+      } else {
+        showToast(res.message, 'danger');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      showToast(`Restore failed: ${msg}`, 'danger');
+    } finally {
+      setIsRestoring(false);
+    }
   };
 
   const handleWipeAllData = async () => {
@@ -291,6 +327,80 @@ export const SettingsPage: React.FC = () => {
           Clear All Data
         </button>
       </div>
+
+      {/* Restore Preview & Confirmation Modal */}
+      {pendingRestore && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-pop">
+          <div className="relative w-full max-w-lg bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] ticket-border rounded-3xl p-6 space-y-4 shadow-xl">
+            <div className="flex items-start justify-between gap-3 border-b border-[rgb(var(--c-border))] pb-3">
+              <div>
+                <div className="text-[10px] uppercase font-heading tracking-widest text-[rgb(var(--c-primary))] font-bold">
+                  Backup Verification Preview
+                </div>
+                <h3 className="text-base font-heading font-bold text-[rgb(var(--c-text))]">
+                  Restore {pendingRestore.filename}
+                </h3>
+                <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+                  Schema v{pendingRestore.validation.version} • {pendingRestore.validation.totalRecords} total records found across {Object.keys(pendingRestore.validation.tableCounts).length} tables
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-heading font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
+                Validated JSON ✓
+              </span>
+            </div>
+
+            {/* Table Counts Matrix */}
+            <div className="space-y-1.5">
+              <div className="text-[11px] font-heading font-bold text-[rgb(var(--c-muted))] uppercase tracking-wider">
+                Records per Table:
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))]">
+                {Object.entries(pendingRestore.validation.tableCounts).map(([tbl, count]) => (
+                  <div
+                    key={tbl}
+                    className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[rgb(var(--c-surface))] text-[11px] font-heading border border-[rgb(var(--c-border))]"
+                  >
+                    <span className="text-[rgb(var(--c-muted))] truncate mr-1 capitalize">
+                      {tbl.replace(/([A-Z])/g, ' $1')}
+                    </span>
+                    <span className="font-bold text-[rgb(var(--c-text))] shrink-0">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Atomic Guarantee Notice */}
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-[rgb(var(--c-text))] font-flourish space-y-1">
+              <div className="font-heading font-bold text-amber-700 dark:text-amber-400">
+                🛡️ All-or-Nothing Atomic Guarantee
+              </div>
+              <div>
+                A safety snapshot of your current database will be automatically downloaded to your device before any changes are written. If any table fails to write, all changes roll back instantly.
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[rgb(var(--c-border))]">
+              <button
+                type="button"
+                onClick={() => setPendingRestore(null)}
+                disabled={isRestoring}
+                className="px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRestore}
+                disabled={isRestoring}
+                className="px-5 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] text-xs font-heading font-bold hover:opacity-90 transition active:scale-95 shadow-xs disabled:opacity-50"
+              >
+                {isRestoring ? 'Restoring All Tables...' : 'Confirm & Restore (Replace All)'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Confirm Wipe Modal */}
       {isConfirmDeleteOpen && (

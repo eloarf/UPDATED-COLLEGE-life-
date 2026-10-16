@@ -1,14 +1,17 @@
-// Service Worker for AASTU OS Tracker
+// Service Worker for College Life OS
 // Designed for offline-first PWA operation on GitHub Pages and custom subpaths
 
-const CACHE_NAME = 'aastu-os-pwa-v2';
+const CACHE_NAME = 'college-life-os-v3';
 
 // Core assets to pre-cache on install (using relative paths for subpath compatibility)
 const PRECACHE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './icon.svg'
+  './icon.svg',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-512-maskable.png'
 ];
 
 // Install: Cache offline app shell
@@ -24,7 +27,7 @@ self.addEventListener('install', (event) => {
               }
             })
             .catch((err) => {
-              console.warn('[AASTU OS SW] Precache non-critical notice for', url, err);
+              console.warn('[College Life OS SW] Precache non-critical notice for', url, err);
             })
         )
       );
@@ -39,7 +42,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cache) => {
           if (cache !== CACHE_NAME) {
-            console.log('[AASTU OS SW] Purging old cache:', cache);
+            console.log('[College Life OS SW] Purging old cache:', cache);
             return caches.delete(cache);
           }
         })
@@ -51,8 +54,6 @@ self.addEventListener('activate', (event) => {
 // Fetch: Network-first with offline fallback for navigation; stale-while-revalidate for assets
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-
-  const url = new URL(event.request.url);
 
   // 1. Navigation requests (HTML page loads, home screen launch, routing)
   if (event.request.mode === 'navigate') {
@@ -71,7 +72,7 @@ self.addEventListener('fetch', (event) => {
           if (cached) return cached;
           const indexFallback = (await caches.match('./index.html')) || (await caches.match('./'));
           if (indexFallback) return indexFallback;
-          return new Response('AASTU OS is offline. Please connect to the internet to load initial assets.', {
+          return new Response('College Life OS is offline. Connect to the internet to load updated assets.', {
             headers: { 'Content-Type': 'text/plain; charset=utf-8' }
           });
         })
@@ -79,7 +80,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Static assets & API/resources
+  // 2. Static assets & resources (stale-while-revalidate)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request)
@@ -104,14 +105,14 @@ self.addEventListener('message', (event) => {
   if (event.data.type === 'SHOW_NOTIFICATION') {
     const { title, options } = event.data;
     const defaultUrl = self.registration.scope || './';
-    self.registration.showNotification(title || 'AASTU OS Reminder', {
-      body: options?.body || 'You have an upcoming academic task or streak alert!',
-      icon: options?.icon || './icon.svg',
-      badge: options?.badge || './icon.svg',
+    self.registration.showNotification(title || 'College Life OS Reminder', {
+      body: options?.body || 'You have an upcoming academic quest or streak check!',
+      icon: options?.icon || './icon-192.png',
+      badge: options?.badge || './icon-192.png',
       data: options?.data || { url: defaultUrl },
       vibrate: [200, 100, 200],
       requireInteraction: options?.requireInteraction || false,
-      tag: options?.tag || 'aastu-os-notice'
+      tag: options?.tag || 'college-life-os-notice'
     });
   }
 });

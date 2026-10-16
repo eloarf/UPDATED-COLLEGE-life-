@@ -1,15 +1,31 @@
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
 
+export interface Semester {
+  id: string;
+  name: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  isActive?: boolean;
+}
+
+export interface RestDay {
+  id: string;
+  habitId: string;
+  dateKey: string; // YYYY-MM-DD
+  createdAt: string;
+}
+
 export interface Course {
   id: string;
   code: string;
   name: string;
-  creditHours: number;
+  creditHours?: number;
   instructor?: string;
   room?: string; // Class number / Hall
   building?: string; // Block number
   color: string;
   term: string;
+  semesterId?: string;
   links?: { title: string; url: string }[];
   targetGrade?: string;
   createdAt: string;
@@ -19,6 +35,7 @@ export interface Course {
 export interface ClassSession {
   id: string;
   courseId: string;
+  semesterId?: string;
   dayOfWeek: DayOfWeek; // 0=Mon ... 6=Sun
   startTime: string; // HH:MM
   endTime: string; // HH:MM
@@ -348,6 +365,7 @@ export interface AppSettings {
   userName: string;
   universityName: string;
   currentTermName: string;
+  activeSemesterId?: string;
   targetCgpa: number;
   yearlyBookGoal: number;
   isLowEnergy: boolean;

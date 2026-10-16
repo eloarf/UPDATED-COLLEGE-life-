@@ -3,7 +3,7 @@ import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../store/uiStore';
 import { Task, Course } from '../types';
-import { getTodayKey, formatDisplayDate } from '../utils/dateUtils';
+import { getTodayKey, formatDisplayDate, addDaysToKey } from '../utils/dateUtils';
 import {
   awardXp,
   reverseXp,
@@ -228,9 +228,7 @@ export const QuestsPage: React.FC = () => {
 
   // Change selected day for By Day tab
   const shiftSelectedDay = (days: number) => {
-    const d = new Date(selectedDay);
-    d.setDate(d.getDate() + days);
-    setSelectedDay(d.toISOString().slice(0, 10));
+    setSelectedDay(addDaysToKey(selectedDay, days));
   };
 
   return (

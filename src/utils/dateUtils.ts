@@ -7,9 +7,10 @@ export function getTodayKey(): string {
 }
 
 export function parseDayKey(dayKey: string): Date {
-  const parts = dayKey.split('-');
+  const parts = dayKey.slice(0, 10).split('-');
   if (parts.length === 3) {
-    return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    // Construct local date at noon (12:00) so timezone offsets or daylight saving shifts never cross midnight
+    return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 12, 0, 0);
   }
   return new Date();
 }
@@ -19,6 +20,23 @@ export function formatDayKey(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+/**
+ * Safely adds/subtracts N days to a YYYY-MM-DD day key using local date math.
+ * Resistant to DST and timezone boundary shifts.
+ */
+export function addDaysToKey(dayKey: string, n: number): string {
+  const d = parseDayKey(dayKey);
+  d.setDate(d.getDate() + n);
+  return formatDayKey(d);
+}
+
+/**
+ * Returns a local YYYY-MM-DD key offset by N days relative to today.
+ */
+export function getRelativeDayKey(n: number): string {
+  return addDaysToKey(getTodayKey(), n);
 }
 
 export function formatDisplayDate(dayKeyOrIso: string): string {

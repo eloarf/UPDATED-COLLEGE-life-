@@ -29,6 +29,8 @@ import {
   Achievement,
   DailyQuest,
   RitualRun,
+  Semester,
+  RestDay,
   AppSettings,
   DEFAULT_ACCOUNT_BALANCES,
   DEFAULT_DEPARTMENTS,
@@ -65,6 +67,8 @@ export class CollegeLifeOSDatabase extends Dexie {
   achievementsUnlocked!: Table<Achievement, string>;
   quests!: Table<DailyQuest, string>;
   ritualRuns!: Table<RitualRun, string>;
+  semesters!: Table<Semester, string>;
+  restDays!: Table<RestDay, string>;
 
   constructor() {
     super('CollegeLifeOSDB');
@@ -100,6 +104,56 @@ export class CollegeLifeOSDatabase extends Dexie {
       quests: 'id, dayKey, isDone',
       ritualRuns: 'id, type, date',
     });
+
+    this.version(2).stores({
+      semesters: 'id, name, startDate, endDate',
+      restDays: 'id, habitId, dateKey',
+      courses: 'id, code, name, term, semesterId',
+      classSessions: 'id, courseId, semesterId, dayOfWeek, startTime, endTime',
+    }).upgrade(async (tx) => {
+      // Additive upgrade: create default semester and link existing courses and sessions
+      const settingsTable = tx.table<AppSettings, string>('settings');
+      const coursesTable = tx.table<Course, string>('courses');
+      const sessionsTable = tx.table<ClassSession, string>('classSessions');
+      const semestersTable = tx.table<Semester, string>('semesters');
+
+      const currentUser = await settingsTable.get('current_user');
+      const termName = currentUser?.currentTermName || 'Year 1 - Semester I';
+
+      const now = new Date();
+      const dayOfWeek = now.getDay() === 0 ? 6 : now.getDay() - 1;
+      const startMon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek, 12, 0, 0);
+      const startStr = `${startMon.getFullYear()}-${String(startMon.getMonth() + 1).padStart(2, '0')}-${String(startMon.getDate()).padStart(2, '0')}`;
+      
+      const endSun = new Date(startMon);
+      endSun.setDate(endSun.getDate() + 17 * 7 - 1);
+      const endStr = `${endSun.getFullYear()}-${String(endSun.getMonth() + 1).padStart(2, '0')}-${String(endSun.getDate()).padStart(2, '0')}`;
+
+      const defaultSemesterId = 'sem-default-term';
+      await semestersTable.put({
+        id: defaultSemesterId,
+        name: termName,
+        startDate: startStr,
+        endDate: endStr,
+        isActive: true,
+      });
+
+      await settingsTable.update('current_user', {
+        activeSemesterId: defaultSemesterId,
+      });
+
+      await coursesTable.toCollection().modify((c) => {
+        if (!c.semesterId) {
+          c.semesterId = defaultSemesterId;
+        }
+      });
+
+      await sessionsTable.toCollection().modify((s) => {
+        if (!s.semesterId) {
+          s.semesterId = defaultSemesterId;
+        }
+      });
+    });
   }
 }
 
@@ -109,7 +163,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   id: 'current_user',
   userName: 'Scholar',
   universityName: 'Addis Ababa Science & Technology University',
-  currentTermName: 'Year 1 - Semester II',
+  currentTermName: 'Year 1 - Semester I',
   targetCgpa: 3.85,
   yearlyBookGoal: 40,
   isLowEnergy: false,
@@ -157,6 +211,32 @@ export async function initializeDatabase() {
       await db.settings.update('current_user', updates);
     }
   }
+
+  // Ensure an active semester exists
+  const semCount = await db.semesters.count();
+  if (semCount === 0) {
+    const now = new Date();
+    const dayOfWeek = now.getDay() === 0 ? 6 : now.getDay() - 1;
+    const startMon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek, 12, 0, 0);
+    const startStr = `${startMon.getFullYear()}-${String(startMon.getMonth() + 1).padStart(2, '0')}-${String(startMon.getDate()).padStart(2, '0')}`;
+    const endSun = new Date(startMon);
+    endSun.setDate(endSun.getDate() + 17 * 7 - 1);
+    const endStr = `${endSun.getFullYear()}-${String(endSun.getMonth() + 1).padStart(2, '0')}-${String(endSun.getDate()).padStart(2, '0')}`;
+
+    const defaultSemesterId = 'sem-active-term';
+    await db.semesters.put({
+      id: defaultSemesterId,
+      name: 'Year 1 - Semester I',
+      startDate: startStr,
+      endDate: endStr,
+      isActive: true,
+    });
+    await db.settings.update('current_user', {
+      activeSemesterId: defaultSemesterId,
+      currentTermName: 'Year 1 - Semester I',
+    });
+  }
+
   if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
     try {
       const isPersisted = await navigator.storage.persist();
