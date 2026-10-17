@@ -139,7 +139,7 @@ export const CoursesPage: React.FC = () => {
               <div className="mt-3 space-y-1 text-xs text-[rgb(var(--c-muted))]">
                 <div className="flex items-center gap-1.5">
                   <Award className="w-3.5 h-3.5 text-[#8B5A3C]" />
-                  <span>{course.creditHours} Credit Hours</span>
+                  <span>{course.creditHours ? `${course.creditHours} Credit Hours` : 'Credits: Unset'}</span>
                 </div>
                 {course.instructor && (
                   <div className="flex items-center gap-1.5 truncate">
@@ -201,7 +201,7 @@ export const CoursesPage: React.FC = () => {
                 Academic Weight
               </span>
               <div className="font-heading font-bold text-sm text-[rgb(var(--c-text))] mt-0.5">
-                {selectedCourse.creditHours} Credit Units
+                {selectedCourse.creditHours ? `${selectedCourse.creditHours} Credit Units` : 'Unset (Tap Edit to enter)'}
               </div>
             </div>
             <div className="p-3 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))]">

@@ -17,7 +17,13 @@ import {
   getQuestXpReward,
   triggerLevelUpConfetti,
 } from '../services/rpgService';
-import { Task, DailyQuest } from '../types';
+import { Task, DailyQuest, Semester } from '../types';
+import { getNextClass, NextClassResult } from '../utils/scheduleEngine';
+import {
+  calculateHabitStreak,
+  getRemainingRestTokens,
+  MAX_WEEKLY_REST_TOKENS,
+} from '../utils/streakEngine';
 import {
   CheckCircle2,
   Circle,
@@ -26,6 +32,7 @@ import {
   Zap,
   Calendar,
   ShieldAlert,
+  Shield,
   HardDrive,
   RefreshCw,
   Flame,
@@ -48,12 +55,16 @@ export const LobbyPage: React.FC = () => {
   const dayIndex = getDayOfWeekIndex();
 
   const settings = useLiveQuery(() => db.settings.get('current_user'));
+  const semesters = useLiveQuery(() => db.semesters.toArray()) || [];
   const courses = useLiveQuery(() => db.courses.toArray()) || [];
   const sessions = useLiveQuery(() => db.classSessions.toArray()) || [];
+  const exceptions = useLiveQuery(() => db.classExceptions.toArray()) || [];
   const tasks = useLiveQuery(() => db.tasks.toArray()) || [];
   const exams = useLiveQuery(() => db.exams.toArray()) || [];
   const habits = useLiveQuery(() => db.habits.toArray()) || [];
+  const allHabitLogs = useLiveQuery(() => db.habitLogs.toArray()) || [];
   const habitLogs = useLiveQuery(() => db.habitLogs.where('date').equals(todayKey).toArray()) || [];
+  const restDays = useLiveQuery(() => db.restDays.toArray()) || [];
   const xpEvents = useLiveQuery(() => db.xpEvents.toArray()) || [];
   const quests = useLiveQuery(() => db.quests.where('dayKey').equals(todayKey).toArray()) || [];
   const transactions = useLiveQuery(() => db.transactions.toArray()) || [];
@@ -86,14 +97,23 @@ export const LobbyPage: React.FC = () => {
     }
   }, [settings]);
 
-  // Today's classes
-  const todaySessions = sessions
-    .filter((s) => s.dayOfWeek === dayIndex)
-    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const activeSemester =
+    semesters.find(
+      (s) =>
+        s.id === settings?.activeSemesterId ||
+        s.isActive ||
+        s.name === settings?.currentTermName
+    ) || semesters[0] || null;
 
-  const nowTime = new Date().toTimeString().slice(0, 5);
-  const nextSession = todaySessions.find((s) => s.endTime >= nowTime) || todaySessions[0];
-  const nextCourse = nextSession ? courses.find((c) => c.id === nextSession.courseId) : null;
+  const nextClassInfo: NextClassResult | null = getNextClass(
+    new Date(),
+    sessions,
+    exceptions,
+    activeSemester,
+    courses
+  );
+
+  const remainingTokens = getRemainingRestTokens(restDays, todayKey);
 
   // Today's priorities
   const todayTasks = tasks.filter((t) => t.dueDate === todayKey || t.priority === 'high');
@@ -182,22 +202,42 @@ export const LobbyPage: React.FC = () => {
     if (existingLog) {
       await db.habitLogs.delete(existingLog.id);
       await reverseXp('habit', habitId + '_' + todayKey);
-      showToast('Habit check-in undone.', 'info');
+
+      const updatedLogs = allHabitLogs.filter((l) => l.id !== existingLog.id);
+      const newStreak = calculateHabitStreak(habitId, updatedLogs, restDays, todayKey);
+      await db.habits.update(habitId, {
+        currentStreak: newStreak.currentStreak,
+        bestStreak: newStreak.bestStreak,
+      });
+
+      showToast('Habit check-in undone. -10 XP reversed.', 'info');
     } else {
+      const newId = Math.random().toString();
       await db.habitLogs.add({
-        id: Math.random().toString(),
+        id: newId,
         habitId,
         date: todayKey,
         count: 1,
         isPartial: false,
       });
+
+      const updatedLogs = [
+        ...allHabitLogs,
+        { id: newId, habitId, date: todayKey, count: 1, isPartial: false },
+      ];
+      const newStreak = calculateHabitStreak(habitId, updatedLogs, restDays, todayKey);
+      await db.habits.update(habitId, {
+        currentStreak: newStreak.currentStreak,
+        bestStreak: newStreak.bestStreak,
+      });
+
       await awardXp({
         source: 'habit',
         sourceId: habitId + '_' + todayKey,
         amount: 10,
         stat: 'vitality',
       });
-      showToast('Habit stamped! +10 XP', 'success');
+      showToast(`Habit stamped! +10 XP (${newStreak.currentStreak}d streak)`, 'success');
     }
   };
 
@@ -301,8 +341,8 @@ export const LobbyPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Next Class Ticket Stub */}
-      {nextSession && nextCourse ? (
+      {/* Next Class Ticket Stub (Schedule Engine) */}
+      {nextClassInfo ? (
         <div
           onClick={() => setCurrentRoute('#/timetable')}
           className="ticket-cutout ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-4 cursor-pointer hover:border-[rgb(var(--c-primary))] transition group"
@@ -311,30 +351,57 @@ export const LobbyPage: React.FC = () => {
             <div className="flex items-center gap-2.5">
               <span
                 className="w-3 h-10 rounded-full shrink-0"
-                style={{ backgroundColor: nextCourse.color || '#B6E63E' }}
+                style={{ backgroundColor: nextClassInfo.scheduledClass.course.color || '#B6E63E' }}
               />
               <div>
-                <div className="text-[10px] font-heading font-bold uppercase tracking-wider text-[rgb(var(--c-primary))]">
-                  Next Academic Session
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-[rgb(var(--c-primary))]">
+                    {nextClassInfo.status === 'in_progress' ? '● In Progress Now' : 'Next Academic Session'}
+                  </span>
+                  {nextClassInfo.status === 'upcoming' && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))] font-mono font-bold">
+                      {nextClassInfo.scheduledClass.date === todayKey
+                        ? `Starts in ${nextClassInfo.minutesUntilStart}m`
+                        : `${nextClassInfo.scheduledClass.date}`}
+                    </span>
+                  )}
                 </div>
                 <div className="text-sm font-heading font-bold text-[rgb(var(--c-text))] group-hover:text-[rgb(var(--c-primary))] transition truncate">
-                  {nextCourse.code} — {nextCourse.name}
+                  {nextClassInfo.scheduledClass.course.code} — {nextClassInfo.scheduledClass.course.name}
                 </div>
-                <div className="text-xs text-[rgb(var(--c-muted))] flex items-center gap-2 mt-0.5">
+                <div className="text-xs text-[rgb(var(--c-muted))] flex items-center gap-2 mt-0.5 flex-wrap">
                   <span className="flex items-center gap-1 font-semibold">
-                    <Clock className="w-3 h-3 text-[rgb(var(--c-primary))]" /> {nextSession.startTime} – {nextSession.endTime}
+                    <Clock className="w-3 h-3 text-[rgb(var(--c-primary))]" /> {nextClassInfo.scheduledClass.startTime} – {nextClassInfo.scheduledClass.endTime}
                   </span>
-                  <span>•</span>
-                  <span>Room: {nextSession.room || 'TBA'}</span>
+                  {(nextClassInfo.scheduledClass.room || nextClassInfo.scheduledClass.building) && (
+                    <>
+                      <span>•</span>
+                      <span>
+                        {[nextClassInfo.scheduledClass.building, nextClassInfo.scheduledClass.room].filter(Boolean).join(' • ')}
+                      </span>
+                    </>
+                  )}
+                  {nextClassInfo.scheduledClass.instructor && (
+                    <>
+                      <span>•</span>
+                      <span>{nextClassInfo.scheduledClass.instructor}</span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
-            <ChevronRight className="w-4 h-4 text-[rgb(var(--c-muted))] group-hover:translate-x-1 transition" />
+            <ChevronRight className="w-4 h-4 text-[rgb(var(--c-muted))] group-hover:translate-x-1 transition shrink-0" />
           </div>
         </div>
       ) : (
-        <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-3.5 text-center text-xs text-[rgb(var(--c-muted))]">
-          ✨ No upcoming lectures for the remainder of today. Time for deep focus or creative flow.
+        <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-3.5 text-center text-xs text-[rgb(var(--c-muted))] flex items-center justify-between gap-3">
+          <span>✨ No classes scheduled in the immediate horizon. Time for deep focus or creative flow.</span>
+          <button
+            onClick={() => setCurrentRoute('#/timetable')}
+            className="text-[11px] font-heading font-bold text-[rgb(var(--c-primary))] hover:underline shrink-0"
+          >
+            View Timetable →
+          </button>
         </div>
       )}
 
@@ -462,9 +529,12 @@ export const LobbyPage: React.FC = () => {
       {/* Today's Habit Stamps */}
       <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
-          <div className="flex items-center gap-2 font-heading text-xs sm:text-sm font-bold uppercase text-[rgb(var(--c-primary))]">
+          <div className="flex items-center gap-2 font-heading text-xs sm:text-sm font-bold uppercase text-[rgb(var(--c-primary))] flex-wrap">
             <Flame className="w-4 h-4 text-rose-500" />
-            <span>Today’s Habit Stamps (Forgiving Streaks)</span>
+            <span>Today’s Habit Stamps</span>
+            <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-bold text-[10px] flex items-center gap-1">
+              <Shield className="w-3 h-3" /> {remainingTokens} / {MAX_WEEKLY_REST_TOKENS} Rest Tokens
+            </span>
           </div>
           <button
             onClick={() => setCurrentRoute('#/habits')}
@@ -477,6 +547,7 @@ export const LobbyPage: React.FC = () => {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           {habits.slice(0, 4).map((habit) => {
             const isStamped = habitLogs.some((l) => l.habitId === habit.id);
+            const habitStreak = calculateHabitStreak(habit.id, allHabitLogs, restDays, todayKey);
             return (
               <button
                 key={habit.id}
@@ -492,13 +563,13 @@ export const LobbyPage: React.FC = () => {
                     isStamped ? 'bg-emerald-500 text-white' : 'bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-primary))]'
                   }`}
                 >
-                  {isStamped ? '✓' : habit.currentStreak}
+                  {isStamped ? '✓' : habitStreak.currentStreak}
                 </div>
                 <div className="text-xs font-heading leading-tight truncate max-w-full">
                   {habit.title}
                 </div>
                 <div className="text-[10px] text-[rgb(var(--c-muted))]">
-                  {isStamped ? 'Stamped (+10 XP)' : `${habit.currentStreak} day streak`}
+                  {isStamped ? 'Stamped (+10 XP)' : `${habitStreak.currentStreak} day streak`}
                 </div>
               </button>
             );

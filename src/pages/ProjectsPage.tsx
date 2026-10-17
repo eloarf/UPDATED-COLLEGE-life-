@@ -1297,8 +1297,11 @@ export const ProjectsPage: React.FC = () => {
                 type="number"
                 min="0"
                 max="100"
-                value={weight}
-                onChange={(e) => setWeight(e.target.value ? Number(e.target.value) : '')}
+                value={weight === '' || isNaN(Number(weight)) ? '' : weight}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setWeight(val === '' ? '' : isNaN(Number(val)) ? '' : Number(val));
+                }}
                 placeholder="e.g. 25"
                 className="w-full px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:border-[#4FA3A5] focus:outline-none"
               />

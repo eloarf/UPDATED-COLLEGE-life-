@@ -362,8 +362,8 @@ End of Archive for ${monthKey} — Stored in College Life OS
                   type="range"
                   min={1}
                   max={5}
-                  value={mood}
-                  onChange={(e) => setMood(parseInt(e.target.value, 10))}
+                  value={isNaN(mood) ? 3 : mood}
+                  onChange={(e) => setMood(parseInt(e.target.value, 10) || 3)}
                   className="w-20 ml-2 accent-[#7A2E4A]"
                 />
               </div>
@@ -372,13 +372,13 @@ End of Archive for ${monthKey} — Stored in College Life OS
                 <span className="text-[10px] font-heading uppercase text-[rgb(var(--c-muted))] mr-1.5 font-bold">
                   Energy:
                 </span>
-                <span className="text-xs font-bold text-[rgb(var(--c-primary))]">{energy}/5</span>
+                <span className="text-xs font-bold text-[rgb(var(--c-primary))]">{(isNaN(energy) ? 3 : energy)}/5</span>
                 <input
                   type="range"
                   min={1}
                   max={5}
-                  value={energy}
-                  onChange={(e) => setEnergy(parseInt(e.target.value, 10))}
+                  value={isNaN(energy) ? 3 : energy}
+                  onChange={(e) => setEnergy(parseInt(e.target.value, 10) || 3)}
                   className="w-20 ml-2 accent-[#7A2E4A]"
                 />
               </div>
@@ -591,27 +591,27 @@ End of Archive for ${monthKey} — Stored in College Life OS
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div>
                   <label className="block text-[10px] font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                    Mood: {['😞', '😐', '🙂', '😊', '🔥'][editMood - 1]}
+                    Mood: {['😞', '😐', '🙂', '😊', '🔥'][(isNaN(editMood) ? 3 : editMood) - 1] || '🙂'}
                   </label>
                   <input
                     type="range"
                     min={1}
                     max={5}
-                    value={editMood}
-                    onChange={(e) => setEditMood(parseInt(e.target.value, 10))}
+                    value={isNaN(editMood) ? 3 : editMood}
+                    onChange={(e) => setEditMood(parseInt(e.target.value, 10) || 3)}
                     className="w-full accent-[#7A2E4A]"
                   />
                 </div>
                 <div>
                   <label className="block text-[10px] font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                    Energy: {editEnergy}/5
+                    Energy: {isNaN(editEnergy) ? 3 : editEnergy}/5
                   </label>
                   <input
                     type="range"
                     min={1}
                     max={5}
-                    value={editEnergy}
-                    onChange={(e) => setEditEnergy(parseInt(e.target.value, 10))}
+                    value={isNaN(editEnergy) ? 3 : editEnergy}
+                    onChange={(e) => setEditEnergy(parseInt(e.target.value, 10) || 3)}
                     className="w-full accent-[#7A2E4A]"
                   />
                 </div>

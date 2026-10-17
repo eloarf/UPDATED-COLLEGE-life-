@@ -1550,7 +1550,7 @@ export const FinancePage: React.FC = () => {
                 <input
                   type="number"
                   step="0.01"
-                  value={txToEdit.amount}
+                  value={isNaN(txToEdit.amount) ? '' : txToEdit.amount}
                   onChange={(e) => setTxToEdit({ ...txToEdit, amount: parseFloat(e.target.value) || 0 })}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                   required

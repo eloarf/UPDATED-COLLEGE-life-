@@ -51,6 +51,7 @@ export interface ClassException {
   sessionId: string;
   date: string; // YYYY-MM-DD
   action: 'cancelled' | 'moved';
+  reason?: string;
   newStartTime?: string;
   newEndTime?: string;
   newRoom?: string;
@@ -62,6 +63,8 @@ export interface AttendanceRecord {
   date: string; // YYYY-MM-DD
   status: 'present' | 'absent' | 'late' | 'excused';
   notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface GradeComponent {

@@ -35,8 +35,8 @@ export const ExamsPage: React.FC = () => {
   const [examDate, setExamDate] = useState(getTodayKey());
   const [startTime, setStartTime] = useState('09:00');
   const [hall, setHall] = useState('');
-  const [weight, setWeight] = useState(30);
-  const [targetScore, setTargetScore] = useState(85);
+  const [weight, setWeight] = useState<number | string>(30);
+  const [targetScore, setTargetScore] = useState<number | string>(85);
   const [topicsInput, setTopicsInput] = useState('');
 
   const courses = useLiveQuery(() => db.courses.toArray()) || [];
@@ -67,8 +67,8 @@ export const ExamsPage: React.FC = () => {
       examDate,
       startTime,
       hall,
-      weight,
-      targetScore,
+      weight: Number(weight) || 30,
+      targetScore: Number(targetScore) || 85,
       currentHp: 100,
       maxHp: 100,
       isDefeated: false,
@@ -356,8 +356,11 @@ export const ExamsPage: React.FC = () => {
                     type="number"
                     min="5"
                     max="100"
-                    value={weight}
-                    onChange={(e) => setWeight(parseInt(e.target.value, 10))}
+                    value={weight === '' || isNaN(Number(weight)) ? '' : weight}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setWeight(val === '' ? '' : isNaN(parseInt(val, 10)) ? '' : parseInt(val, 10));
+                    }}
                     className="w-full px-2 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                   />
                 </div>

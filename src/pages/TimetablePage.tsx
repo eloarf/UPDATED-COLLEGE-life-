@@ -2,13 +2,19 @@ import React, { useState } from 'react';
 import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../store/uiStore';
-import { ClassSession, Course } from '../types';
+import { ClassSession, Course, Semester, DayOfWeek } from '../types';
 import {
   DAY_NAMES,
   FULL_DAY_NAMES,
   getDayOfWeekIndex,
-  checkTimeClash,
+  getTodayKey,
 } from '../utils/dateUtils';
+import {
+  findConflicts,
+  getSemesterWeekNumber,
+  isValidTime,
+  ScheduleConflict,
+} from '../utils/scheduleEngine';
 import { encodeShareCode, decodeShareCode } from '../utils/shareCode';
 import { generateId } from '../utils/idGenerator';
 import { CourseModal } from '../components/common/CourseModal';
@@ -18,24 +24,25 @@ import {
   Clock,
   Plus,
   Share2,
-  Camera,
   AlertTriangle,
   MapPin,
   Building,
   User,
   Trash2,
-  Copy,
+  Edit2,
+  Sparkles,
+  Repeat,
   X,
   Check,
   BookOpen,
-  Edit2,
-  Sparkles,
 } from 'lucide-react';
 
 export const TimetablePage: React.FC = () => {
-  const { showToast } = useUiStore();
+  const { showToast, setCurrentRoute } = useUiStore();
+  const todayKey = getTodayKey();
   const [selectedDay, setSelectedDay] = useState<number>(getDayOfWeekIndex());
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingSession, setEditingSession] = useState<ClassSession | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [shareInputCode, setShareInputCode] = useState('');
 
@@ -43,8 +50,18 @@ export const TimetablePage: React.FC = () => {
   const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
 
+  const settings = useLiveQuery(() => db.settings.get('current_user'));
+  const semesters = useLiveQuery(() => db.semesters.toArray()) || [];
   const courses = useLiveQuery(() => db.courses.toArray()) || [];
   const sessions = useLiveQuery(() => db.classSessions.toArray()) || [];
+
+  const activeSemester =
+    semesters.find(
+      (s) =>
+        s.id === settings?.activeSemesterId ||
+        s.isActive ||
+        s.name === settings?.currentTermName
+    ) || semesters[0] || null;
 
   // Form State for Class Session
   const [courseId, setCourseId] = useState('');
@@ -54,26 +71,80 @@ export const TimetablePage: React.FC = () => {
   const [type, setType] = useState<'lecture' | 'lab' | 'tutorial' | 'other'>('lecture');
   const [room, setRoom] = useState('');
   const [building, setBuilding] = useState('');
+  const [repeat, setRepeat] = useState<'all' | 'odd' | 'even'>('all');
 
   // Course map
   const courseMap = new Map<string, Course>();
   courses.forEach((c) => courseMap.set(c.id, c));
 
-  // Filter sessions
+  // Current week number in semester
+  const currentWeekNumber = activeSemester?.startDate
+    ? getSemesterWeekNumber(todayKey, activeSemester.startDate)
+    : 1;
+
+  // Filter sessions for selected day
   const daySessions = sessions
     .filter((s) => s.dayOfWeek === selectedDay)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-  // Detect clashes
+  // Detect time clashes among day sessions using scheduleEngine
   const clashes: string[] = [];
   for (let i = 0; i < daySessions.length; i++) {
     for (let j = i + 1; j < daySessions.length; j++) {
-      if (checkTimeClash(daySessions[i].startTime, daySessions[i].endTime, daySessions[j].startTime, daySessions[j].endTime)) {
-        clashes.push(daySessions[i].id);
-        clashes.push(daySessions[j].id);
+      const a = daySessions[i];
+      const b = daySessions[j];
+      const repeatOverlap =
+        (a.repeat || 'all') === 'all' ||
+        (b.repeat || 'all') === 'all' ||
+        a.repeat === b.repeat;
+
+      if (repeatOverlap && a.startTime < b.endTime && a.endTime > b.startTime) {
+        clashes.push(a.id);
+        clashes.push(b.id);
       }
     }
   }
+
+  // Live conflict checking for the modal form
+  const modalConflicts: ScheduleConflict[] = isAddModalOpen
+    ? findConflicts(
+        {
+          dayOfWeek: dayOfWeek as DayOfWeek,
+          startTime,
+          endTime,
+          repeat,
+          excludeSessionId: editingSession?.id,
+        },
+        sessions,
+        courses
+      )
+    : [];
+
+  const handleOpenAddSession = () => {
+    setEditingSession(null);
+    setCourseId(courses[0]?.id || '');
+    setDayOfWeek(selectedDay);
+    setStartTime('08:30');
+    setEndTime('10:20');
+    setType('lecture');
+    setRoom('');
+    setBuilding('');
+    setRepeat('all');
+    setIsAddModalOpen(true);
+  };
+
+  const handleOpenEditSession = (session: ClassSession) => {
+    setEditingSession(session);
+    setCourseId(session.courseId);
+    setDayOfWeek(session.dayOfWeek);
+    setStartTime(session.startTime);
+    setEndTime(session.endTime);
+    setType(session.type);
+    setRoom(session.room || '');
+    setBuilding(session.building || '');
+    setRepeat(session.repeat || 'all');
+    setIsAddModalOpen(true);
+  };
 
   const handleSelectCourse = (selectedId: string) => {
     setCourseId(selectedId);
@@ -105,33 +176,61 @@ export const TimetablePage: React.FC = () => {
   const handleSaveSession = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!courseId) {
-      showToast('Please select a course for this lecture block.', 'warning');
+      showToast('Please select a course for this class period.', 'warning');
       return;
     }
 
-    await db.classSessions.add({
-      id: generateId(),
-      courseId,
-      dayOfWeek: dayOfWeek as any,
-      startTime,
-      endTime,
-      type,
-      room: room.trim(),
-      building: building.trim(),
-      repeat: 'all',
-    });
+    if (!isValidTime(startTime) || !isValidTime(endTime)) {
+      showToast('Please specify valid start and end times (HH:MM).', 'warning');
+      return;
+    }
 
-    showToast('Class scheduled successfully!', 'success');
+    if (endTime <= startTime) {
+      showToast('End time must be after start time.', 'danger');
+      return;
+    }
+
+    const semesterId = activeSemester?.id || 'sem-active-term';
+
+    if (editingSession) {
+      await db.classSessions.update(editingSession.id, {
+        courseId,
+        semesterId,
+        dayOfWeek: dayOfWeek as DayOfWeek,
+        startTime,
+        endTime,
+        type,
+        room: room.trim() || undefined,
+        building: building.trim() || undefined,
+        repeat,
+      });
+      showToast('Class session updated successfully!', 'success');
+    } else {
+      await db.classSessions.add({
+        id: generateId(),
+        courseId,
+        semesterId,
+        dayOfWeek: dayOfWeek as DayOfWeek,
+        startTime,
+        endTime,
+        type,
+        room: room.trim() || undefined,
+        building: building.trim() || undefined,
+        repeat,
+      });
+      showToast('Class scheduled successfully!', 'success');
+    }
+
     setIsAddModalOpen(false);
   };
 
   const handleDeleteSession = async (id: string) => {
     await db.classSessions.delete(id);
-    showToast('Class session removed.', 'info');
+    showToast('Class session removed from timetable.', 'info');
   };
 
   const handleExportShareCode = () => {
-    const payload = { courses, sessions };
+    const payload = { courses, sessions, semester: activeSemester };
     const code = encodeShareCode(payload);
     navigator.clipboard.writeText(code);
     showToast('Timetable share code copied to clipboard!', 'success');
@@ -139,7 +238,11 @@ export const TimetablePage: React.FC = () => {
 
   const handleImportShareCode = async () => {
     if (!shareInputCode.trim()) return;
-    const decoded = decodeShareCode<{ courses: Course[]; sessions: ClassSession[] }>(shareInputCode.trim());
+    const decoded = decodeShareCode<{
+      courses: Course[];
+      sessions: ClassSession[];
+      semester?: Semester;
+    }>(shareInputCode.trim());
     if (!decoded || !decoded.sessions) {
       showToast('Invalid or corrupted timetable share code.', 'danger');
       return;
@@ -147,6 +250,7 @@ export const TimetablePage: React.FC = () => {
 
     if (decoded.courses?.length) await db.courses.bulkPut(decoded.courses);
     if (decoded.sessions?.length) await db.classSessions.bulkPut(decoded.sessions);
+    if (decoded.semester) await db.semesters.put(decoded.semester);
 
     showToast(`Imported ${decoded.sessions.length} class sessions successfully!`, 'success');
     setIsShareModalOpen(false);
@@ -159,14 +263,22 @@ export const TimetablePage: React.FC = () => {
       <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-5 relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="text-[10px] uppercase font-heading tracking-widest text-[#4F7A0A] font-bold">
-              Academic Schedule Suite
+            <div className="text-[10px] uppercase font-heading tracking-widest text-[#4F7A0A] font-bold flex items-center gap-1.5">
+              <span>Academic Schedule Suite</span>
+              {activeSemester && (
+                <>
+                  <span>•</span>
+                  <span className="text-[rgb(var(--c-primary))]">
+                    {activeSemester.name} (Week {currentWeekNumber})
+                  </span>
+                </>
+              )}
             </div>
             <h2 className="text-xl font-heading font-bold text-[rgb(var(--c-text))]">
-              University Timetable & Rooms
+              University Timetable &amp; Rooms
             </h2>
             <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
-              Zero hardcoding • Conflict detection • Campus hall routing
+              Single source of truth • Repeat patterns • Conflict checking • B59 Hall routing
             </p>
           </div>
 
@@ -179,8 +291,8 @@ export const TimetablePage: React.FC = () => {
               <span>+ Add Course</span>
             </button>
             <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#B6E63E] text-stone-900 font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition"
+              onClick={handleOpenAddSession}
+              className="flex items-center gap-1 px-3.5 py-1.5 rounded-full bg-[#B6E63E] text-stone-900 font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Schedule Class</span>
@@ -195,15 +307,15 @@ export const TimetablePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Enrolled Courses Neon Bar */}
+        {/* Courses Neon Bar */}
         <div className="mt-4 pt-3 border-t border-[rgb(var(--c-border))]">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] uppercase font-heading font-bold tracking-wider text-[rgb(var(--c-muted))] flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-[#4F7A0A]" />
-              Course Registry & Neon Color Tags ({courses.length})
+              Enrolled Modules ({courses.length})
             </span>
             <span className="text-[10px] text-[rgb(var(--c-muted))] font-flourish">
-              Tap any course to edit title, block, or neon tag
+              Tap any course to edit instructor, room, or neon tag
             </span>
           </div>
 
@@ -279,33 +391,35 @@ export const TimetablePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Day Agenda View */}
+      {/* Day Schedule View */}
       <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-4">
         <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))] mb-3">
           <div className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
-            {FULL_DAY_NAMES[selectedDay]} Schedule
+            {FULL_DAY_NAMES[selectedDay]} Classes
           </div>
           <div className="text-xs text-[rgb(var(--c-muted))] font-flourish">
-            {daySessions.length} sessions scheduled
+            {daySessions.length} weekly sessions scheduled
           </div>
         </div>
 
         {daySessions.length === 0 ? (
           <div className="text-center py-12 text-xs text-[rgb(var(--c-muted))] font-flourish space-y-3">
-            <div>No academic lectures scheduled on {FULL_DAY_NAMES[selectedDay]}.</div>
+            <div>No classes scheduled on {FULL_DAY_NAMES[selectedDay]}.</div>
             <div className="flex items-center justify-center gap-2">
               <button
-                onClick={() => setIsAddModalOpen(true)}
+                onClick={handleOpenAddSession}
                 className="px-3.5 py-1.5 rounded-full bg-[#B6E63E] text-stone-950 text-xs font-heading font-bold shadow-xs hover:opacity-90 transition"
               >
-                + Schedule a Class Session
+                + Schedule a Class
               </button>
-              <button
-                onClick={handleOpenAddCourse}
-                className="px-3.5 py-1.5 rounded-full border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))] transition"
-              >
-                + Add Course
-              </button>
+              {courses.length === 0 && (
+                <button
+                  onClick={() => setCurrentRoute('settings')}
+                  className="px-3.5 py-1.5 rounded-full border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))] transition"
+                >
+                  ⚡ Load Section 12 Timetable
+                </button>
+              )}
             </div>
           </div>
         ) : (
@@ -318,6 +432,12 @@ export const TimetablePage: React.FC = () => {
               const displayBlock = session.building || course?.building;
               const displayRoom = session.room || course?.room;
               const locationParts = [displayBlock, displayRoom].filter(Boolean);
+              const repeatLabel =
+                session.repeat === 'odd'
+                  ? 'Odd Weeks'
+                  : session.repeat === 'even'
+                  ? 'Even Weeks'
+                  : 'Every Week';
 
               return (
                 <div
@@ -347,6 +467,12 @@ export const TimetablePage: React.FC = () => {
                         <span className="text-[9px] uppercase px-2 py-0.2 rounded-full border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] font-medium">
                           {session.type}
                         </span>
+                        {session.repeat && session.repeat !== 'all' && (
+                          <span className="text-[9px] px-2 py-0.2 rounded-full bg-indigo-500/10 text-indigo-500 border border-indigo-500/30 font-bold flex items-center gap-1">
+                            <Repeat className="w-2.5 h-2.5" />
+                            {repeatLabel}
+                          </span>
+                        )}
                         {isClashing && (
                           <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-bold flex items-center gap-0.5">
                             <AlertTriangle className="w-2.5 h-2.5" /> Time Clash!
@@ -364,9 +490,10 @@ export const TimetablePage: React.FC = () => {
                             {locationParts.join(' • ')}
                           </span>
                         )}
-                        {course?.instructor && (
+                        {(session.instructor || course?.instructor) && (
                           <span className="flex items-center gap-1">
-                            <User className="w-3 h-3 text-[rgb(var(--c-primary))]" /> {course.instructor}
+                            <User className="w-3 h-3 text-[rgb(var(--c-primary))]" />
+                            {session.instructor || course?.instructor}
                           </span>
                         )}
                       </div>
@@ -374,19 +501,17 @@ export const TimetablePage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
-                    {course && (
-                      <button
-                        onClick={() => handleOpenEditCourse(course)}
-                        className="p-1.5 text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] rounded-lg hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
-                        title="Edit course details & neon color"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => handleOpenEditSession(session)}
+                      className="p-1.5 text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] rounded-lg hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
+                      title="Edit class schedule, room or repeat rule"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       onClick={() => handleDeleteSession(session.id)}
                       className="p-1.5 text-[rgb(var(--c-muted))] hover:text-rose-500 rounded-lg hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
-                      title="Remove class session from schedule"
+                      title="Remove class session from timetable"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -398,13 +523,13 @@ export const TimetablePage: React.FC = () => {
         )}
       </div>
 
-      {/* Add Class Session Modal */}
+      {/* Add / Edit Class Session Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-pop">
-          <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5">
-            <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))] mb-3">
+          <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5 space-y-3">
+            <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
               <div className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
-                Schedule University Lecture / Lab
+                {editingSession ? 'Edit Class Session' : 'Schedule University Lecture / Lab'}
               </div>
               <button
                 onClick={() => setIsAddModalOpen(false)}
@@ -413,6 +538,21 @@ export const TimetablePage: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Live Conflict Warning Box */}
+            {modalConflicts.length > 0 && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs space-y-1">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
+                  <span>Schedule Conflict Warning</span>
+                </div>
+                {modalConflicts.map((c, i) => (
+                  <div key={i} className="pl-5 text-[11px] font-flourish">
+                    • {c.message}
+                  </div>
+                ))}
+              </div>
+            )}
 
             <form onSubmit={handleSaveSession} className="space-y-3">
               <div>
@@ -450,8 +590,8 @@ export const TimetablePage: React.FC = () => {
                     Day of Week
                   </label>
                   <select
-                    value={dayOfWeek}
-                    onChange={(e) => setDayOfWeek(parseInt(e.target.value, 10))}
+                    value={isNaN(dayOfWeek) ? 0 : dayOfWeek}
+                    onChange={(e) => setDayOfWeek(parseInt(e.target.value, 10) || 0)}
                     className="w-full px-2 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                   >
                     {DAY_NAMES.map((name, i) => (
@@ -481,7 +621,7 @@ export const TimetablePage: React.FC = () => {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    Start Time
+                    Start Time (24h)
                   </label>
                   <input
                     type="time"
@@ -493,7 +633,7 @@ export const TimetablePage: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    End Time
+                    End Time (24h)
                   </label>
                   <input
                     type="time"
@@ -505,41 +645,67 @@ export const TimetablePage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Repeat Rule Selector */}
+              <div>
+                <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1 flex items-center gap-1">
+                  <Repeat className="w-3 h-3 text-[rgb(var(--c-muted))]" />
+                  Repeat Schedule
+                </label>
+                <select
+                  value={repeat}
+                  onChange={(e) => setRepeat(e.target.value as any)}
+                  className="w-full px-2 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
+                >
+                  <option value="all">Every Week (Standard)</option>
+                  <option value="odd">Odd Weeks Only (Week 1, 3, 5...)</option>
+                  <option value="even">Even Weeks Only (Week 2, 4, 6...)</option>
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1 flex items-center gap-1">
                     <Building className="w-3 h-3 text-[rgb(var(--c-muted))]" />
-                    Block Number
+                    Building / Block
                   </label>
                   <input
                     type="text"
                     value={building}
                     onChange={(e) => setBuilding(e.target.value)}
-                    placeholder="e.g. Block 59"
+                    placeholder="e.g. B59"
                     className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                   />
                 </div>
                 <div>
                   <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1 flex items-center gap-1">
                     <MapPin className="w-3 h-3 text-[rgb(var(--c-muted))]" />
-                    Class Number / Room
+                    Room Number
                   </label>
                   <input
                     type="text"
                     value={room}
                     onChange={(e) => setRoom(e.target.value)}
-                    placeholder="e.g. Room 2-005"
+                    placeholder="e.g. B59-2-006"
                     className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                   />
                 </div>
               </div>
 
-              <button
-                type="submit"
-                className="w-full mt-2 py-2 rounded-xl bg-[#B6E63E] text-stone-950 font-heading text-xs font-bold hover:opacity-90 active:scale-98 transition shadow-xs"
-              >
-                Save Academic Class Session
-              </button>
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-[rgb(var(--c-border))]">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-[#B6E63E] text-stone-950 font-heading text-xs font-bold hover:opacity-90 active:scale-98 transition shadow-xs"
+                >
+                  {editingSession ? 'Update Class Session' : 'Save Academic Class Session'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -548,11 +714,11 @@ export const TimetablePage: React.FC = () => {
       {/* Share / Import Modal */}
       {isShareModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-pop">
-          <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5">
-            <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))] mb-3">
-              <div className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
-                Timetable Share & Sync Codes
-              </div>
+          <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
+              <span className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
+                Timetable Code Portability
+              </span>
               <button
                 onClick={() => setIsShareModalOpen(false)}
                 className="p-1 rounded-full text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
@@ -561,55 +727,49 @@ export const TimetablePage: React.FC = () => {
               </button>
             </div>
 
-            <div className="space-y-4 text-xs">
-              <div>
-                <label className="block font-heading font-bold text-[rgb(var(--c-text))] mb-1">
-                  1. Copy Your Timetable Share Code
-                </label>
-                <p className="text-[11px] text-[rgb(var(--c-muted))] mb-2">
-                  Share this compressed text code with classmates so they can load your section's class times in one tap.
-                </p>
-                <button
-                  onClick={handleExportShareCode}
-                  className="w-full py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading font-bold flex items-center justify-center gap-1.5 active:scale-98 transition shadow-xs"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>Copy Compressed Share Code</span>
-                </button>
+            <div>
+              <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))] mb-1">
+                Export Timetable to Peer
               </div>
+              <p className="text-[11px] text-[rgb(var(--c-muted))] font-flourish mb-2">
+                Generate a compressed text code containing your registered courses and class periods.
+              </p>
+              <button
+                onClick={handleExportShareCode}
+                className="w-full py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold hover:opacity-90 transition shadow-xs flex items-center justify-center gap-1.5"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Copy Timetable Code to Clipboard</span>
+              </button>
+            </div>
 
-              <div className="pt-3 border-t border-[rgb(var(--c-border))]">
-                <label className="block font-heading font-bold text-[rgb(var(--c-text))] mb-1">
-                  2. Paste Classmate's Share Code
-                </label>
-                <textarea
-                  value={shareInputCode}
-                  onChange={(e) => setShareInputCode(e.target.value)}
-                  placeholder="Paste LZ-compressed share code here..."
-                  rows={3}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                />
-                <button
-                  onClick={handleImportShareCode}
-                  className="w-full mt-2 py-2 rounded-xl bg-[#B6E63E] text-stone-950 font-heading font-bold flex items-center justify-center gap-1.5 active:scale-98 transition shadow-xs"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Import Schedule</span>
-                </button>
+            <div className="pt-3 border-t border-[rgb(var(--c-border))]">
+              <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))] mb-1">
+                Import Timetable Code
               </div>
+              <textarea
+                value={shareInputCode}
+                onChange={(e) => setShareInputCode(e.target.value)}
+                placeholder="Paste code from classmate here..."
+                rows={3}
+                className="w-full p-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] font-mono text-[rgb(var(--c-text))]"
+              />
+              <button
+                onClick={handleImportShareCode}
+                className="w-full mt-2 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] hover:bg-[rgb(var(--c-text))] hover:text-[rgb(var(--c-bg))] text-xs font-heading font-bold transition"
+              >
+                Import &amp; Merge Classes
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Dedicated Course Creation & Edit Modal */}
+      {/* Course Modal */}
       <CourseModal
         isOpen={isCourseModalOpen}
-        onClose={() => {
-          setIsCourseModalOpen(false);
-          setEditingCourse(null);
-        }}
         courseToEdit={editingCourse}
+        onClose={() => setIsCourseModalOpen(false)}
         onCourseSaved={handleCourseSaved}
       />
     </div>

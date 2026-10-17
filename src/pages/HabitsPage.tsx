@@ -2,10 +2,17 @@ import React, { useState } from 'react';
 import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../store/uiStore';
-import { Habit, HabitLog } from '../types';
-import { getTodayKey, formatDisplayDate } from '../utils/dateUtils';
+import { Habit, HabitLog, RestDay } from '../types';
+import { getTodayKey, addDaysToKey, formatDisplayDate } from '../utils/dateUtils';
+import {
+  calculateHabitStreak,
+  getRemainingRestTokens,
+  getWeekBounds,
+  MAX_WEEKLY_REST_TOKENS,
+} from '../utils/streakEngine';
 import { awardXp, reverseXp } from '../services/rpgService';
 import { generateId } from '../utils/idGenerator';
+import { StreakCalendar } from '../components/habits/StreakCalendar';
 import {
   Activity,
   Plus,
@@ -16,6 +23,10 @@ import {
   Trash2,
   X,
   Check,
+  Calendar,
+  Undo2,
+  RefreshCw,
+  HelpCircle,
 } from 'lucide-react';
 
 export const HabitsPage: React.FC = () => {
@@ -29,37 +40,68 @@ export const HabitsPage: React.FC = () => {
   const [minimumVersion, setMinimumVersion] = useState('');
   const [habitToDelete, setHabitToDelete] = useState<Habit | null>(null);
 
+  // Selected habit for visual calendar matrix
+  const [selectedCalendarHabitId, setSelectedCalendarHabitId] = useState<string | null>(null);
+
   const habits = useLiveQuery(() => db.habits.toArray()) || [];
   const logs = useLiveQuery(() => db.habitLogs.toArray()) || [];
+  const restDays = useLiveQuery(() => db.restDays.toArray()) || [];
 
   const todayLogs = logs.filter((l) => l.date === todayKey);
+  const remainingTokens = getRemainingRestTokens(restDays, todayKey);
+  const { mondayKey, sundayKey } = getWeekBounds(todayKey);
 
+  // Default selected calendar habit to the first habit if none selected
+  const activeCalendarHabit =
+    habits.find((h) => h.id === selectedCalendarHabitId) || habits[0] || null;
+
+  // Toggle Stamp Completion (Safe XP + Dynamic Streak)
   const handleToggleHabit = async (habit: Habit) => {
     const existing = todayLogs.find((l) => l.habitId === habit.id);
 
     if (existing) {
+      // Undo stamp
       await db.habitLogs.delete(existing.id);
-      await db.habits.update(habit.id, {
-        currentStreak: Math.max(0, habit.currentStreak - 1),
-      });
       await reverseXp('habit', habit.id + '_' + todayKey);
-      showToast('Habit stamp removed.', 'info');
+
+      // Recalculate streak
+      const updatedLogs = logs.filter((l) => l.id !== existing.id);
+      const newStreak = calculateHabitStreak(habit.id, updatedLogs, restDays, todayKey);
+      await db.habits.update(habit.id, {
+        currentStreak: newStreak.currentStreak,
+        bestStreak: newStreak.bestStreak,
+      });
+
+      showToast('Habit stamp removed. -10 XP reversed.', 'info');
     } else {
+      // Create stamp
+      const newLogId = generateId();
       await db.habitLogs.add({
-        id: generateId(),
+        id: newLogId,
         habitId: habit.id,
         date: todayKey,
         count: 1,
         isPartial: false,
       });
 
-      const nextStreak = habit.currentStreak + 1;
+      // Recalculate streak
+      const updatedLogs = [
+        ...logs,
+        { id: newLogId, habitId: habit.id, date: todayKey, count: 1, isPartial: false },
+      ];
+      const newStreak = calculateHabitStreak(habit.id, updatedLogs, restDays, todayKey);
       await db.habits.update(habit.id, {
-        currentStreak: nextStreak,
-        bestStreak: Math.max(habit.bestStreak, nextStreak),
+        currentStreak: newStreak.currentStreak,
+        bestStreak: newStreak.bestStreak,
       });
 
-      const statKey = habit.category === 'creative' ? 'creativity' : habit.category === 'health' ? 'vitality' : 'discipline';
+      const statKey =
+        habit.category === 'creative'
+          ? 'creativity'
+          : habit.category === 'health'
+          ? 'vitality'
+          : 'discipline';
+
       await awardXp({
         source: 'habit',
         sourceId: habit.id + '_' + todayKey,
@@ -67,10 +109,73 @@ export const HabitsPage: React.FC = () => {
         stat: statKey,
       });
 
-      showToast(`Habit stamped! +10 XP (Streak: ${nextStreak} days)`, 'success');
+      showToast(`Habit stamped! +10 XP (Streak: ${newStreak.currentStreak} days)`, 'success');
     }
   };
 
+  // Apply Rest Token to a specific dateKey (defaults to yesterday or today if missed)
+  const handleApplyRestToken = async (habitId: string, targetDateKey: string = todayKey) => {
+    if (remainingTokens <= 0) {
+      showToast('No rest tokens remaining for this week (refills next Monday).', 'warning');
+      return;
+    }
+
+    // Check if target is already completed or already has a token
+    const isCompleted = logs.some(
+      (l) => l.habitId === habitId && l.date === targetDateKey && (l.count > 0 || l.isPartial)
+    );
+    if (isCompleted) {
+      showToast('This day is already stamped as completed!', 'info');
+      return;
+    }
+
+    const existingToken = restDays.find(
+      (r) => r.habitId === habitId && r.dateKey === targetDateKey
+    );
+    if (existingToken) {
+      showToast('A rest token is already active for this day.', 'info');
+      return;
+    }
+
+    await db.restDays.add({
+      id: generateId(),
+      habitId,
+      dateKey: targetDateKey,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Update habit streak in db
+    const updatedRestDays = [
+      ...restDays,
+      { id: generateId(), habitId, dateKey: targetDateKey, createdAt: '' },
+    ];
+    const newStreak = calculateHabitStreak(habitId, logs, updatedRestDays, todayKey);
+    await db.habits.update(habitId, {
+      currentStreak: newStreak.currentStreak,
+      bestStreak: newStreak.bestStreak,
+    });
+
+    showToast(`Rest Token applied to ${targetDateKey}! Streak preserved.`, 'success');
+  };
+
+  // Remove / Undo Rest Token
+  const handleRemoveRestToken = async (restDayId: string) => {
+    const target = restDays.find((r) => r.id === restDayId);
+    await db.restDays.delete(restDayId);
+
+    if (target) {
+      const updatedRestDays = restDays.filter((r) => r.id !== restDayId);
+      const newStreak = calculateHabitStreak(target.habitId, logs, updatedRestDays, todayKey);
+      await db.habits.update(target.habitId, {
+        currentStreak: newStreak.currentStreak,
+        bestStreak: newStreak.bestStreak,
+      });
+    }
+
+    showToast('Rest token retrieved.', 'info');
+  };
+
+  // Create Habit
   const handleAddHabit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
@@ -82,8 +187,9 @@ export const HabitsPage: React.FC = () => {
 
     const savedCategory = category === 'other' ? customCategory.trim() : category;
 
+    const newId = generateId();
     await db.habits.add({
-      id: generateId(),
+      id: newId,
       title: title.trim(),
       category: savedCategory,
       customCategory: category === 'other' ? customCategory.trim() : undefined,
@@ -102,13 +208,16 @@ export const HabitsPage: React.FC = () => {
     setCustomCategory('');
     setMinimumVersion('');
     setIsAddModalOpen(false);
+    setSelectedCalendarHabitId(newId);
     showToast('New habit registered in passport!', 'success');
   };
 
+  // Delete Habit
   const handleConfirmDeleteHabit = async () => {
     if (!habitToDelete) return;
     await db.habits.delete(habitToDelete.id);
     await db.habitLogs.where('habitId').equals(habitToDelete.id).delete();
+    await db.restDays.where('habitId').equals(habitToDelete.id).delete();
     showToast(`Habit "${habitToDelete.title}" deleted.`, 'info');
     setHabitToDelete(null);
   };
@@ -126,86 +235,221 @@ export const HabitsPage: React.FC = () => {
               Forgiving Consistency Stamps
             </h2>
             <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
-              2 weekly rest tokens • Partial win minimum versions • Never resets to zero
+              2 weekly rest tokens (Monday–Sunday) • Partial win minimums • Date-based streak logic
             </p>
           </div>
 
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1 px-3.5 py-1.5 rounded-full bg-[#B6E63E] text-stone-950 font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>New Habit</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-heading text-xs font-bold flex items-center gap-1.5">
+              <Shield className="w-4 h-4 fill-amber-500/20" />
+              <span>{remainingTokens} / {MAX_WEEKLY_REST_TOKENS} Rest Tokens Left</span>
+            </div>
+
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center gap-1 px-3.5 py-1.5 rounded-full bg-[#B6E63E] text-stone-950 font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Habit</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Habit Stamps Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {habits.map((habit) => {
-          const isDoneToday = todayLogs.some((l) => l.habitId === habit.id);
-
-          return (
-            <div
-              key={habit.id}
-              className={`ticket-border rounded-2xl p-4 bg-[rgb(var(--c-surface))] space-y-3 transition ${
-                isDoneToday ? 'border-emerald-500 shadow-xs' : 'hover:border-[#B6E63E]'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={`w-9 h-9 rounded-2xl flex items-center justify-center font-bold text-sm shadow-xs transition ${
-                      isDoneToday ? 'bg-emerald-500 text-white' : 'bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-primary))]'
+      {/* Visual Streak Calendar Component */}
+      {activeCalendarHabit ? (
+        <div className="space-y-2">
+          {/* Tab selector for multiple habits */}
+          {habits.length > 1 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              <span className="text-[10px] font-heading font-bold uppercase text-[rgb(var(--c-muted))] tracking-wider shrink-0 mr-1">
+                Select Habit Matrix:
+              </span>
+              {habits.map((h) => {
+                const isSelected = activeCalendarHabit.id === h.id;
+                const hStreak = calculateHabitStreak(h.id, logs, restDays, todayKey);
+                return (
+                  <button
+                    key={h.id}
+                    onClick={() => setSelectedCalendarHabitId(h.id)}
+                    className={`px-3 py-1 rounded-xl text-xs font-heading font-bold transition shrink-0 flex items-center gap-1.5 border ${
+                      isSelected
+                        ? 'border-[#B6E63E] bg-[#B6E63E] text-stone-950 shadow-xs'
+                        : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] hover:border-[#B6E63E]'
                     }`}
                   >
-                    {isDoneToday ? '✓' : <Flame className="w-4 h-4" />}
-                  </div>
-                  <div>
-                    <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
-                      {habit.title}
-                    </div>
-                    <div className="text-[10px] text-[rgb(var(--c-muted))] capitalize">
-                      {habit.customCategory || habit.category} • Best: {habit.bestStreak}d streak
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setHabitToDelete(habit)}
-                  className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:text-rose-500"
-                  title="Delete habit"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {habit.minimumVersionText && (
-                <div className="p-2 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-[11px] text-[rgb(var(--c-muted))] font-flourish">
-                  “Low-energy mini: {habit.minimumVersionText}”
-                </div>
-              )}
-
-              <button
-                onClick={() => handleToggleHabit(habit)}
-                className={`w-full py-2 rounded-xl font-heading text-xs font-bold transition flex items-center justify-center gap-1.5 active:scale-98 ${
-                  isDoneToday
-                    ? 'bg-emerald-500 text-white shadow-xs'
-                    : 'bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] hover:bg-[#B6E63E] hover:text-stone-950'
-                }`}
-              >
-                {isDoneToday ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Stamped Today! (+10 XP)</span>
-                  </>
-                ) : (
-                  <span>Stamp Today's Rep (+10 XP)</span>
-                )}
-              </button>
+                    <span>{h.title}</span>
+                    <span className="text-[10px] opacity-80">({hStreak.currentStreak}d)</span>
+                  </button>
+                );
+              })}
             </div>
-          );
-        })}
+          )}
+
+          <StreakCalendar
+            habit={activeCalendarHabit}
+            logs={logs}
+            restDays={restDays}
+            onApplyRestToken={(dateKey) => handleApplyRestToken(activeCalendarHabit.id, dateKey)}
+            onRemoveRestToken={handleRemoveRestToken}
+          />
+        </div>
+      ) : null}
+
+      {/* Habit Stamps Grid */}
+      <div>
+        <div className="font-heading text-xs font-bold uppercase tracking-wider text-[rgb(var(--c-muted))] mb-2 flex items-center justify-between">
+          <span>Active Passport Stamps ({habits.length})</span>
+          <span className="text-[10px] font-flourish">Tap to stamp today or use weekly rest token</span>
+        </div>
+
+        {habits.length === 0 ? (
+          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-12 text-center text-xs text-[rgb(var(--c-muted))] font-flourish space-y-3">
+            <div>No habits in your passport yet.</div>
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="px-4 py-2 rounded-xl bg-[#B6E63E] text-stone-950 font-heading text-xs font-bold shadow-xs hover:opacity-90 transition inline-flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Create Your First Habit</span>
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {habits.map((habit) => {
+              const streak = calculateHabitStreak(habit.id, logs, restDays, todayKey);
+              const isDoneToday = streak.isCompletedToday;
+              const isRestToday = streak.isRestDayToday;
+              const todayRestRecord = restDays.find(
+                (r) => r.habitId === habit.id && r.dateKey === todayKey
+              );
+
+              return (
+                <div
+                  key={habit.id}
+                  className={`ticket-border rounded-2xl p-4 bg-[rgb(var(--c-surface))] space-y-3 transition ${
+                    isDoneToday
+                      ? 'border-[#B6E63E] shadow-xs'
+                      : isRestToday
+                      ? 'border-amber-500/60 shadow-xs'
+                      : 'hover:border-[#B6E63E]'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div
+                        className={`w-9 h-9 rounded-2xl flex items-center justify-center font-bold text-sm shadow-xs transition shrink-0 ${
+                          isDoneToday
+                            ? 'bg-[#B6E63E] text-stone-950'
+                            : isRestToday
+                            ? 'bg-amber-500 text-stone-950'
+                            : 'bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-primary))]'
+                        }`}
+                      >
+                        {isDoneToday ? (
+                          <Check className="w-4 h-4 stroke-[3]" />
+                        ) : isRestToday ? (
+                          <Shield className="w-4 h-4 fill-stone-950" />
+                        ) : (
+                          <Flame className="w-4 h-4" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))] truncate">
+                          {habit.title}
+                        </div>
+                        <div className="text-[10px] text-[rgb(var(--c-muted))] capitalize flex items-center gap-1.5 flex-wrap">
+                          <span>{habit.customCategory || habit.category}</span>
+                          <span>•</span>
+                          <span className="font-bold text-[rgb(var(--c-text))]">
+                            {streak.currentStreak}d streak
+                          </span>
+                          <span>•</span>
+                          <span>Best: {streak.bestStreak}d</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => setSelectedCalendarHabitId(habit.id)}
+                        className={`p-1.5 rounded-lg text-xs font-heading transition ${
+                          activeCalendarHabit?.id === habit.id
+                            ? 'bg-[#B6E63E]/20 text-[#B6E63E]'
+                            : 'text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))]'
+                        }`}
+                        title="View monthly calendar grid"
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        onClick={() => setHabitToDelete(habit)}
+                        className="p-1.5 rounded-lg text-[rgb(var(--c-muted))] hover:text-rose-500 hover:bg-[rgb(var(--c-surface2))] transition"
+                        title="Delete habit"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {habit.minimumVersionText && (
+                    <div className="p-2 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-[11px] text-[rgb(var(--c-muted))] font-flourish">
+                      “Low-energy mini: {habit.minimumVersionText}”
+                    </div>
+                  )}
+
+                  {/* Stamp / Rest Button Bar */}
+                  <div className="space-y-1.5">
+                    <button
+                      onClick={() => handleToggleHabit(habit)}
+                      className={`w-full py-2 rounded-xl font-heading text-xs font-bold transition flex items-center justify-center gap-1.5 active:scale-98 ${
+                        isDoneToday
+                          ? 'bg-[#B6E63E] text-stone-950 shadow-xs'
+                          : 'bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] hover:bg-[#B6E63E] hover:text-stone-950'
+                      }`}
+                    >
+                      {isDoneToday ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          <span>Stamped Today! (+10 XP) • Tap to Undo</span>
+                        </>
+                      ) : (
+                        <>
+                          <Flame className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Stamp Today's Rep (+10 XP)</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Rest Day Token Action */}
+                    {!isDoneToday && (
+                      <div className="flex items-center gap-1">
+                        {isRestToday && todayRestRecord ? (
+                          <button
+                            onClick={() => handleRemoveRestToken(todayRestRecord.id)}
+                            className="w-full py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-heading text-[11px] font-bold hover:bg-amber-500/20 transition flex items-center justify-center gap-1"
+                          >
+                            <Undo2 className="w-3 h-3" />
+                            <span>Undo Today's Rest Token ({remainingTokens} left)</span>
+                          </button>
+                        ) : remainingTokens > 0 ? (
+                          <button
+                            onClick={() => handleApplyRestToken(habit.id, todayKey)}
+                            className="w-full py-1.5 rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))] hover:text-amber-600 hover:border-amber-500/40 font-heading text-[11px] transition flex items-center justify-center gap-1"
+                          >
+                            <Shield className="w-3 h-3 text-amber-500" />
+                            <span>Use 1 Rest Token for Today ({remainingTokens} left this week)</span>
+                          </button>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* New Habit Modal */}
@@ -216,8 +460,11 @@ export const HabitsPage: React.FC = () => {
               <div className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
                 Register New Habit Stamp
               </div>
-              <button onClick={() => setIsAddModalOpen(false)}>
-                <X className="w-4 h-4 text-[rgb(var(--c-muted))]" />
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-1 rounded-full text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -309,7 +556,7 @@ export const HabitsPage: React.FC = () => {
               </div>
             </div>
             <p className="text-xs text-[rgb(var(--c-muted))] font-flourish leading-relaxed">
-              Are you sure you want to delete <strong className="text-[rgb(var(--c-text))]">“{habitToDelete.title}”</strong>? Its historical streak ({habitToDelete.currentStreak} days) and completion records will be removed.
+              Are you sure you want to delete <strong className="text-[rgb(var(--c-text))]">“{habitToDelete.title}”</strong>? Its completion records and rest days will be cleaned up.
             </p>
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-[rgb(var(--c-border))]">
               <button

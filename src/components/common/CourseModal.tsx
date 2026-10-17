@@ -36,7 +36,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
   const [building, setBuilding] = useState('');
   const [room, setRoom] = useState('');
   const [instructor, setInstructor] = useState('');
-  const [credits, setCredits] = useState(3);
+  const [credits, setCredits] = useState<number | string>('');
   const [term, setTerm] = useState('Year 1 - Semester I');
   const [color, setColor] = useState(PRESET_COURSE_NEON_COLORS[0].hex);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -48,7 +48,11 @@ export const CourseModal: React.FC<CourseModalProps> = ({
       setBuilding(courseToEdit.building || '');
       setRoom(courseToEdit.room || '');
       setInstructor(courseToEdit.instructor || '');
-      setCredits(courseToEdit.creditHours || 3);
+      setCredits(
+        courseToEdit.creditHours !== undefined && !isNaN(courseToEdit.creditHours)
+          ? courseToEdit.creditHours
+          : ''
+      );
       setTerm(courseToEdit.term || 'Year 1 - Semester I');
       setColor(courseToEdit.color || PRESET_COURSE_NEON_COLORS[0].hex);
       setConfirmDelete(false);
@@ -58,7 +62,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
       setBuilding('');
       setRoom('');
       setInstructor('');
-      setCredits(3);
+      setCredits('');
       setTerm('Year 1 - Semester I');
       // Pick a random vibrant neon color on open
       const randomColor =
@@ -90,6 +94,9 @@ export const CourseModal: React.FC<CourseModalProps> = ({
     const formattedCode = code.trim().toUpperCase();
     const formattedName = name.trim();
 
+    const parsedCredits =
+      credits === '' || isNaN(Number(credits)) ? undefined : Number(credits);
+
     if (courseToEdit) {
       const updatedCourse: Course = {
         ...courseToEdit,
@@ -98,7 +105,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
         building: building.trim(),
         room: room.trim(),
         instructor: instructor.trim(),
-        creditHours: credits,
+        creditHours: parsedCredits,
         term,
         color,
         updatedAt: now,
@@ -115,7 +122,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
         building: building.trim(),
         room: room.trim(),
         instructor: instructor.trim(),
-        creditHours: credits,
+        creditHours: parsedCredits,
         term,
         color,
         createdAt: now,
@@ -223,10 +230,12 @@ export const CourseModal: React.FC<CourseModalProps> = ({
                       {instructor.trim()}
                     </span>
                   )}
-                  <span className="flex items-center gap-1">
-                    <Award className="w-3 h-3 text-[rgb(var(--c-primary))]" />
-                    {credits} Credit Hours
-                  </span>
+                  {credits !== '' && !isNaN(Number(credits)) && (
+                    <span className="flex items-center gap-1">
+                      <Award className="w-3 h-3 text-[rgb(var(--c-primary))]" />
+                      {credits} Credit Hours
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -265,14 +274,18 @@ export const CourseModal: React.FC<CourseModalProps> = ({
             </div>
             <div>
               <label className="block text-[11px] font-heading font-bold text-[rgb(var(--c-text))] mb-1">
-                Credit Hours
+                Credit Hours (Optional)
               </label>
               <input
                 type="number"
                 min="1"
                 max="12"
-                value={credits}
-                onChange={(e) => setCredits(parseInt(e.target.value, 10) || 3)}
+                placeholder="Leave blank or enter credits"
+                value={credits === '' || isNaN(Number(credits)) ? '' : credits}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCredits(val === '' ? '' : isNaN(parseInt(val, 10)) ? '' : parseInt(val, 10));
+                }}
                 className="w-full px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[rgb(var(--c-primary))] transition"
               />
             </div>

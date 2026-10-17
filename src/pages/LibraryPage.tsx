@@ -30,7 +30,7 @@ export const LibraryPage: React.FC = () => {
   // Book Form
   const [bookTitle, setBookTitle] = useState('');
   const [author, setAuthor] = useState('');
-  const [totalPages, setTotalPages] = useState(300);
+  const [totalPages, setTotalPages] = useState<number | string>(300);
 
   // Topic Form
   const [topicTitle, setTopicTitle] = useState('');
@@ -50,7 +50,7 @@ export const LibraryPage: React.FC = () => {
       id: generateId(),
       title: bookTitle.trim(),
       author: author.trim() || 'Unknown',
-      totalPages,
+      totalPages: Number(totalPages) || 300,
       pagesRead: 0,
       isFinished: false,
     });
@@ -305,7 +305,7 @@ export const LibraryPage: React.FC = () => {
                   <span className="text-[10px] text-[rgb(var(--c-muted))]">Update page:</span>
                   <input
                     type="number"
-                    value={b.pagesRead}
+                    value={isNaN(Number(b.pagesRead)) ? 0 : b.pagesRead}
                     onChange={(e) => handleUpdateBookPages(b, parseInt(e.target.value, 10) || 0)}
                     className="w-16 px-2 py-0.5 rounded border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                   />
@@ -369,8 +369,11 @@ export const LibraryPage: React.FC = () => {
                 </label>
                 <input
                   type="number"
-                  value={totalPages}
-                  onChange={(e) => setTotalPages(parseInt(e.target.value, 10))}
+                  value={totalPages === '' || isNaN(Number(totalPages)) ? '' : totalPages}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTotalPages(val === '' ? '' : isNaN(parseInt(val, 10)) ? '' : parseInt(val, 10));
+                  }}
                   className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                   required
                 />

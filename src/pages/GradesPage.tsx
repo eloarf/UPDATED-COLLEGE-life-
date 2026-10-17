@@ -45,9 +45,9 @@ export const GradesPage: React.FC = () => {
   const [editingComponent, setEditingComponent] = useState<GradeComponent | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [compName, setCompName] = useState('');
-  const [weight, setWeight] = useState(20);
-  const [maxScore, setMaxScore] = useState(100);
-  const [earnedScore, setEarnedScore] = useState(85);
+  const [weight, setWeight] = useState<number | string>(20);
+  const [maxScore, setMaxScore] = useState<number | string>(100);
+  const [earnedScore, setEarnedScore] = useState<number | string>(85);
 
   // Department form state (add/edit)
   const [editingDept, setEditingDept] = useState<DepartmentOption | null>(null);
@@ -738,8 +738,8 @@ export const GradesPage: React.FC = () => {
                 Target Letter Grade
               </label>
               <select
-                value={sandboxFinalGoal}
-                onChange={(e) => setSandboxFinalGoal(parseInt(e.target.value, 10))}
+                value={isNaN(sandboxFinalGoal) ? 85 : sandboxFinalGoal}
+                onChange={(e) => setSandboxFinalGoal(parseInt(e.target.value, 10) || 85)}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
               >
                 <option value="90">A+ (Requires ≥90% overall)</option>
@@ -822,8 +822,11 @@ export const GradesPage: React.FC = () => {
                     type="number"
                     min="1"
                     max="100"
-                    value={weight}
-                    onChange={(e) => setWeight(parseInt(e.target.value, 10))}
+                    value={weight === '' || isNaN(Number(weight)) ? '' : weight}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setWeight(val === '' ? '' : isNaN(parseInt(val, 10)) ? '' : parseInt(val, 10));
+                    }}
                     className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                     required
                   />
@@ -836,8 +839,11 @@ export const GradesPage: React.FC = () => {
                     type="number"
                     step="0.5"
                     min="0"
-                    value={earnedScore}
-                    onChange={(e) => setEarnedScore(parseFloat(e.target.value))}
+                    value={earnedScore === '' || isNaN(Number(earnedScore)) ? '' : earnedScore}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEarnedScore(val === '' ? '' : isNaN(parseFloat(val)) ? '' : parseFloat(val));
+                    }}
                     className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                     required
                   />
@@ -850,8 +856,11 @@ export const GradesPage: React.FC = () => {
                     type="number"
                     step="0.5"
                     min="1"
-                    value={maxScore}
-                    onChange={(e) => setMaxScore(parseFloat(e.target.value))}
+                    value={maxScore === '' || isNaN(Number(maxScore)) ? '' : maxScore}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setMaxScore(val === '' ? '' : isNaN(parseFloat(val)) ? '' : parseFloat(val));
+                    }}
                     className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                     required
                   />
