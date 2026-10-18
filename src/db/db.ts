@@ -31,6 +31,7 @@ import {
   RitualRun,
   Semester,
   RestDay,
+  DailyReflection,
   AppSettings,
   DEFAULT_ACCOUNT_BALANCES,
   DEFAULT_DEPARTMENTS,
@@ -69,6 +70,7 @@ export class CollegeLifeOSDatabase extends Dexie {
   ritualRuns!: Table<RitualRun, string>;
   semesters!: Table<Semester, string>;
   restDays!: Table<RestDay, string>;
+  dailyReflections!: Table<DailyReflection, string>;
 
   constructor() {
     super('CollegeLifeOSDB');
@@ -153,6 +155,10 @@ export class CollegeLifeOSDatabase extends Dexie {
           s.semesterId = defaultSemesterId;
         }
       });
+    });
+
+    this.version(3).stores({
+      dailyReflections: 'id, dateKey',
     });
   }
 }

@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 export const FocusPage: React.FC = () => {
-  const { showToast } = useUiStore();
+  const { showToast, activeFocusTask, setActiveFocusTask } = useUiStore();
   const todayKey = getTodayKey();
 
   const courses = useLiveQuery(() => db.courses.toArray()) || [];
@@ -27,9 +27,15 @@ export const FocusPage: React.FC = () => {
 
   // State
   const [selectedDurationMins, setSelectedDurationMins] = useState(25);
-  const [selectedCourseId, setSelectedCourseId] = useState('');
+  const [selectedCourseId, setSelectedCourseId] = useState(activeFocusTask?.courseId || '');
   const [isRunning, setIsRunning] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(25 * 60);
+
+  useEffect(() => {
+    if (activeFocusTask?.courseId) {
+      setSelectedCourseId(activeFocusTask.courseId);
+    }
+  }, [activeFocusTask]);
 
   // References for timestamp-based timing
   const targetEndTimestampRef = useRef<number | null>(null);
@@ -167,6 +173,28 @@ export const FocusPage: React.FC = () => {
   return (
     <div className="space-y-4 pb-20 animate-pop">
       {/* Header */}
+      {activeFocusTask?.taskTitle && (
+        <div className="flex items-center justify-between p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Zap className="w-4 h-4 text-amber-500 shrink-0" />
+            <div className="min-w-0">
+              <span className="text-[10px] uppercase font-heading font-bold text-amber-600 dark:text-amber-400 block">
+                Session Linked To Task
+              </span>
+              <div className="font-heading font-bold text-xs truncate">
+                {activeFocusTask.taskTitle}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveFocusTask(null)}
+            className="text-[11px] font-heading font-bold text-[rgb(var(--c-muted))] hover:text-rose-500 transition px-2 py-1 rounded-lg shrink-0"
+          >
+            Clear Link
+          </button>
+        </div>
+      )}
+
       <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-5 relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>

@@ -14,7 +14,9 @@ interface UiState {
   isSearchOpen: boolean;
   isThemeSwitcherOpen: boolean;
   toasts: ToastItem[];
+  activeFocusTask: { taskId?: string; taskTitle?: string; courseId?: string } | null;
   setCurrentRoute: (route: string) => void;
+  setActiveFocusTask: (task: { taskId?: string; taskTitle?: string; courseId?: string } | null) => void;
   setMoreSheetOpen: (open: boolean) => void;
   setQuickAddOpen: (open: boolean) => void;
   setSearchOpen: (open: boolean) => void;
@@ -30,10 +32,12 @@ export const useUiStore = create<UiState>((set) => ({
   isSearchOpen: false,
   isThemeSwitcherOpen: false,
   toasts: [],
+  activeFocusTask: null,
   setCurrentRoute: (route) => {
     window.location.hash = route;
     set({ currentRoute: route, isMoreSheetOpen: false });
   },
+  setActiveFocusTask: (task) => set({ activeFocusTask: task }),
   setMoreSheetOpen: (open) => set({ isMoreSheetOpen: open }),
   setQuickAddOpen: (open) => set({ isQuickAddOpen: open }),
   setSearchOpen: (open) => set({ isSearchOpen: open }),

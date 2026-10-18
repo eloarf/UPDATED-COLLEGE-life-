@@ -36,6 +36,7 @@ import { LevelsPage } from './pages/LevelsPage';
 import { RitualsPage } from './pages/RitualsPage';
 import { ThemesPage } from './pages/ThemesPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { StatisticsPage } from './pages/StatisticsPage';
 
 export default function App() {
   const { currentRoute, setCurrentRoute } = useUiStore();
@@ -103,6 +104,10 @@ export default function App() {
         return <RitualsPage />;
       case '#/themes':
         return <ThemesPage />;
+      case '#/statistics':
+      case '#/stats':
+      case '#/wrapped':
+        return <StatisticsPage />;
       case '#/settings':
         return <SettingsPage />;
       case '#/':

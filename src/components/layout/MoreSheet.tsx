@@ -20,6 +20,7 @@ import {
   RefreshCw,
   Palette,
   Settings,
+  Sparkles,
   X,
 } from 'lucide-react';
 
@@ -53,6 +54,7 @@ export const MoreSheet: React.FC = () => {
     { name: 'Studio', subtitle: 'Song/Beat & Writing Pipelines', route: '#/studio', icon: Music, accent: '#BBA6E0' },
     { name: 'Library', subtitle: 'Morning Brief & Reading Queue', route: '#/library', icon: Bookmark, accent: '#8FD3B6' },
     { name: 'XP & Levels', subtitle: '50-Level Ranks, XP Progress & Ledger', route: '#/levels', icon: Award, accent: '#B6E63E' },
+    { name: 'Statistics & Wrapped', subtitle: 'Spotify Wrapped & Life Analytics', route: '#/statistics', icon: Sparkles, accent: '#B6E63E' },
     { name: 'Rituals', subtitle: 'Sunday Review & Reset Day', route: '#/rituals', icon: RefreshCw, accent: '#F5B58A' },
     { name: 'Themes', subtitle: 'Six Storybook Color Palettes', route: '#/themes', icon: Palette, accent: '#F6A8BE' },
     { name: 'Settings', subtitle: 'Sync, JSON Backup & Storage', route: '#/settings', icon: Settings, accent: '#7A5A66' },

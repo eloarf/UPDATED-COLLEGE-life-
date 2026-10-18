@@ -363,12 +363,26 @@ export interface RitualRun {
   isCompleted: boolean;
 }
 
+export interface DailyReflection {
+  id: string;
+  dateKey: string; // YYYY-MM-DD
+  meaningfulAccomplishment?: string;
+  tomorrowImprovement?: string;
+  journalNote?: string;
+  completedTaskCount?: number;
+  unfinishedAction?: 'rescheduled' | 'backlog' | 'dismissed';
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppSettings {
   id: string;
   userName: string;
   universityName: string;
   currentTermName: string;
   activeSemesterId?: string;
+  dailyIntention?: string;
+  dailyIntentionDate?: string;
   targetCgpa: number;
   yearlyBookGoal: number;
   isLowEnergy: boolean;

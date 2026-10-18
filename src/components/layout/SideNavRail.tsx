@@ -20,6 +20,7 @@ import {
   RefreshCw,
   Palette,
   Settings,
+  Sparkles,
 } from 'lucide-react';
 
 export const SideNavRail: React.FC = () => {
@@ -42,6 +43,7 @@ export const SideNavRail: React.FC = () => {
     { label: 'Studio', route: '#/studio', icon: Music },
     { label: 'Library', route: '#/library', icon: Bookmark },
     { label: 'XP & Levels', route: '#/levels', icon: Award },
+    { label: 'Statistics & Wrapped', route: '#/statistics', icon: Sparkles },
     { label: 'Rituals', route: '#/rituals', icon: RefreshCw },
     { label: 'Themes', route: '#/themes', icon: Palette },
     { label: 'Settings', route: '#/settings', icon: Settings },

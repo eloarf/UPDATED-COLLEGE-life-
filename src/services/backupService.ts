@@ -33,6 +33,7 @@ import {
   RitualRun,
   Semester,
   RestDay,
+  DailyReflection,
 } from '../types';
 
 export const CURRENT_BACKUP_VERSION = 2;
@@ -73,6 +74,7 @@ export interface BackupData {
     ritualRuns?: RitualRun[];
     semesters?: Semester[];
     restDays?: RestDay[];
+    dailyReflections?: DailyReflection[];
   };
 }
 
@@ -109,6 +111,7 @@ const ALL_TABLES = [
   db.ritualRuns,
   db.semesters,
   db.restDays,
+  db.dailyReflections,
 ];
 
 export async function exportDatabaseToJson(): Promise<string> {
@@ -148,6 +151,7 @@ export async function exportDatabaseToJson(): Promise<string> {
       ritualRuns: await db.ritualRuns.toArray(),
       semesters: await db.semesters.toArray(),
       restDays: await db.restDays.toArray(),
+      dailyReflections: await db.dailyReflections.toArray(),
     },
   };
 

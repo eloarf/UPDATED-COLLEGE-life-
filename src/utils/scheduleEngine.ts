@@ -4,9 +4,10 @@ import { parseDayKey, formatDayKey, addDaysToKey, getTodayKey } from './dateUtil
 export interface ScheduledClass {
   session: ClassSession;
   course: Course;
-  date: string; // YYYY-MM-DD
+  date?: string; // YYYY-MM-DD
   startTime: string; // HH:MM
   endTime: string; // HH:MM
+  type?: 'lecture' | 'lab' | 'tutorial' | 'other';
   room?: string;
   building?: string;
   instructor?: string;
@@ -159,6 +160,7 @@ export function getClassesForDate(
       date: dateKey,
       startTime: effectiveStartTime,
       endTime: effectiveEndTime,
+      type: session.type,
       room: effectiveRoom,
       building: session.building,
       instructor: session.instructor || course.instructor,
