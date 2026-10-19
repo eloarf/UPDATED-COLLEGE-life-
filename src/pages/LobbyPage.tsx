@@ -647,6 +647,35 @@ export const LobbyPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Spotify Wrapped & Life Analytics Teaser */}
+      <div
+        onClick={() => setCurrentRoute('#/statistics')}
+        className="ticket-border bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-indigo-500/10 hover:border-emerald-500 rounded-3xl p-4 sm:p-5 flex items-center justify-between gap-3 cursor-pointer transition group shadow-2xs"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+            <Sparkles className="w-5 h-5 text-amber-300" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase font-heading font-bold tracking-wider text-emerald-600 dark:text-emerald-400">
+                Personal Analytics &amp; Wrapped
+              </span>
+              <span className="text-[10px] px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-heading font-bold">
+                Interactive Deck
+              </span>
+            </div>
+            <div className="text-xs sm:text-sm font-heading font-bold text-[rgb(var(--c-text))] group-hover:text-[rgb(var(--c-primary))] transition truncate">
+              Open Your Term &amp; Week in Review — Spotify Wrapped Experience
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 text-xs font-heading font-bold text-[rgb(var(--c-primary))] shrink-0">
+          <span className="hidden sm:inline">Launch Deck</span>
+          <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+        </div>
+      </div>
+
       {/* 2.3 — THE MOST IMPORTANT SECTION: UP NEXT / WHAT SHOULD I DO NEXT? */}
       <div className="ticket-border bg-gradient-to-r from-[rgb(var(--c-surface))] to-[rgb(var(--c-surface2))] rounded-3xl p-6 sm:p-7 shadow-xs border-2 border-[rgb(var(--c-primary))]/40">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 mb-4 border-b border-[rgb(var(--c-border))]/60">

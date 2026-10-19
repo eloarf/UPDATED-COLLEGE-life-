@@ -223,6 +223,14 @@ export interface JournalEntry {
   wordCount: number;
   tags: string[];
   promptQuestion?: string;
+  isPinned?: boolean;
+  isFavorite?: boolean;
+  deletedAt?: string;
+  structuredReflection?: {
+    happened?: string;
+    mattered?: string;
+    next?: string;
+  };
   createdAt: string;
   updatedAt?: string;
 }

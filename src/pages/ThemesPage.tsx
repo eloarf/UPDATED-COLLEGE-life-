@@ -26,6 +26,7 @@ export const ThemesPage: React.FC = () => {
 
   const categories = [
     { id: 'all', label: `All Palettes (${THEMES.length})` },
+    { id: 'premier', label: `12 New Themes (${THEMES.filter(t => t.category === 'premier').length})` },
     { id: 'cyberpunk', label: `Cyberpunk Neon (${THEMES.filter(t => t.category === 'cyberpunk').length})` },
     { id: 'dark-wood', label: `Dark Wood & Timber (${THEMES.filter(t => t.category === 'dark-wood').length})` },
     { id: 'daring-brights', label: `Daring Brights (${THEMES.filter(t => t.category === 'daring-brights').length})` },
@@ -49,15 +50,14 @@ export const ThemesPage: React.FC = () => {
                 <Sparkles className="w-3.5 h-3.5" /> Atmospheric Color Schemes
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-[rgb(var(--c-surface2))] border border-[rgb(var(--c-border))] font-heading font-bold text-[rgb(var(--c-text))]">
-                15 Total Styles
+                {THEMES.length} Total Styles
               </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-heading font-bold text-[rgb(var(--c-text))]">
-              Storybook &amp; Daring Palettes
+              Distinct Visual Palettes
             </h2>
             <p className="text-xs text-[rgb(var(--c-muted))] font-flourish mt-0.5 max-w-xl">
-              From Wes Anderson pastels and rich dark wood grain to electrifying neon-blue cyberpunk rigs.
-              Featuring daring 3 and 4 color combos with zero purple.
+              Featuring 12 premier atmospheric identities—Gothic Romance, Pink Neon Dream, Halloween After Dark, Cyberpunk Grid, Emerald Arcana, Oceanic Abyss, Solar Flare, Celestial Starlight, Dark Academia, Tokyo Vaporwave, Arctic Frost, and Forest Moss Sanctuary—alongside classic Wes Anderson and daring timbers.
             </p>
           </div>
 

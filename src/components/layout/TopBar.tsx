@@ -92,6 +92,15 @@ export const TopBar: React.FC = () => {
             <Palette className="w-4 h-4" />
           </button>
 
+          {/* Statistics & Wrapped Shortcut */}
+          <button
+            onClick={() => setCurrentRoute('#/statistics')}
+            className="p-2 rounded-full text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] active:scale-95 transition"
+            title="Open Personal Statistics & Spotify Wrapped"
+          >
+            <Sparkles className="w-4 h-4 text-amber-500" />
+          </button>
+
           {/* Notifications / Backup status */}
           <button
             onClick={() => {

@@ -272,6 +272,235 @@
     --c-danger: 239 68 68;
     --c-xp: 255 208 0;
   }
+
+  /* --- 12 Distinct New Themes --- */
+  /* 1. Gothic Romance */
+  [data-theme="gothic-romance"] {
+    --c-bg: 18 7 11;
+    --c-surface: 34 13 22;
+    --c-surface2: 58 21 36;
+    --c-border: 94 35 57;
+    --c-text: 243 233 226;
+    --c-muted: 197 186 192;
+    --c-primary: 232 162 184;
+    --c-on-primary: 18 7 11;
+    --c-accent: 197 202 214;
+    --c-accent2: 139 38 62;
+    --c-page-accent: 232 162 184;
+    --c-success: 52 211 153;
+    --c-warning: 245 158 11;
+    --c-danger: 239 68 68;
+    --c-xp: 232 162 184;
+  }
+
+  /* 2. Pink Neon Dream */
+  [data-theme="pink-neon-dream"] {
+    --c-bg: 11 4 16;
+    --c-surface: 25 9 36;
+    --c-surface2: 42 14 61;
+    --c-border: 82 29 116;
+    --c-text: 253 244 248;
+    --c-muted: 224 166 209;
+    --c-primary: 255 20 147;
+    --c-on-primary: 11 4 16;
+    --c-accent: 139 0 255;
+    --c-accent2: 255 105 180;
+    --c-page-accent: 255 20 147;
+    --c-success: 57 255 20;
+    --c-warning: 255 184 0;
+    --c-danger: 255 20 147;
+    --c-xp: 255 184 0;
+  }
+
+  /* 3. Halloween After Dark */
+  [data-theme="halloween-after-dark"] {
+    --c-bg: 11 11 15;
+    --c-surface: 23 21 32;
+    --c-surface2: 38 32 53;
+    --c-border: 75 59 99;
+    --c-text: 244 240 232;
+    --c-muted: 185 175 199;
+    --c-primary: 255 94 0;
+    --c-on-primary: 11 11 15;
+    --c-accent: 57 255 20;
+    --c-accent2: 157 0 255;
+    --c-page-accent: 255 94 0;
+    --c-success: 57 255 20;
+    --c-warning: 255 94 0;
+    --c-danger: 255 42 109;
+    --c-xp: 255 184 0;
+  }
+
+  /* 4. Cyberpunk Grid */
+  [data-theme="cyberpunk-grid"] {
+    --c-bg: 7 12 26;
+    --c-surface: 14 23 46;
+    --c-surface2: 22 36 71;
+    --c-border: 37 63 119;
+    --c-text: 224 242 254;
+    --c-muted: 136 164 212;
+    --c-primary: 0 240 255;
+    --c-on-primary: 7 12 26;
+    --c-accent: 255 230 0;
+    --c-accent2: 0 255 102;
+    --c-page-accent: 0 240 255;
+    --c-success: 0 255 102;
+    --c-warning: 255 230 0;
+    --c-danger: 255 0 127;
+    --c-xp: 255 230 0;
+  }
+
+  /* 5. Emerald Arcana */
+  [data-theme="emerald-arcana"] {
+    --c-bg: 7 18 12;
+    --c-surface: 14 35 25;
+    --c-surface2: 22 53 39;
+    --c-border: 43 97 70;
+    --c-text: 247 244 234;
+    --c-muted: 168 196 181;
+    --c-primary: 16 185 129;
+    --c-on-primary: 7 18 12;
+    --c-accent: 212 175 55;
+    --c-accent2: 52 211 153;
+    --c-page-accent: 16 185 129;
+    --c-success: 16 185 129;
+    --c-warning: 212 175 55;
+    --c-danger: 239 68 68;
+    --c-xp: 212 175 55;
+  }
+
+  /* 6. Oceanic Abyss */
+  [data-theme="oceanic-abyss"] {
+    --c-bg: 5 15 30;
+    --c-surface: 11 30 56;
+    --c-surface2: 18 49 87;
+    --c-border: 30 77 133;
+    --c-text: 240 249 255;
+    --c-muted: 147 197 253;
+    --c-primary: 0 229 255;
+    --c-on-primary: 5 15 30;
+    --c-accent: 45 212 191;
+    --c-accent2: 56 189 248;
+    --c-page-accent: 0 229 255;
+    --c-success: 45 212 191;
+    --c-warning: 251 191 36;
+    --c-danger: 248 113 113;
+    --c-xp: 0 229 255;
+  }
+
+  /* 7. Solar Flare */
+  [data-theme="solar-flare"] {
+    --c-bg: 24 20 18;
+    --c-surface: 39 28 23;
+    --c-surface2: 61 38 29;
+    --c-border: 107 61 43;
+    --c-text: 255 248 231;
+    --c-muted: 216 179 156;
+    --c-primary: 255 184 0;
+    --c-on-primary: 24 20 18;
+    --c-accent: 255 87 34;
+    --c-accent2: 220 38 38;
+    --c-page-accent: 255 184 0;
+    --c-success: 52 211 153;
+    --c-warning: 255 184 0;
+    --c-danger: 220 38 38;
+    --c-xp: 255 184 0;
+  }
+
+  /* 8. Celestial Starlight */
+  [data-theme="celestial-starlight"] {
+    --c-bg: 6 10 24;
+    --c-surface: 15 23 51;
+    --c-surface2: 26 37 79;
+    --c-border: 43 61 126;
+    --c-text: 248 250 252;
+    --c-muted: 148 163 184;
+    --c-primary: 56 189 248;
+    --c-on-primary: 6 10 24;
+    --c-accent: 253 224 71;
+    --c-accent2: 167 139 250;
+    --c-page-accent: 56 189 248;
+    --c-success: 52 211 153;
+    --c-warning: 253 224 71;
+    --c-danger: 244 63 94;
+    --c-xp: 253 224 71;
+  }
+
+  /* 9. Dark Academia */
+  [data-theme="dark-academia"] {
+    --c-bg: 22 16 11;
+    --c-surface: 36 24 16;
+    --c-surface2: 56 35 21;
+    --c-border: 94 59 36;
+    --c-text: 245 236 225;
+    --c-muted: 194 169 146;
+    --c-primary: 212 163 89;
+    --c-on-primary: 22 16 11;
+    --c-accent: 139 38 62;
+    --c-accent2: 226 192 136;
+    --c-page-accent: 212 163 89;
+    --c-success: 52 211 153;
+    --c-warning: 212 163 89;
+    --c-danger: 185 28 28;
+    --c-xp: 212 163 89;
+  }
+
+  /* 10. Tokyo Sunset Vaporwave */
+  [data-theme="tokyo-vaporwave"] {
+    --c-bg: 21 10 36;
+    --c-surface: 35 18 56;
+    --c-surface2: 53 28 82;
+    --c-border: 89 46 135;
+    --c-text: 253 244 255;
+    --c-muted: 192 132 252;
+    --c-primary: 255 42 133;
+    --c-on-primary: 21 10 36;
+    --c-accent: 0 255 240;
+    --c-accent2: 255 170 0;
+    --c-page-accent: 255 42 133;
+    --c-success: 0 255 240;
+    --c-warning: 255 170 0;
+    --c-danger: 255 42 133;
+    --c-xp: 255 170 0;
+  }
+
+  /* 11. Arctic Frost */
+  [data-theme="arctic-frost"] {
+    --c-bg: 8 16 28;
+    --c-surface: 16 31 53;
+    --c-surface2: 26 47 79;
+    --c-border: 43 75 121;
+    --c-text: 240 249 255;
+    --c-muted: 125 211 252;
+    --c-primary: 56 189 248;
+    --c-on-primary: 8 16 28;
+    --c-accent: 45 212 191;
+    --c-accent2: 224 242 254;
+    --c-page-accent: 56 189 248;
+    --c-success: 45 212 191;
+    --c-warning: 251 191 36;
+    --c-danger: 248 113 113;
+    --c-xp: 56 189 248;
+  }
+
+  /* 12. Forest Moss Sanctuary */
+  [data-theme="forest-moss"] {
+    --c-bg: 9 22 14;
+    --c-surface: 19 38 27;
+    --c-surface2: 30 58 43;
+    --c-border: 49 92 68;
+    --c-text: 242 248 244;
+    --c-muted: 134 239 172;
+    --c-primary: 34 197 94;
+    --c-on-primary: 9 22 14;
+    --c-accent: 234 179 8;
+    --c-accent2: 163 230 53;
+    --c-page-accent: 34 197 94;
+    --c-success: 34 197 94;
+    --c-warning: 234 179 8;
+    --c-danger: 239 68 68;
+    --c-xp: 234 179 8;
+  }
 }
 
 /* Typography mappings */
@@ -358,3 +587,149 @@ body {
   background: rgb(var(--c-border));
   border-radius: 9999px;
 }
+
+/* Distinct Visual Identities for 12 Premier Themes */
+
+/* 1. Gothic Romance: Ornate surfaces, antique silver & deep burgundy shadows */
+[data-theme="gothic-romance"] .ticket-border {
+  border: 1px solid rgba(232, 162, 184, 0.28);
+  box-shadow: 0 0 0 1px rgba(94, 35, 57, 0.5), inset 0 0 18px rgba(18, 7, 11, 0.6);
+}
+[data-theme="gothic-romance"] .gothic-ornament {
+  border-bottom: 1px solid rgba(232, 162, 184, 0.3);
+  position: relative;
+}
+[data-theme="gothic-romance"] .gothic-ornament::after {
+  content: '✦ ❦ ✦';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgb(var(--c-surface));
+  padding: 0 8px;
+  font-size: 10px;
+  color: rgb(var(--c-primary));
+}
+
+/* 2. Pink Neon Dream: Electric edge glows and futuristic bloom */
+[data-theme="pink-neon-dream"] .ticket-border {
+  border-color: rgba(255, 20, 147, 0.45);
+  box-shadow: 0 0 16px rgba(255, 20, 147, 0.18), inset 0 0 12px rgba(139, 0, 255, 0.1);
+}
+[data-theme="pink-neon-dream"] input:focus,
+[data-theme="pink-neon-dream"] textarea:focus {
+  box-shadow: 0 0 14px rgba(255, 20, 147, 0.35) !important;
+}
+
+/* 3. Halloween After Dark: Moonlit surfaces & spectral mist */
+[data-theme="halloween-after-dark"] .ticket-border {
+  border-color: rgba(255, 94, 0, 0.4);
+  box-shadow: 0 0 18px rgba(157, 0, 255, 0.16);
+}
+[data-theme="halloween-after-dark"] {
+  background-image: radial-gradient(ellipse at 80% 0%, rgba(157, 0, 255, 0.08), transparent 60%);
+}
+
+/* 4. Cyberpunk Grid: Tech fine grid background & sharp geometry */
+[data-theme="cyberpunk-grid"] {
+  background-image: linear-gradient(to right, rgba(0, 240, 255, 0.04) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(0, 240, 255, 0.04) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+[data-theme="cyberpunk-grid"] .ticket-border {
+  border-color: rgba(0, 240, 255, 0.45);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.14);
+}
+
+/* 5. Emerald Arcana: Occult forest elegance with aged gold trim */
+[data-theme="emerald-arcana"] .ticket-border {
+  border-color: rgba(212, 175, 55, 0.38);
+  box-shadow: inset 0 0 24px rgba(7, 18, 12, 0.65), 0 0 12px rgba(16, 185, 129, 0.12);
+}
+
+/* 6. Oceanic Abyss: Layered aquatic gradients and calm luminous wave accents */
+[data-theme="oceanic-abyss"] {
+  background-image: radial-gradient(circle at 50% 0%, rgba(0, 229, 255, 0.08), transparent 75%);
+}
+[data-theme="oceanic-abyss"] .ticket-border {
+  border-color: rgba(0, 229, 255, 0.35);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.12), inset 0 0 14px rgba(11, 30, 56, 0.6);
+}
+
+/* 7. Solar Flare: High-energy sunburst warmth */
+[data-theme="solar-flare"] .ticket-border {
+  border-color: rgba(255, 184, 0, 0.4);
+  box-shadow: 0 0 18px rgba(255, 87, 34, 0.15);
+}
+
+/* 8. Celestial Starlight: Astral cosmos shimmer */
+[data-theme="celestial-starlight"] {
+  background-image: radial-gradient(rgba(248, 250, 252, 0.12) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+[data-theme="celestial-starlight"] .ticket-border {
+  border-color: rgba(56, 189, 248, 0.35);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.12);
+}
+
+/* 9. Dark Academia: Classical collegiate tweed & leather warmth */
+[data-theme="dark-academia"] .ticket-border {
+  border: 1px solid rgba(212, 163, 89, 0.38);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* 10. Tokyo Sunset Vaporwave: Retro synth horizon */
+[data-theme="tokyo-vaporwave"] .ticket-border {
+  border-color: rgba(255, 42, 133, 0.45);
+  box-shadow: 0 0 18px rgba(0, 255, 240, 0.15), inset 0 0 10px rgba(255, 42, 133, 0.08);
+}
+
+/* 11. Arctic Frost: Crystalline alpine clarity */
+[data-theme="arctic-frost"] .ticket-border {
+  border-color: rgba(56, 189, 248, 0.38);
+  box-shadow: 0 0 14px rgba(45, 212, 191, 0.12);
+}
+
+/* 12. Forest Moss Sanctuary: Ancient grove calming surfaces */
+[data-theme="forest-moss"] .ticket-border {
+  border-color: rgba(34, 197, 94, 0.35);
+  box-shadow: inset 0 0 18px rgba(9, 22, 14, 0.5);
+}
+
+/* Journal Writing Space Typography & Usability Enhancements */
+.journal-canvas {
+  transition: all 0.2s ease-in-out;
+  overscroll-behavior-y: contain;
+}
+
+.journal-scale-compact {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.journal-scale-comfortable {
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.journal-scale-large {
+  font-size: 18.5px;
+  line-height: 1.9;
+}
+
+.journal-serif-mode {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 1.15em;
+  letter-spacing: 0.015em;
+}
+
+.journal-sans-mode {
+  font-family: 'Nunito Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Journal stationery paper texture */
+.journal-paper-texture {
+  background-image: radial-gradient(rgba(var(--c-border) / 0.12) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
