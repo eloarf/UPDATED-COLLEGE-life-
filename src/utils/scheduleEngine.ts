@@ -85,9 +85,11 @@ export function getClassesForDate(
 ): ScheduledClass[] {
   if (!dateKey) return [];
 
-  // Check semester boundary
+  // Check semester boundary: allow a generous buffer so orientation or recent classes never vanish
   if (semester && semester.startDate && semester.endDate) {
-    if (dateKey < semester.startDate || dateKey > semester.endDate) {
+    const earlyBound = addDaysToKey(semester.startDate, -28);
+    const lateBound = addDaysToKey(semester.endDate, 28);
+    if (dateKey < earlyBound || dateKey > lateBound) {
       return [];
     }
   }

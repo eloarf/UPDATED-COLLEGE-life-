@@ -1,4 +1,4 @@
-import { db } from '../db/db';
+import { db, saveEmergencyBackup } from '../db/db';
 import { getTodayKey } from '../utils/dateUtils';
 import {
   AppSettings,
@@ -333,6 +333,7 @@ export async function restoreDatabase(
         if (d.ritualRuns?.length) await db.ritualRuns.bulkPut(d.ritualRuns);
         if (d.semesters?.length) await db.semesters.bulkPut(d.semesters);
         if (d.restDays?.length) await db.restDays.bulkPut(d.restDays);
+        if (d.dailyReflections?.length) await db.dailyReflections.bulkPut(d.dailyReflections);
       });
     } else {
       // Merge mode
@@ -370,8 +371,12 @@ export async function restoreDatabase(
         if (d.ritualRuns?.length) await db.ritualRuns.bulkPut(d.ritualRuns);
         if (d.semesters?.length) await db.semesters.bulkPut(d.semesters);
         if (d.restDays?.length) await db.restDays.bulkPut(d.restDays);
+        if (d.dailyReflections?.length) await db.dailyReflections.bulkPut(d.dailyReflections);
       });
     }
+
+    // Immediately synchronize local emergency mirror
+    await saveEmergencyBackup(true);
 
     return { success: true, message: 'Database restored successfully!' };
   } catch (err: unknown) {

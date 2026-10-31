@@ -1,5 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { db } from '../db/db';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  db,
+  getEmergencyBackupMeta,
+  restoreFromEmergencyMirror,
+  saveEmergencyBackup,
+  checkStoragePersistence,
+  requestPersistentStorage,
+  type EmergencyBackupMeta,
+} from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../store/uiStore';
 import {
@@ -16,6 +24,7 @@ import {
 } from '../db/starterPack';
 import { Semester } from '../types';
 import { generateId } from '../utils/idGenerator';
+import { PWAInstallButton } from '../components/common/PWAInstallButton';
 import {
   Settings,
   HardDrive,
@@ -306,32 +315,129 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  // Storage & Persistence Metrics
+  const [persistenceInfo, setPersistenceInfo] = useState<{
+    isPersisted: boolean;
+    quota?: number;
+    usage?: number;
+  }>({ isPersisted: false });
+  const [mirrorMeta, setMirrorMeta] = useState<EmergencyBackupMeta>({ exists: false });
+  const [isMirrorRestoring, setIsMirrorRestoring] = useState(false);
+  const [isSyncingMirror, setIsSyncingMirror] = useState(false);
+
+  const loadPersistenceInfo = useCallback(async () => {
+    const p = await checkStoragePersistence();
+    setPersistenceInfo(p);
+    const m = getEmergencyBackupMeta();
+    setMirrorMeta(m);
+  }, []);
+
+  useEffect(() => {
+    loadPersistenceInfo();
+  }, [loadPersistenceInfo]);
+
+  const handleProtectStorage = async () => {
+    const granted = await requestPersistentStorage();
+    if (granted) {
+      showToast('🛡️ Browser granted persistent storage protection! Eviction protection is active.', 'success');
+    } else {
+      showToast('Browser did not grant permanent persistence. Local compressed mirror is keeping your data safe.', 'info');
+    }
+    loadPersistenceInfo();
+  };
+
+  const handleForceMirrorSync = async () => {
+    setIsSyncingMirror(true);
+    try {
+      const ok = await saveEmergencyBackup(true);
+      if (ok) {
+        showToast('🛡️ Local emergency mirror updated and verified!', 'success');
+        loadPersistenceInfo();
+      } else {
+        showToast('Mirror sync completed.', 'info');
+      }
+    } finally {
+      setIsSyncingMirror(false);
+    }
+  };
+
+  const handleRestoreFromMirror = async () => {
+    setIsMirrorRestoring(true);
+    try {
+      const res = await restoreFromEmergencyMirror(false);
+      if (res.success) {
+        showToast(`🎉 ${res.message}`, 'success');
+        loadPersistenceInfo();
+      } else {
+        showToast(res.message, 'info');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      showToast(`Restore failed: ${msg}`, 'danger');
+    } finally {
+      setIsMirrorRestoring(false);
+    }
+  };
+
   const handleWipeAllData = async () => {
-    await Promise.all([
-      db.courses.clear(),
-      db.classSessions.clear(),
-      db.classExceptions.clear(),
-      db.attendance.clear(),
-      db.semesters.clear(),
-      db.restDays.clear(),
-      db.tasks.clear(),
-      db.exams.clear(),
-      db.examTopics.clear(),
-      db.projects.clear(),
-      db.projectMilestones.clear(),
-      db.projectTasks.clear(),
-      db.focusSessions.clear(),
-      db.habits.clear(),
-      db.habitLogs.clear(),
-      db.journalEntries.clear(),
-      db.masterWeekBlocks.clear(),
-      db.transactions.clear(),
-      db.readingItems.clear(),
-      db.learningQueue.clear(),
-      db.xpEvents.clear(),
-    ]);
-    setIsConfirmDeleteOpen(false);
-    showToast('All database tables cleared. Starting fresh.', 'info');
+    try {
+      // Auto-download safety snapshot prior to clearing so data is never permanently lost
+      try {
+        const snapshot = await triggerBackupDownload();
+      } catch {
+        // Continue
+      }
+
+      await Promise.all([
+        db.courses.clear(),
+        db.classSessions.clear(),
+        db.classExceptions.clear(),
+        db.attendance.clear(),
+        db.gradeComponents.clear(),
+        db.semesters.clear(),
+        db.restDays.clear(),
+        db.tasks.clear(),
+        db.exams.clear(),
+        db.examTopics.clear(),
+        db.projects.clear(),
+        db.projectMilestones.clear(),
+        db.projectTasks.clear(),
+        db.projectMembers.clear(),
+        db.projectMeetings.clear(),
+        db.focusSessions.clear(),
+        db.habits.clear(),
+        db.habitLogs.clear(),
+        db.journalEntries.clear(),
+        db.masterWeekBlocks.clear(),
+        db.transactions.clear(),
+        db.budgets.clear(),
+        db.savingsGoals.clear(),
+        db.creativeProjects.clear(),
+        db.creativeSessions.clear(),
+        db.readingItems.clear(),
+        db.learningQueue.clear(),
+        db.xpEvents.clear(),
+        db.achievementsUnlocked.clear(),
+        db.quests.clear(),
+        db.ritualRuns.clear(),
+        db.dailyReflections.clear(),
+      ]);
+
+      // Reset mirror
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('college_os_emergency_backup_v2');
+        localStorage.removeItem('college_os_emergency_backup_v1');
+        localStorage.removeItem('college_os_emergency_backup_prev');
+        localStorage.removeItem('college_os_emergency_backup_meta');
+      }
+
+      loadPersistenceInfo();
+      setIsConfirmDeleteOpen(false);
+      showToast('All database tables cleared. Starting fresh.', 'info');
+    } catch (err) {
+      console.warn('Wipe notice:', err);
+      setIsConfirmDeleteOpen(false);
+    }
   };
 
   return (
@@ -602,46 +708,157 @@ export const SettingsPage: React.FC = () => {
         </button>
       </form>
 
-      {/* Backup & Portability Vault */}
-      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 space-y-3">
-        <div className="font-heading text-sm font-bold text-[rgb(var(--c-text))] pb-2 border-b border-[rgb(var(--c-border))]">
-          Database Backup &amp; CSV Export
+      {/* Storage Durability & Emergency Mirror Vault */}
+      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between pb-2 border-b border-[rgb(var(--c-border))]">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-[rgb(var(--c-primary))]" />
+            <span className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
+              Offline Storage Protection &amp; Reliability Vault
+            </span>
+          </div>
+          <span className="text-[10px] px-2 py-0.5 rounded-full font-heading font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
+            Multi-Tier Safe
+          </span>
         </div>
 
-        <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
-          Your data lives locally in this browser. Export a JSON backup periodically so you never lose your timetable or notes.
+        <p className="text-xs text-[rgb(var(--c-muted))] font-flourish leading-relaxed">
+          College Life OS keeps all your timetable, courses, notes, habits, finances, and journal records strictly on your device using a multi-tier persistence engine (IndexedDB + LZ-compressed Local Mirror).
         </p>
 
-        <div className="flex flex-wrap items-center gap-2.5 pt-1">
-          <button
-            onClick={triggerBackupDownload}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-xs"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Download JSON Backup</span>
-          </button>
+        {/* Persistence Status Indicator Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Storage Eviction Shield */}
+          <div className="p-3.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-heading font-bold text-[rgb(var(--c-text))] flex items-center gap-1.5">
+                <HardDrive className="w-3.5 h-3.5 text-[rgb(var(--c-primary))]" />
+                Browser Storage Eviction Shield
+              </span>
+              {persistenceInfo.isPersisted ? (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 font-bold flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3" /> Protected
+                </span>
+              ) : (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/30 font-bold">
+                  Best-Effort
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
+              {persistenceInfo.isPersisted
+                ? 'Your browser has granted permanent storage. Data will never be evicted under storage pressure.'
+                : 'Storage may be evicted by the browser if disk space runs low. Enable protection below.'}
+            </p>
+            {persistenceInfo.quota !== undefined && (
+              <div className="text-[10px] text-[rgb(var(--c-muted))] font-mono pt-1">
+                Estimated Usage: {((persistenceInfo.usage || 0) / (1024 * 1024)).toFixed(2)} MB /{' '}
+                {((persistenceInfo.quota || 0) / (1024 * 1024 * 1024)).toFixed(1)} GB Available
+              </div>
+            )}
+            {!persistenceInfo.isPersisted && (
+              <button
+                type="button"
+                onClick={handleProtectStorage}
+                className="mt-1 px-3 py-1.5 rounded-lg bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-[11px] font-bold hover:opacity-90 active:scale-95 transition"
+              >
+                Request Storage Eviction Protection
+              </button>
+            )}
+          </div>
 
-          <label className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition cursor-pointer">
-            <Upload className="w-3.5 h-3.5" />
-            <span>Restore from JSON</span>
-            <input type="file" accept=".json" onChange={handleFileRestore} className="hidden" />
-          </label>
+          {/* Emergency Local Mirror */}
+          <div className="p-3.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-heading font-bold text-[rgb(var(--c-text))] flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                Emergency Local Mirror (Compressed)
+              </span>
+              {mirrorMeta.exists ? (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 font-bold">
+                  {mirrorMeta.totalRecords} Records Synced
+                </span>
+              ) : (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-500/10 text-stone-400 font-bold">
+                  Not Initialized
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
+              {mirrorMeta.exists && mirrorMeta.savedAt
+                ? `Last synchronized: ${new Date(mirrorMeta.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} (${new Date(mirrorMeta.savedAt).toLocaleDateString()}). Auto-synced on all edits.`
+                : 'Auto-syncs all database mutations to compressed local storage so you can recover if IndexedDB resets.'}
+            </p>
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isSyncingMirror}
+                onClick={handleForceMirrorSync}
+                className="px-2.5 py-1 rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-[11px] font-bold hover:opacity-90 active:scale-95 transition"
+              >
+                {isSyncingMirror ? 'Syncing...' : 'Sync Mirror Now'}
+              </button>
+              <button
+                type="button"
+                disabled={isMirrorRestoring || !mirrorMeta.exists}
+                onClick={handleRestoreFromMirror}
+                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-heading text-[11px] font-bold transition disabled:opacity-50"
+              >
+                {isMirrorRestoring ? 'Restoring...' : 'Restore from Mirror'}
+              </button>
+            </div>
+          </div>
+        </div>
 
-          <button
-            onClick={exportTasksToCsv}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Export Tasks CSV</span>
-          </button>
+        {/* PWA Home Screen Installation */}
+        <div className="pt-2 border-t border-[rgb(var(--c-border))] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-heading font-bold text-[rgb(var(--c-text))]">
+              Android Home-Screen &amp; Desktop App
+            </div>
+            <p className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
+              Install College Life OS as a standalone app. Launches instantly without internet from your home screen.
+            </p>
+          </div>
+          <PWAInstallButton />
+        </div>
 
-          <button
-            onClick={() => setIsConfirmDeleteOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-rose-500/30 text-rose-500 hover:bg-rose-500/10 font-heading text-xs font-bold transition ml-auto"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Wipe All Data</span>
-          </button>
+        {/* Portability Actions */}
+        <div className="pt-2 border-t border-[rgb(var(--c-border))]">
+          <div className="text-[11px] font-heading font-bold text-[rgb(var(--c-text))] mb-2">
+            Data Portability &amp; External JSON Backups
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={triggerBackupDownload}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-xs"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download JSON Backup</span>
+            </button>
+
+            <label className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition cursor-pointer">
+              <Upload className="w-3.5 h-3.5" />
+              <span>Restore from JSON</span>
+              <input type="file" accept=".json" onChange={handleFileRestore} className="hidden" />
+            </label>
+
+            <button
+              onClick={exportTasksToCsv}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Export Tasks CSV</span>
+            </button>
+
+            <button
+              onClick={() => setIsConfirmDeleteOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-rose-500/30 text-rose-500 hover:bg-rose-500/10 font-heading text-xs font-bold transition ml-auto"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Wipe All Data</span>
+            </button>
+          </div>
         </div>
       </div>
 

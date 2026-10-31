@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { db } from '../db/db';
+import { db, saveEmergencyBackup } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../store/uiStore';
 import { JournalEntry } from '../types';
@@ -146,6 +146,7 @@ export const JournalPage: React.FC = () => {
 
   // Currently editing entry ID (null means a brand-new draft entry)
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
+  const activeEntryIdRef = useRef<string | null>(null);
 
   // Editor Form Fields
   const [entryTitle, setEntryTitle] = useState('');
@@ -298,9 +299,11 @@ export const JournalPage: React.FC = () => {
       const nowIso = new Date().toISOString();
       const currentWords = content.trim() ? content.trim().split(/\s+/).length : 0;
 
-      if (activeEntryId) {
-        // Update existing entry
-        await db.journalEntries.update(activeEntryId, {
+      const currentTargetId = activeEntryIdRef.current || activeEntryId;
+
+      if (currentTargetId) {
+        // Update existing entry with safety fallback to put if ID was not in DB
+        const updatedCount = await db.journalEntries.update(currentTargetId, {
           title: entryTitle.trim() || undefined,
           date: entryDate,
           content: content.trim(),
@@ -313,9 +316,29 @@ export const JournalPage: React.FC = () => {
           isFavorite,
           updatedAt: nowIso,
         });
+
+        if (updatedCount === 0) {
+          // If update found 0 rows (e.g. pending write or race), put it directly
+          await db.journalEntries.put({
+            id: currentTargetId,
+            title: entryTitle.trim() || undefined,
+            date: entryDate,
+            content: content.trim(),
+            moodScore: mood,
+            energyScore: energy,
+            wordCount: currentWords,
+            tags: activeTags,
+            promptQuestion: appliedPromptQuestion,
+            isPinned,
+            isFavorite,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          });
+        }
       } else {
-        // Create new entry and establish ID
+        // Create new entry and establish ID immediately in both ref and state
         const newId = generateId();
+        activeEntryIdRef.current = newId;
         setActiveEntryId(newId);
         await db.journalEntries.add({
           id: newId,
@@ -337,6 +360,7 @@ export const JournalPage: React.FC = () => {
       setAutosaveStatus('saved');
       setLastSavedTimestamp(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
       isDirtyRef.current = false;
+      saveEmergencyBackup();
     } catch (err) {
       console.error('Autosave error:', err);
       setAutosaveStatus('failed');
@@ -370,17 +394,36 @@ export const JournalPage: React.FC = () => {
     return () => clearTimeout(autosaveTimeoutRef.current);
   }, [content, entryTitle, entryDate, mood, energy, activeTags, isPinned, isFavorite, activeView, executeAutosave]);
 
-  // Safe navigation warning if unsaved
+  // Safe navigation & mobile lifecycle flushing (handles tab close, app switch, phone lock)
   useEffect(() => {
+    const handleFlush = () => {
+      if (isDirtyRef.current) {
+        executeAutosave();
+      }
+    };
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isDirtyRef.current) {
+        executeAutosave();
         e.preventDefault();
         e.returnValue = '';
       }
     };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden' && isDirtyRef.current) {
+        executeAutosave();
+      }
+    };
+
     window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, []);
+    window.addEventListener('pagehide', handleFlush);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleFlush);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [executeAutosave]);
 
   // Action: Start Brand-New Entry
   const handleStartNewEntry = () => {
@@ -388,6 +431,7 @@ export const JournalPage: React.FC = () => {
     if (isDirtyRef.current) {
       executeAutosave();
     }
+    activeEntryIdRef.current = null;
     setActiveEntryId(null);
     setEntryTitle('');
     setContent('');
@@ -409,6 +453,7 @@ export const JournalPage: React.FC = () => {
     if (isDirtyRef.current) {
       executeAutosave();
     }
+    activeEntryIdRef.current = entry.id;
     setActiveEntryId(entry.id);
     setEntryTitle(entry.title || '');
     setContent(entry.content || '');
@@ -534,10 +579,10 @@ export const JournalPage: React.FC = () => {
 
   // Action: Restore from Trash
   const handleRestoreFromTrash = async (entry: JournalEntry) => {
-    await db.journalEntries.update(entry.id, {
-      deletedAt: undefined,
-      updatedAt: new Date().toISOString(),
-    });
+    const copy = { ...entry };
+    delete copy.deletedAt;
+    copy.updatedAt = new Date().toISOString();
+    await db.journalEntries.put(copy);
     showToast(`Entry "${entry.title || entry.date}" restored to chronicle.`, 'success');
   };
 

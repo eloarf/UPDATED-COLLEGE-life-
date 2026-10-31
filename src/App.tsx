@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useUiStore } from './store/uiStore';
-import { initializeDatabase, db } from './db/db';
+import { initializeDatabase, db, saveEmergencyBackup } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { applyTheme } from './theme/themeUtils';
 
@@ -15,6 +15,7 @@ import { QuickAddModal } from './components/common/QuickAddModal';
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { ThemeSwitcherModal } from './components/common/ThemeSwitcherModal';
 import { ToastContainer } from './components/common/ToastContainer';
+import { OfflineIndicator } from './components/common/OfflineIndicator';
 
 // Pages
 import { LobbyPage } from './pages/LobbyPage';
@@ -39,11 +40,33 @@ import { SettingsPage } from './pages/SettingsPage';
 import { StatisticsPage } from './pages/StatisticsPage';
 
 export default function App() {
-  const { currentRoute, setCurrentRoute } = useUiStore();
+  const { currentRoute, setCurrentRoute, showToast } = useUiStore();
   const settings = useLiveQuery(() => db.settings.get('current_user'));
 
   useEffect(() => {
-    initializeDatabase();
+    initializeDatabase()
+      .then((res) => {
+        if (res?.recovered) {
+          showToast(`🛡️ Restored ${res.recoveredCount} items from emergency local mirror!`, 'success');
+        }
+      })
+      .catch((err) => {
+        console.error('[CollegeLifeOS] Database init notice:', err);
+      });
+
+    // Flush emergency backup on page hide / app switch
+    const handleFlushEmergencyBackup = () => {
+      saveEmergencyBackup(true);
+    };
+
+    window.addEventListener('pagehide', handleFlushEmergencyBackup);
+    window.addEventListener('beforeunload', handleFlushEmergencyBackup);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        saveEmergencyBackup(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     // Hash sync
     const handleHashChange = () => {
@@ -56,8 +79,13 @@ export default function App() {
       window.location.hash = '#/';
     }
 
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [setCurrentRoute]);
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('pagehide', handleFlushEmergencyBackup);
+      window.removeEventListener('beforeunload', handleFlushEmergencyBackup);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [setCurrentRoute, showToast]);
 
   useEffect(() => {
     if (settings?.theme) {
@@ -138,6 +166,7 @@ export default function App() {
       <GlobalSearchModal />
       <ThemeSwitcherModal />
       <ToastContainer />
+      <OfflineIndicator />
     </div>
   );
 }

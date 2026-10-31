@@ -4,7 +4,8 @@ import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { calculateLevelFromTotalXp } from '../../services/rpgService';
 import { getEthiopicDateString, getTimeGreeting } from '../../utils/dateUtils';
-import { Plus, Search, Palette, Bell, Sparkles } from 'lucide-react';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
+import { Plus, Search, Palette, Bell, Sparkles, WifiOff } from 'lucide-react';
 
 export const TopBar: React.FC = () => {
   const { setCurrentRoute, setQuickAddOpen, setSearchOpen, setThemeSwitcherOpen, showToast } = useUiStore();
@@ -22,6 +23,8 @@ export const TopBar: React.FC = () => {
     setGreeting(getTimeGreeting(userName));
     setEthiopicDate(getEthiopicDateString());
   }, [userName]);
+
+  const { isOnline } = useOnlineStatus();
 
   return (
     <header className="sticky top-0 z-30 px-4 py-3 sm:px-8 bg-[rgb(var(--c-surface))] border-b border-[rgb(var(--c-border))] shadow-xs transition-colors">
@@ -60,6 +63,16 @@ export const TopBar: React.FC = () => {
               {ethiopicDate}
             </div>
           </div>
+
+          {!isOnline && (
+            <span
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-heading font-bold"
+              title="You are currently offline. Changes are saved locally on your device."
+            >
+              <WifiOff className="w-3 h-3 text-amber-500" />
+              <span>Offline</span>
+            </span>
+          )}
         </div>
 
         {/* Right: Quick Actions */}

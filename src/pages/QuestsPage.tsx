@@ -13,35 +13,33 @@ import {
 } from '../services/rpgService';
 import { generateId } from '../utils/idGenerator';
 import {
-  CheckSquare,
   Plus,
   Circle,
   CheckCircle2,
   Calendar,
   Clock,
-  Smartphone,
-  Laptop,
   Trash2,
   ChevronDown,
   ChevronRight,
-  Sparkles,
-  AlertCircle,
-  X,
   ChevronLeft,
   ShieldCheck,
-  Award,
+  Edit3,
+  X,
+  Search,
+  Check,
 } from 'lucide-react';
 
 export const QuestsPage: React.FC = () => {
   const { showToast } = useUiStore();
   const todayKey = getTodayKey();
 
-  const [activeTab, setActiveTab] = useState<'today' | 'by_day' | 'upcoming' | 'overdue' | 'done'>('today');
+  const [activeTab, setActiveTab] = useState<'today' | 'upcoming' | 'by_day' | 'overdue' | 'done'>('today');
   const [selectedDay, setSelectedDay] = useState<string>(todayKey);
+  const [searchQuery, setSearchQuery] = useState('');
   const [quickInput, setQuickInput] = useState('');
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
 
-  // Add Quest Modal State
+  // Add Task Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [formTitle, setFormTitle] = useState('');
   const [formDate, setFormDate] = useState(todayKey);
@@ -49,13 +47,20 @@ export const QuestsPage: React.FC = () => {
   const [formPriority, setFormPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [formEffort, setFormEffort] = useState<'small' | 'medium' | 'large'>('medium');
   const [formDueTime, setFormDueTime] = useState('');
-  const [formContextTag, setFormContextTag] = useState<'any' | 'phone' | 'laptop'>('any');
   const [formNotes, setFormNotes] = useState('');
 
-  // Completion Confirmation State
-  const [questToConfirm, setQuestToConfirm] = useState<Task | null>(null);
-  // Undo Confirmation State
-  const [questToUndo, setQuestToUndo] = useState<Task | null>(null);
+  // Edit Task Modal State
+  const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDate, setEditDate] = useState(todayKey);
+  const [editCourseId, setEditCourseId] = useState('');
+  const [editPriority, setEditPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [editEffort, setEditEffort] = useState<'small' | 'medium' | 'large'>('medium');
+  const [editDueTime, setEditDueTime] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+
+  // Delete Confirmation State
+  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
 
   const courses = useLiveQuery(() => db.courses.toArray()) || [];
   const tasks = useLiveQuery(() => db.tasks.toArray()) || [];
@@ -63,21 +68,33 @@ export const QuestsPage: React.FC = () => {
   const courseMap = new Map<string, Course>();
   courses.forEach((c) => courseMap.set(c.id, c));
 
-  // Filter tasks based on activeTab
-  let filteredTasks = tasks;
-  if (activeTab === 'today') {
-    filteredTasks = tasks.filter((t) => t.status !== 'done' && (t.dueDate === todayKey || !t.dueDate));
-  } else if (activeTab === 'by_day') {
-    filteredTasks = tasks.filter((t) => t.dueDate === selectedDay);
-  } else if (activeTab === 'upcoming') {
-    filteredTasks = tasks.filter((t) => t.status !== 'done' && t.dueDate && t.dueDate > todayKey);
-  } else if (activeTab === 'overdue') {
-    filteredTasks = tasks.filter((t) => t.status !== 'done' && t.dueDate && t.dueDate < todayKey);
-  } else if (activeTab === 'done') {
-    filteredTasks = tasks.filter((t) => t.status === 'done');
-  }
+  // Filter tasks based on activeTab and search query
+  const filteredTasks = tasks.filter((t) => {
+    // Search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchTitle = t.title.toLowerCase().includes(q);
+      const matchNotes = t.notes?.toLowerCase().includes(q);
+      const course = t.courseId ? courseMap.get(t.courseId) : null;
+      const matchCourse = course ? (course.name.toLowerCase().includes(q) || course.code.toLowerCase().includes(q)) : false;
+      if (!matchTitle && !matchNotes && !matchCourse) return false;
+    }
 
-  // Open Add Quest Modal initialized to the active tab's date
+    if (activeTab === 'today') {
+      return t.status !== 'done' && (t.dueDate === todayKey || !t.dueDate);
+    } else if (activeTab === 'upcoming') {
+      return t.status !== 'done' && t.dueDate && t.dueDate > todayKey;
+    } else if (activeTab === 'by_day') {
+      return t.dueDate === selectedDay;
+    } else if (activeTab === 'overdue') {
+      return t.status !== 'done' && t.dueDate && t.dueDate < todayKey;
+    } else if (activeTab === 'done') {
+      return t.status === 'done';
+    }
+    return true;
+  });
+
+  // Open Add Task Modal
   const openAddModal = (initialDate?: string) => {
     const targetDate = initialDate || (activeTab === 'by_day' ? selectedDay : todayKey);
     setFormDate(targetDate);
@@ -86,9 +103,20 @@ export const QuestsPage: React.FC = () => {
     setFormPriority('medium');
     setFormEffort('medium');
     setFormDueTime('');
-    setFormContextTag('any');
     setFormNotes('');
     setIsAddModalOpen(true);
+  };
+
+  // Open Edit Task Modal
+  const openEditModal = (task: Task) => {
+    setTaskToEdit(task);
+    setEditTitle(task.title);
+    setEditDate(task.dueDate || todayKey);
+    setEditCourseId(task.courseId || '');
+    setEditPriority(task.priority || 'medium');
+    setEditEffort(task.effort || 'medium');
+    setEditDueTime(task.dueTime || '');
+    setEditNotes(task.notes || '');
   };
 
   // Quick Add for today or selected day
@@ -113,20 +141,19 @@ export const QuestsPage: React.FC = () => {
     });
 
     setQuickInput('');
-    showToast(`Quest added for ${formatDisplayDate(targetDate)}! (+30 XP potential)`, 'success');
+    showToast(`Task added for ${formatDisplayDate(targetDate)}`, 'success');
   };
 
-  // Full Quest Form Submission
-  const handleCreateQuest = async (e: React.FormEvent) => {
+  // Full Task Form Submission
+  const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formTitle.trim()) {
-      showToast('Please enter a quest title.', 'info');
+      showToast('Please enter a task title.', 'info');
       return;
     }
 
     const taskId = generateId();
     const now = new Date().toISOString();
-    const potentialXp = getQuestXpReward({ effort: formEffort, priority: formPriority });
 
     await db.tasks.add({
       id: taskId,
@@ -136,7 +163,7 @@ export const QuestsPage: React.FC = () => {
       courseId: formCourseId || undefined,
       priority: formPriority,
       effort: formEffort,
-      contextTag: formContextTag,
+      contextTag: 'any',
       notes: formNotes.trim() || undefined,
       status: 'todo',
       createdAt: now,
@@ -144,85 +171,86 @@ export const QuestsPage: React.FC = () => {
     });
 
     setIsAddModalOpen(false);
-    showToast(`Quest commissioned for ${formatDisplayDate(formDate || todayKey)} (+${potentialXp} XP on victory)!`, 'success');
+    showToast(`Task created for ${formatDisplayDate(formDate || todayKey)}`, 'success');
   };
 
-  // Quest Complete Click -> Opens confirmation modal
-  const handleInitiateComplete = (task: Task) => {
-    setQuestToConfirm(task);
-  };
+  // Save Task Edits
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskToEdit || !editTitle.trim()) return;
 
-  // Confirm Completion -> Awards XP idempotently
-  const handleConfirmComplete = async () => {
-    if (!questToConfirm) return;
-    const task = questToConfirm;
     const now = new Date().toISOString();
-    const xpAmount = getQuestXpReward(task);
-
-    // Update status to done
-    await db.tasks.update(task.id, {
-      status: 'done',
-      completedAt: now,
+    await db.tasks.update(taskToEdit.id, {
+      title: editTitle.trim(),
+      dueDate: editDate || todayKey,
+      dueTime: editDueTime.trim() || undefined,
+      courseId: editCourseId || undefined,
+      priority: editPriority,
+      effort: editEffort,
+      notes: editNotes.trim() || undefined,
       updatedAt: now,
     });
 
-    // Award XP idempotently with safe state tracking
-    const awarded = await awardXp({
-      source: 'task',
-      sourceId: task.id,
-      amount: xpAmount,
-      stat: 'discipline',
-      dayKey: task.dueDate || todayKey,
-    });
-
-    if (awarded) {
-      triggerLevelUpConfetti();
-      showToast(`Quest completed! +${xpAmount} XP added to your ledger.`, 'success');
-    } else {
-      showToast(`Quest completed!`, 'success');
-    }
-
-    setQuestToConfirm(null);
+    setTaskToEdit(null);
+    showToast('Task updated successfully', 'success');
   };
 
-  // Undo Completion Click -> Opens confirmation modal
-  const handleInitiateUndo = (task: Task) => {
-    setQuestToUndo(task);
-  };
-
-  // Confirm Undo -> Reverses XP exactly once
-  const handleConfirmUndo = async () => {
-    if (!questToUndo) return;
-    const task = questToUndo;
+  // Instant 1-Click Toggle: Direct, non-blocking with instant feedback
+  const handleToggleTask = async (task: Task) => {
+    const isDone = task.status === 'done';
+    const now = new Date().toISOString();
     const xpAmount = getQuestXpReward(task);
 
-    await db.tasks.update(task.id, {
-      status: 'todo',
-      completedAt: undefined,
-      updatedAt: new Date().toISOString(),
-    });
-
-    await reverseXp('task', task.id);
-    showToast(`Quest returned to active ledger. -${xpAmount} XP reversed.`, 'info');
-    setQuestToUndo(null);
+    if (isDone) {
+      // Reopen task
+      await db.tasks.update(task.id, {
+        status: 'todo',
+        completedAt: undefined,
+        updatedAt: now,
+      });
+      await reverseXp('task', task.id);
+      showToast(`Task reopened (-${xpAmount} XP)`, 'info');
+    } else {
+      // Complete task
+      await db.tasks.update(task.id, {
+        status: 'done',
+        completedAt: now,
+        updatedAt: now,
+      });
+      const awarded = await awardXp({
+        source: 'task',
+        sourceId: task.id,
+        amount: xpAmount,
+        stat: 'discipline',
+        dayKey: task.dueDate || todayKey,
+      });
+      if (awarded) {
+        triggerLevelUpConfetti();
+        showToast(`Task completed! +${xpAmount} XP`, 'success');
+      } else {
+        showToast('Task completed!', 'success');
+      }
+    }
   };
 
-  // Delete Task -> Cleanly reverses XP if it was done
-  const handleDeleteTask = async (task: Task) => {
-    if (task.status === 'done') {
-      await reverseXp('task', task.id);
+  // Delete Task
+  const handleConfirmDelete = async () => {
+    if (!taskToDelete) return;
+    if (taskToDelete.status === 'done') {
+      await reverseXp('task', taskToDelete.id);
     }
-    await db.tasks.delete(task.id);
-    showToast('Quest removed from ledger.', 'info');
+    await db.tasks.delete(taskToDelete.id);
+    setTaskToDelete(null);
+    showToast('Task deleted', 'info');
   };
 
   // Reconcile XP Ledger
   const handleReconcile = async () => {
     const res = await reconcileXpLedger();
     if (res.reversedCount > 0) {
-      showToast(`XP Ledger reconciled: removed ${res.reversedCount} orphaned awards. Current Total: ${res.reconciledTotalXp} XP`, 'success');
+      showToast(`XP Ledger synchronized (${res.reversedCount} orphaned entries corrected). Total: ${res.reconciledTotalXp} XP`, 'success');
     } else {
-      showToast(`XP Ledger verified: all ${res.totalValidEvents} events match completed quests (${res.reconciledTotalXp} XP total).`, 'info');
+      showToast(`XP Ledger verified: all records intact (${res.reconciledTotalXp} XP total).`, 'info');
     }
   };
 
@@ -231,81 +259,103 @@ export const QuestsPage: React.FC = () => {
     setSelectedDay(addDaysToKey(selectedDay, days));
   };
 
+  const todayCount = tasks.filter((t) => t.status !== 'done' && (t.dueDate === todayKey || !t.dueDate)).length;
+  const upcomingCount = tasks.filter((t) => t.status !== 'done' && t.dueDate && t.dueDate > todayKey).length;
+  const overdueCount = tasks.filter((t) => t.status !== 'done' && t.dueDate && t.dueDate < todayKey).length;
+  const doneCount = tasks.filter((t) => t.status === 'done').length;
+
   return (
-    <div className="space-y-4 pb-20 animate-pop">
-      {/* Header */}
-      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-5 sm:p-6 relative overflow-hidden shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-4 pb-20 animate-pop max-w-4xl mx-auto">
+      {/* Header & Controls */}
+      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-4 sm:p-6 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="text-[10px] uppercase font-heading tracking-widest text-[#7A2E4A] font-bold flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>University Quest Log &amp; Ledger</span>
-            </div>
-            <h2 className="text-xl sm:text-2xl font-heading font-bold text-[rgb(var(--c-text))] mt-0.5">
-              Daily Quests, Assignments &amp; Drills
-            </h2>
-            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
-              Ticket stub receipts • Verified XP payouts • Forgiving rollover (no shame alarms)
+            <h1 className="text-xl sm:text-2xl font-heading font-bold text-[rgb(var(--c-text))]">
+              Tasks &amp; Assignments
+            </h1>
+            <p className="text-xs text-[rgb(var(--c-muted))] mt-0.5">
+              Organize daily coursework, readings, and personal tasks with instant completion.
             </p>
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
             <button
               onClick={handleReconcile}
-              className="px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] hover:border-[#7A2E4A] font-heading text-xs font-semibold transition active:scale-95 flex items-center gap-1.5"
-              title="Audit and verify XP ledger integrity against completed quests"
+              className="min-h-[44px] px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] text-xs font-heading font-semibold transition active:scale-95 flex items-center gap-1.5"
+              title="Audit and verify XP ledger integrity"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               <span className="hidden xs:inline">Verify XP</span>
             </button>
             <button
               onClick={() => openAddModal()}
-              className="px-4 py-2.5 rounded-xl bg-[#7A2E4A] text-white font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-xs flex items-center gap-1.5"
+              className="min-h-[44px] px-4 py-2 rounded-xl bg-[#7A2E4A] text-white font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-xs flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Quest</span>
+              <span>Add Task</span>
             </button>
           </div>
         </div>
 
-        {/* Quick Add Bar */}
-        <form onSubmit={handleQuickAdd} className="mt-4 flex items-center gap-2">
-          <input
-            type="text"
-            value={quickInput}
-            onChange={(e) => setQuickInput(e.target.value)}
-            placeholder={`Quick-add assignment or quest for ${activeTab === 'by_day' ? formatDisplayDate(selectedDay) : 'today'}... (Press Enter)`}
-            className="flex-1 px-4 py-2.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[#7A2E4A]"
-          />
-          <button
-            type="submit"
-            className="px-4 py-2.5 rounded-xl bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] border border-[rgb(var(--c-border))] font-heading text-xs font-bold hover:bg-[#7A2E4A] hover:text-white active:scale-95 transition shadow-xs flex items-center gap-1 shrink-0"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Quick</span>
-          </button>
-        </form>
+        {/* Quick Add Bar & Search */}
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <form onSubmit={handleQuickAdd} className="sm:col-span-2 flex items-center gap-2">
+            <input
+              type="text"
+              value={quickInput}
+              onChange={(e) => setQuickInput(e.target.value)}
+              placeholder={`Quick add task for ${activeTab === 'by_day' ? formatDisplayDate(selectedDay) : 'today'}... (Press Enter)`}
+              className="min-h-[44px] flex-1 px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[#7A2E4A]"
+            />
+            <button
+              type="submit"
+              className="min-h-[44px] px-4 py-2 rounded-xl bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] border border-[rgb(var(--c-border))] font-heading text-xs font-bold hover:bg-[#7A2E4A] hover:text-white active:scale-95 transition shadow-xs flex items-center gap-1 shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add</span>
+            </button>
+          </form>
 
-        {/* Tabs */}
-        <div className="flex items-center gap-2 mt-4 border-b border-[rgb(var(--c-border))] pb-1 overflow-x-auto scrollbar-none">
+          <div className="relative flex items-center">
+            <Search className="w-4 h-4 text-[rgb(var(--c-muted))] absolute left-3 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search tasks or courses..."
+              className="min-h-[44px] w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[#7A2E4A]"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 p-1 text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))]"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Tab Filters */}
+        <div className="flex items-center gap-1.5 mt-4 border-b border-[rgb(var(--c-border))] pb-1 overflow-x-auto scrollbar-none">
           {[
-            { key: 'today', label: 'Today', count: tasks.filter((t) => t.status !== 'done' && (t.dueDate === todayKey || !t.dueDate)).length },
+            { key: 'today', label: 'Today', count: todayCount },
+            { key: 'upcoming', label: 'Upcoming', count: upcomingCount },
             { key: 'by_day', label: 'By Day', count: tasks.filter((t) => t.dueDate === selectedDay).length },
-            { key: 'upcoming', label: 'Upcoming', count: tasks.filter((t) => t.status !== 'done' && t.dueDate && t.dueDate > todayKey).length },
-            { key: 'overdue', label: 'Rolled Over', count: tasks.filter((t) => t.status !== 'done' && t.dueDate && t.dueDate < todayKey).length },
-            { key: 'done', label: 'Conquered', count: tasks.filter((t) => t.status === 'done').length },
+            { key: 'overdue', label: 'Overdue', count: overdueCount },
+            { key: 'done', label: 'Completed', count: doneCount },
           ].map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as any)}
-              className={`px-3 py-1.5 text-xs font-heading font-bold rounded-xl transition whitespace-nowrap flex items-center gap-1.5 ${
+              className={`min-h-[40px] px-3 py-1.5 text-xs font-heading font-bold rounded-xl transition whitespace-nowrap flex items-center gap-1.5 ${
                 activeTab === tab.key
                   ? 'bg-[#7A2E4A] text-white shadow-xs'
                   : 'text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))]'
               }`}
             >
               <span>{tab.label}</span>
-              <span className="text-[10px] opacity-80 px-1.5 py-0.2 rounded-full bg-black/10">
+              <span className="text-[10px] opacity-80 px-1.5 py-0.5 rounded-full bg-black/10">
                 {tab.count}
               </span>
             </button>
@@ -314,11 +364,11 @@ export const QuestsPage: React.FC = () => {
 
         {/* By Day Date Navigator Banner */}
         {activeTab === 'by_day' && (
-          <div className="mt-3 p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="mt-3 p-3 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => shiftSelectedDay(-1)}
-                className="p-1 rounded-lg border border-[rgb(var(--c-border))] hover:bg-[rgb(var(--c-surface))] transition"
+                className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg border border-[rgb(var(--c-border))] hover:bg-[rgb(var(--c-surface))] transition"
                 title="Previous Day"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -327,47 +377,49 @@ export const QuestsPage: React.FC = () => {
                 type="date"
                 value={selectedDay}
                 onChange={(e) => e.target.value && setSelectedDay(e.target.value)}
-                className="px-2.5 py-1 text-xs font-heading font-bold rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface))] text-[rgb(var(--c-text))]"
+                className="min-h-[40px] px-2.5 py-1 text-xs font-heading font-bold rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface))] text-[rgb(var(--c-text))]"
               />
               <button
                 onClick={() => shiftSelectedDay(1)}
-                className="p-1 rounded-lg border border-[rgb(var(--c-border))] hover:bg-[rgb(var(--c-surface))] transition"
+                className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg border border-[rgb(var(--c-border))] hover:bg-[rgb(var(--c-surface))] transition"
                 title="Next Day"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setSelectedDay(todayKey)}
-                className="px-2 py-1 text-[11px] font-heading font-semibold text-[#7A2E4A] hover:underline"
+                className="min-h-[40px] px-3 py-1 text-xs font-heading font-semibold text-[#7A2E4A] hover:underline"
               >
                 Today
               </button>
             </div>
-            <div className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
-              Showing schedule for <span className="font-bold text-[rgb(var(--c-text))]">{formatDisplayDate(selectedDay)}</span>
+            <div className="text-xs text-[rgb(var(--c-muted))]">
+              Showing <span className="font-bold text-[rgb(var(--c-text))]">{formatDisplayDate(selectedDay)}</span>
             </div>
           </div>
         )}
       </div>
 
       {/* Task List */}
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         {filteredTasks.length === 0 ? (
-          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-10 text-center space-y-3">
-            <div className="text-xs text-[rgb(var(--c-muted))] font-flourish">
-              {activeTab === 'done'
-                ? 'No conquered quests yet. Check off an active quest above to earn XP receipts!'
+          <div className="bg-[rgb(var(--c-surface))] rounded-2xl p-8 text-center space-y-3 border border-[rgb(var(--c-border))]">
+            <p className="text-xs text-[rgb(var(--c-muted))]">
+              {searchQuery
+                ? `No tasks match "${searchQuery}".`
+                : activeTab === 'done'
+                ? 'No completed tasks yet. Tap the circle on any task to complete it!'
                 : activeTab === 'by_day'
-                ? `No quests logged for ${formatDisplayDate(selectedDay)}. Create one to keep your momentum!`
-                : 'No active quests under this tab. Enjoy your university momentum or commission a new quest!'}
-            </div>
-            {activeTab !== 'done' && (
+                ? `No tasks scheduled for ${formatDisplayDate(selectedDay)}.`
+                : 'No active tasks in this view. All caught up!'}
+            </p>
+            {activeTab !== 'done' && !searchQuery && (
               <button
                 onClick={() => openAddModal(activeTab === 'by_day' ? selectedDay : todayKey)}
-                className="px-4 py-2 rounded-xl bg-[#7A2E4A] text-white font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition inline-flex items-center gap-1.5 shadow-xs"
+                className="min-h-[44px] px-4 py-2 rounded-xl bg-[#7A2E4A] text-white font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition inline-flex items-center gap-1.5 shadow-xs"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Add Quest for {activeTab === 'by_day' ? formatDisplayDate(selectedDay) : 'Today'}</span>
+                <span>Create Task</span>
               </button>
             )}
           </div>
@@ -382,30 +434,31 @@ export const QuestsPage: React.FC = () => {
             return (
               <div
                 key={task.id}
-                className={`ticket-cutout ticket-border rounded-2xl p-3.5 bg-[rgb(var(--c-surface))] transition hover:border-[#7A2E4A] ${
+                className={`rounded-2xl p-3.5 bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] transition hover:border-[#7A2E4A] ${
                   isDone ? 'opacity-70 bg-[rgb(var(--c-surface2))]/40' : ''
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3 min-w-0 flex-1">
-                    {/* Toggle Button */}
+                    {/* Instant 1-Click Toggle: 44px touch target on mobile */}
                     <button
-                      onClick={() => (isDone ? handleInitiateUndo(task) : handleInitiateComplete(task))}
-                      className="mt-0.5 text-[#7A2E4A] shrink-0 hover:scale-110 active:scale-95 transition focus:outline-none"
-                      title={isDone ? 'Undo completion (reverses XP)' : 'Confirm completion (+XP)'}
+                      onClick={() => handleToggleTask(task)}
+                      className="min-h-[44px] min-w-[44px] -m-2 flex items-center justify-center text-[#7A2E4A] shrink-0 transition active:scale-90 focus:outline-none"
+                      title={isDone ? 'Click to reopen task' : 'Click to complete task (+XP)'}
+                      aria-label={isDone ? 'Reopen task' : 'Complete task'}
                     >
                       {isDone ? (
                         <CheckCircle2 className="w-5 h-5 text-emerald-500 fill-emerald-100 dark:fill-emerald-950" />
                       ) : (
-                        <Circle className="w-5 h-5 hover:text-emerald-600" />
+                        <Circle className="w-5 h-5 text-[rgb(var(--c-muted))] hover:text-emerald-600" />
                       )}
                     </button>
 
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 pt-0.5">
                       <div className="flex items-center gap-2 flex-wrap">
                         {course && (
                           <span
-                            className="text-[9px] font-heading font-bold px-2 py-0.5 rounded-full text-stone-900 shadow-2xs"
+                            className="text-[10px] font-heading font-bold px-2 py-0.5 rounded text-stone-900"
                             style={{ backgroundColor: course.color }}
                           >
                             {course.code}
@@ -419,23 +472,19 @@ export const QuestsPage: React.FC = () => {
                           {task.title}
                         </span>
                         {task.priority === 'high' && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300">
-                            High Priority (+10 XP)
+                          <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                            High Priority
                           </span>
                         )}
                         {isOverdue && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200">
-                            Rolled over from {formatDisplayDate(task.dueDate!)}
-                          </span>
-                        )}
-                        {isDone && task.completedAt && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300">
-                            Conquered
+                          <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                            Overdue ({formatDisplayDate(task.dueDate!)})
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-3 text-xs text-[rgb(var(--c-muted))] mt-1.5 flex-wrap">
+                      {/* Metadata Row */}
+                      <div className="flex items-center gap-2 text-xs text-[rgb(var(--c-muted))] mt-1 flex-wrap">
                         {task.dueDate && (
                           <span className="flex items-center gap-1">
                             <Calendar className="w-3 h-3 text-[#7A2E4A]" /> {formatDisplayDate(task.dueDate)}
@@ -446,16 +495,7 @@ export const QuestsPage: React.FC = () => {
                             <Clock className="w-3 h-3" /> {task.dueTime}
                           </span>
                         )}
-                        {task.contextTag === 'laptop' && (
-                          <span className="flex items-center gap-1">
-                            <Laptop className="w-3 h-3" /> Needs Laptop
-                          </span>
-                        )}
-                        {task.contextTag === 'phone' && (
-                          <span className="flex items-center gap-1">
-                            <Smartphone className="w-3 h-3" /> Phone-friendly
-                          </span>
-                        )}
+                        <span>·</span>
                         <span className="text-[10px] font-heading font-bold text-[rgb(var(--c-xp))]">
                           +{xpReward} XP
                         </span>
@@ -463,49 +503,40 @@ export const QuestsPage: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Actions: Edit, Delete, Expand */}
                   <div className="flex items-center gap-1 shrink-0">
                     <button
-                      onClick={() => setExpandedTask(isExpanded ? null : task.id)}
-                      className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
-                      title="Inspect details"
+                      onClick={() => openEditModal(task)}
+                      className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg text-[rgb(var(--c-muted))] hover:text-[#7A2E4A] hover:bg-[rgb(var(--c-surface2))]"
+                      title="Edit task"
                     >
-                      {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      <Edit3 className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleDeleteTask(task)}
-                      className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:text-rose-500 hover:bg-[rgb(var(--c-surface2))]"
-                      title="Delete quest"
+                      onClick={() => setTaskToDelete(task)}
+                      className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg text-[rgb(var(--c-muted))] hover:text-rose-500 hover:bg-[rgb(var(--c-surface2))]"
+                      title="Delete task"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
+                    {task.notes && (
+                      <button
+                        onClick={() => setExpandedTask(isExpanded ? null : task.id)}
+                        className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
+                        title={isExpanded ? 'Hide notes' : 'View notes'}
+                      >
+                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                {/* Subtasks / Notes Expansion */}
-                {isExpanded && (
-                  <div className="mt-3 pt-3 border-t border-[rgb(var(--c-border))] space-y-2 text-xs">
-                    {task.notes && (
-                      <div className="p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] font-flourish whitespace-pre-wrap">
-                        {task.notes}
-                      </div>
-                    )}
-                    {task.subtasks && task.subtasks.length > 0 && (
-                      <div className="space-y-1">
-                        <div className="text-[10px] font-heading uppercase text-[rgb(var(--c-muted))] font-bold">
-                          Subtasks Checklist
-                        </div>
-                        {task.subtasks.map((st) => (
-                          <div key={st.id} className="flex items-center gap-2 text-xs">
-                            <span className={st.done ? 'text-emerald-500' : 'text-stone-400'}>
-                              {st.done ? '✓' : '○'}
-                            </span>
-                            <span className={st.done ? 'line-through text-[rgb(var(--c-muted))]' : ''}>
-                              {st.title}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                {/* Notes Expansion */}
+                {isExpanded && task.notes && (
+                  <div className="mt-2.5 pt-2.5 border-t border-[rgb(var(--c-border))] text-xs">
+                    <div className="p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] whitespace-pre-wrap">
+                      {task.notes}
+                    </div>
                   </div>
                 )}
               </div>
@@ -514,19 +545,14 @@ export const QuestsPage: React.FC = () => {
         )}
       </div>
 
-      {/* MODAL 1: Add Quest Modal */}
+      {/* MODAL 1: Add Task Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="relative w-full max-w-lg bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] rounded-3xl shadow-2xl p-6 text-[rgb(var(--c-text))] space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="relative w-full max-w-lg bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5 sm:p-6 text-[rgb(var(--c-text))] space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
-              <div>
-                <div className="text-[10px] uppercase font-heading font-bold text-[#7A2E4A] tracking-wider">
-                  Grand Concierge Ledger
-                </div>
-                <h3 className="text-lg font-heading font-bold text-[rgb(var(--c-text))]">
-                  Commission New Quest
-                </h3>
-              </div>
+              <h2 className="text-base font-heading font-bold text-[rgb(var(--c-text))]">
+                New Task
+              </h2>
               <button
                 onClick={() => setIsAddModalOpen(false)}
                 className="p-1.5 rounded-lg text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
@@ -535,154 +561,99 @@ export const QuestsPage: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateQuest} className="space-y-4 text-xs">
-              {/* Title */}
+            <form onSubmit={handleCreateTask} className="space-y-4 text-xs">
               <div>
                 <label className="block font-heading font-bold mb-1">
-                  Quest Title <span className="text-rose-500">*</span>
+                  Task Title <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
-                  placeholder="e.g. Complete Circuit Analysis Lab Report 3"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[#7A2E4A]"
+                  placeholder="e.g. Complete Circuit Analysis Lab Report"
+                  className="min-h-[44px] w-full px-3.5 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[#7A2E4A]"
+                  autoFocus
                 />
               </div>
 
-              {/* Day & Time */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-heading font-bold mb-1">
-                    Scheduled Day <span className="text-rose-500">*</span>
-                  </label>
+                  <label className="block font-heading font-bold mb-1">Due Date</label>
                   <input
                     type="date"
                     required
                     value={formDate}
                     onChange={(e) => setFormDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
+                    className="min-h-[44px] w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                   />
                 </div>
                 <div>
-                  <label className="block font-heading font-bold mb-1">
-                    Due Time (Optional)
-                  </label>
+                  <label className="block font-heading font-bold mb-1">Due Time (Optional)</label>
                   <input
                     type="time"
                     value={formDueTime}
                     onChange={(e) => setFormDueTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
+                    className="min-h-[44px] w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                   />
                 </div>
               </div>
 
-              {/* Course Selection */}
-              <div>
-                <label className="block font-heading font-bold mb-1">
-                  Associated University Course (Optional)
-                </label>
-                <select
-                  value={formCourseId}
-                  onChange={(e) => setFormCourseId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                >
-                  <option value="">No Course (General Academic / Personal)</option>
-                  {courses.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.code} — {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Effort & XP Reward */}
-              <div>
-                <label className="block font-heading font-bold mb-1">
-                  Effort &amp; Base XP Reward
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { value: 'small', label: 'Small', xp: '+15 XP', desc: 'Quick drill (<30m)' },
-                    { value: 'medium', label: 'Medium', xp: '+30 XP', desc: 'Standard task (1-2h)' },
-                    { value: 'large', label: 'Large', xp: '+60 XP', desc: 'Major assignment' },
-                  ].map((eff) => (
-                    <button
-                      key={eff.value}
-                      type="button"
-                      onClick={() => setFormEffort(eff.value as any)}
-                      className={`p-2.5 rounded-xl border text-left transition ${
-                        formEffort === eff.value
-                          ? 'border-[#7A2E4A] bg-[#7A2E4A]/10 text-[rgb(var(--c-text))] ring-1 ring-[#7A2E4A]'
-                          : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))]'
-                      }`}
-                    >
-                      <div className="font-heading font-bold text-xs">{eff.label}</div>
-                      <div className="text-[10px] font-bold text-[rgb(var(--c-xp))]">{eff.xp}</div>
-                      <div className="text-[9px] opacity-70 mt-0.5">{eff.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Priority & Device Context */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-heading font-bold mb-1">Course (Optional)</label>
+                  <select
+                    value={formCourseId}
+                    onChange={(e) => setFormCourseId(e.target.value)}
+                    className="min-h-[44px] w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
+                  >
+                    <option value="">General / Personal</option>
+                    {courses.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.code} — {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div>
                   <label className="block font-heading font-bold mb-1">Priority</label>
                   <select
                     value={formPriority}
                     onChange={(e) => setFormPriority(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
+                    className="min-h-[44px] w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
                   >
                     <option value="low">Low Priority</option>
                     <option value="medium">Medium Priority</option>
-                    <option value="high">High Priority (+10 XP bonus)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-heading font-bold mb-1">Device Context</label>
-                  <select
-                    value={formContextTag}
-                    onChange={(e) => setFormContextTag(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                  >
-                    <option value="any">Any Device (Flexible)</option>
-                    <option value="phone">Phone-friendly (Dorm/Mobile)</option>
-                    <option value="laptop">Needs Laptop (Studio/PC)</option>
+                    <option value="high">High Priority</option>
                   </select>
                 </div>
               </div>
 
-              {/* Notes */}
               <div>
-                <label className="block font-heading font-bold mb-1">
-                  Quest Notes / Submission Instructions
-                </label>
+                <label className="block font-heading font-bold mb-1">Notes / Instructions</label>
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
-                  placeholder="Reference pages, rubric requirements, partner notes..."
+                  placeholder="Reference page numbers, partner names, instructions..."
                   className="w-full px-3.5 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[#7A2E4A]"
                 />
               </div>
 
-              {/* Submit Buttons */}
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-[rgb(var(--c-border))]">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
+                  className="min-h-[44px] px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#7A2E4A] text-white font-heading font-bold hover:opacity-90 active:scale-95 transition shadow-xs flex items-center gap-1.5"
+                  className="min-h-[44px] px-5 py-2 rounded-xl bg-[#7A2E4A] text-white font-heading font-bold hover:opacity-90 active:scale-95 transition shadow-xs flex items-center gap-1.5"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>Commission Quest (+{getQuestXpReward({ effort: formEffort, priority: formPriority })} XP)</span>
+                  <Check className="w-4 h-4" />
+                  <span>Save Task</span>
                 </button>
               </div>
             </form>
@@ -690,114 +661,143 @@ export const QuestsPage: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL 2: Quest Completion Confirmation */}
-      {questToConfirm && (
+      {/* MODAL 2: Edit Task Modal */}
+      {taskToEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[#7A2E4A] rounded-3xl shadow-2xl p-6 text-[rgb(var(--c-text))] space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-[#7A2E4A]/15 text-[#7A2E4A] flex items-center justify-center shrink-0">
-                <Award className="w-6 h-6" />
-              </div>
+          <div className="relative w-full max-w-lg bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5 sm:p-6 text-[rgb(var(--c-text))] space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
+              <h2 className="text-base font-heading font-bold text-[rgb(var(--c-text))]">
+                Edit Task
+              </h2>
+              <button
+                onClick={() => setTaskToEdit(null)}
+                className="p-1.5 rounded-lg text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
               <div>
-                <div className="text-[10px] uppercase font-heading font-bold tracking-wider text-[#7A2E4A]">
-                  Confirmation of Victory
-                </div>
-                <h3 className="text-base font-heading font-bold text-[rgb(var(--c-text))]">
-                  Conquer This Quest?
-                </h3>
+                <label className="block font-heading font-bold mb-1">
+                  Task Title <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="min-h-[44px] w-full px-3.5 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[#7A2E4A]"
+                />
               </div>
-            </div>
 
-            <div className="p-3.5 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-2 text-xs">
-              <div className="font-heading font-bold text-sm text-[rgb(var(--c-text))]">
-                {questToConfirm.title}
-              </div>
-              {questToConfirm.courseId && courseMap.get(questToConfirm.courseId) && (
-                <div className="text-[11px] text-[rgb(var(--c-muted))]">
-                  Course: <span className="font-bold text-[rgb(var(--c-text))]">{courseMap.get(questToConfirm.courseId)?.code}</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-heading font-bold mb-1">Due Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="min-h-[44px] w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
+                  />
                 </div>
-              )}
-              {questToConfirm.dueDate && (
-                <div className="text-[11px] text-[rgb(var(--c-muted))]">
-                  Scheduled Day: <span className="font-semibold">{formatDisplayDate(questToConfirm.dueDate)}</span>
+                <div>
+                  <label className="block font-heading font-bold mb-1">Due Time</label>
+                  <input
+                    type="time"
+                    value={editDueTime}
+                    onChange={(e) => setEditDueTime(e.target.value)}
+                    className="min-h-[44px] w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
+                  />
                 </div>
-              )}
-              <div className="pt-2 border-t border-[rgb(var(--c-border))] flex items-center justify-between">
-                <span className="text-[11px] font-heading font-semibold text-[rgb(var(--c-muted))]">
-                  Experience to Award:
-                </span>
-                <span className="font-heading font-bold text-sm text-[rgb(var(--c-xp))]">
-                  +{getQuestXpReward(questToConfirm)} XP
-                </span>
               </div>
-            </div>
 
-            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
-              Are you sure you completed this quest? Confirming moves it to your Conquered ledger and permanently records the XP receipt.
-            </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-heading font-bold mb-1">Course</label>
+                  <select
+                    value={editCourseId}
+                    onChange={(e) => setEditCourseId(e.target.value)}
+                    className="min-h-[44px] w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
+                  >
+                    <option value="">General / Personal</option>
+                    {courses.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.code} — {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-heading font-bold mb-1">Priority</label>
+                  <select
+                    value={editPriority}
+                    onChange={(e) => setEditPriority(e.target.value as any)}
+                    className="min-h-[44px] w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
+                  >
+                    <option value="low">Low Priority</option>
+                    <option value="medium">Medium Priority</option>
+                    <option value="high">High Priority</option>
+                  </select>
+                </div>
+              </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setQuestToConfirm(null)}
-                className="px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))] text-xs font-heading"
-              >
-                Not yet
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmComplete}
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-heading font-bold text-xs hover:bg-emerald-700 active:scale-95 transition shadow-xs flex items-center gap-1.5"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Yes, Conquer &amp; Award +{getQuestXpReward(questToConfirm)} XP</span>
-              </button>
-            </div>
+              <div>
+                <label className="block font-heading font-bold mb-1">Notes / Instructions</label>
+                <textarea
+                  rows={3}
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[#7A2E4A]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[rgb(var(--c-border))]">
+                <button
+                  type="button"
+                  onClick={() => setTaskToEdit(null)}
+                  className="min-h-[44px] px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="min-h-[44px] px-5 py-2 rounded-xl bg-[#7A2E4A] text-white font-heading font-bold hover:opacity-90 active:scale-95 transition shadow-xs flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* MODAL 3: Undo Completion Confirmation */}
-      {questToUndo && (
+      {/* MODAL 3: Delete Confirmation */}
+      {taskToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] rounded-3xl shadow-2xl p-6 text-[rgb(var(--c-text))] space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-heading font-bold text-[rgb(var(--c-text))]">
-                  Re-open Conquered Quest?
-                </h3>
-                <p className="text-xs text-[rgb(var(--c-muted))]">
-                  Reversing completion will retract the awarded experience.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-xs">
-              <div className="font-heading font-bold text-[rgb(var(--c-text))]">
-                {questToUndo.title}
-              </div>
-              <div className="text-[11px] text-rose-600 dark:text-rose-400 mt-1 font-semibold">
-                Will reverse -{getQuestXpReward(questToUndo)} XP from your ledger.
-              </div>
-            </div>
-
+          <div className="relative w-full max-w-sm bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5 text-[rgb(var(--c-text))] space-y-3">
+            <h3 className="text-base font-heading font-bold text-[rgb(var(--c-text))]">
+              Delete Task?
+            </h3>
+            <p className="text-xs text-[rgb(var(--c-muted))]">
+              Are you sure you want to delete <strong className="text-[rgb(var(--c-text))]">{taskToDelete.title}</strong>? This action cannot be undone.
+            </p>
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setQuestToUndo(null)}
-                className="px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))] text-xs font-heading"
+                onClick={() => setTaskToDelete(null)}
+                className="min-h-[40px] px-3.5 py-1.5 rounded-xl border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))] text-xs font-heading"
               >
-                Keep Conquered
+                Cancel
               </button>
               <button
                 type="button"
-                onClick={handleConfirmUndo}
-                className="px-4 py-2 rounded-xl bg-rose-600 text-white font-heading font-bold text-xs hover:bg-rose-700 active:scale-95 transition shadow-xs"
+                onClick={handleConfirmDelete}
+                className="min-h-[40px] px-4 py-1.5 rounded-xl bg-rose-600 text-white font-heading font-bold text-xs hover:bg-rose-700 active:scale-95 transition"
               >
-                Undo &amp; Reverse XP
+                Delete
               </button>
             </div>
           </div>
