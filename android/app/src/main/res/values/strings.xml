@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">College Life OS</string>
+    <string name="title_activity_main">College Life OS</string>
+    <string name="package_name">com.eloarf.collegelifeos</string>
+    <string name="custom_url_scheme">com.eloarf.collegelifeos</string>
+</resources>

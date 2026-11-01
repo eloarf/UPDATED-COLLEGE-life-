@@ -1,0 +1,39 @@
+{
+  "id": "./",
+  "name": "College Life OS",
+  "short_name": "College OS",
+  "description": "Single-user, offline-first mobile-friendly university life operating system with timetable, courses, exams, RPG quests, focus timer, habits, and GPA calculator.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F9EAE1",
+  "theme_color": "#7A2E4A",
+  "categories": ["education", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
