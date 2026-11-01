@@ -26,6 +26,7 @@ export const LibraryPage: React.FC = () => {
   const [activeShelf, setActiveShelf] = useState<'queue' | 'reading'>('queue');
   const [isAddBookOpen, setIsAddBookOpen] = useState(false);
   const [isAddTopicOpen, setIsAddTopicOpen] = useState(false);
+  const [bookToDelete, setBookToDelete] = useState<ReadingItem | null>(null);
 
   // Book Form
   const [bookTitle, setBookTitle] = useState('');
@@ -279,8 +280,9 @@ export const LibraryPage: React.FC = () => {
                   </div>
 
                   <button
-                    onClick={() => handleDeleteBook(b.id)}
-                    className="text-[rgb(var(--c-muted))] hover:text-rose-500"
+                    onClick={() => setBookToDelete(b)}
+                    className="p-1 text-[rgb(var(--c-muted))] hover:text-rose-500 rounded-lg hover:bg-[rgb(var(--c-surface2))] transition"
+                    title="Delete book"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -386,6 +388,38 @@ export const LibraryPage: React.FC = () => {
                 Shelve Volume
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Book Confirmation Modal */}
+      {bookToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-pop">
+          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 max-w-sm w-full space-y-3 shadow-xl">
+            <h4 className="font-heading font-bold text-sm text-[rgb(var(--c-text))]">
+              Remove Book from Shelf?
+            </h4>
+            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+              Remove <strong className="text-[rgb(var(--c-text))]">"{bookToDelete.title}"</strong> by {bookToDelete.author}? Reading progress ({bookToDelete.pagesRead} pages) will be removed.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setBookToDelete(null)}
+                className="px-3.5 py-1.5 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const id = bookToDelete.id;
+                  setBookToDelete(null);
+                  await handleDeleteBook(id);
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-heading font-bold hover:bg-rose-700 active:scale-95 transition"
+              >
+                Confirm Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

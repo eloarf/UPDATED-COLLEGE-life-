@@ -49,6 +49,7 @@ export const TimetablePage: React.FC = () => {
   // Course Modal State
   const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [sessionToDelete, setSessionToDelete] = useState<ClassSession | null>(null);
 
   const settings = useLiveQuery(() => db.settings.get('current_user'));
   const semesters = useLiveQuery(() => db.semesters.toArray()) || [];
@@ -509,7 +510,7 @@ export const TimetablePage: React.FC = () => {
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => handleDeleteSession(session.id)}
+                      onClick={() => setSessionToDelete(session)}
                       className="p-1.5 text-[rgb(var(--c-muted))] hover:text-rose-500 rounded-lg hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
                       title="Remove class session from timetable"
                     >
@@ -759,6 +760,38 @@ export const TimetablePage: React.FC = () => {
                 className="w-full mt-2 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] hover:bg-[rgb(var(--c-text))] hover:text-[rgb(var(--c-bg))] text-xs font-heading font-bold transition"
               >
                 Import &amp; Merge Classes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Session Confirmation Modal */}
+      {sessionToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-pop">
+          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 max-w-sm w-full space-y-3 shadow-xl">
+            <h4 className="font-heading font-bold text-sm text-[rgb(var(--c-text))]">
+              Remove Class Session?
+            </h4>
+            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+              Remove <strong className="text-[rgb(var(--c-text))]">{courseMap.get(sessionToDelete.courseId)?.code || 'Class'}</strong> ({sessionToDelete.startTime} – {sessionToDelete.endTime}) from your weekly timetable?
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setSessionToDelete(null)}
+                className="px-3.5 py-1.5 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const id = sessionToDelete.id;
+                  setSessionToDelete(null);
+                  await handleDeleteSession(id);
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-heading font-bold hover:bg-rose-700 active:scale-95 transition"
+              >
+                Confirm Delete
               </button>
             </div>
           </div>

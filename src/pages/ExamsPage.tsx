@@ -19,6 +19,7 @@ import {
   X,
   Trash2,
   Sword,
+  Edit2,
 } from 'lucide-react';
 
 export const ExamsPage: React.FC = () => {
@@ -27,6 +28,8 @@ export const ExamsPage: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
+  const [editingExam, setEditingExam] = useState<Exam | null>(null);
+  const [examToDelete, setExamToDelete] = useState<Exam | null>(null);
 
   // Form State
   const [courseId, setCourseId] = useState('');
@@ -46,46 +49,111 @@ export const ExamsPage: React.FC = () => {
   const courseMap = new Map<string, Course>();
   courses.forEach((c) => courseMap.set(c.id, c));
 
-  const handleCreateExam = async (e: React.FormEvent) => {
+  const handleOpenAddExam = () => {
+    setEditingExam(null);
+    setCourseId(courses[0]?.id || '');
+    setTitle('');
+    setExamType('Midterm');
+    setExamDate(getTodayKey());
+    setStartTime('09:00');
+    setHall('');
+    setWeight(30);
+    setTargetScore(85);
+    setTopicsInput('');
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditExam = async (exam: Exam) => {
+    setEditingExam(exam);
+    setCourseId(exam.courseId);
+    setTitle(exam.title);
+    setExamType(exam.examType as any);
+    setExamDate(exam.examDate);
+    setStartTime(exam.startTime);
+    setHall(exam.hall || '');
+    setWeight(exam.weight);
+    setTargetScore(exam.targetScore);
+    const examTopicsList = await db.examTopics.where('examId').equals(exam.id).toArray();
+    setTopicsInput(examTopicsList.map((t) => t.title).join('\n'));
+    setIsModalOpen(true);
+  };
+
+  const handleSaveExam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !courseId) {
       showToast('Please provide an exam title and select a course.', 'warning');
       return;
     }
 
-    const examId = generateId();
     const parsedTopics = topicsInput
       .split('\n')
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
 
-    await db.exams.add({
-      id: examId,
-      courseId,
-      title: title.trim(),
-      examType,
-      examDate,
-      startTime,
-      hall,
-      weight: Number(weight) || 30,
-      targetScore: Number(targetScore) || 85,
-      currentHp: 100,
-      maxHp: 100,
-      isDefeated: false,
-      createdAt: new Date().toISOString(),
-    });
+    if (editingExam) {
+      await db.exams.update(editingExam.id, {
+        courseId,
+        title: title.trim(),
+        examType,
+        examDate,
+        startTime,
+        hall: hall.trim() || undefined,
+        weight: Number(weight) || 30,
+        targetScore: Number(targetScore) || 85,
+      });
 
-    if (parsedTopics.length > 0) {
-      const topicRecords: ExamTopic[] = parsedTopics.map((t) => ({
-        id: generateId(),
-        examId,
-        title: t,
-        isStudied: false,
-      }));
-      await db.examTopics.bulkPut(topicRecords);
+      if (parsedTopics.length > 0) {
+        const existingTopics = await db.examTopics.where('examId').equals(editingExam.id).toArray();
+        const existingMap = new Map(existingTopics.map((t) => [t.title.toLowerCase(), t]));
+        await db.examTopics.where('examId').equals(editingExam.id).delete();
+        const topicRecords: ExamTopic[] = parsedTopics.map((t) => ({
+          id: generateId(),
+          examId: editingExam.id,
+          title: t,
+          isStudied: existingMap.get(t.toLowerCase())?.isStudied ?? false,
+        }));
+        await db.examTopics.bulkPut(topicRecords);
+
+        const studiedCount = topicRecords.filter((t) => t.isStudied).length;
+        const remainingHp = topicRecords.length > 0 ? Math.round(((topicRecords.length - studiedCount) / topicRecords.length) * 100) : 0;
+        await db.exams.update(editingExam.id, {
+          currentHp: remainingHp,
+          isDefeated: remainingHp === 0,
+        });
+      }
+
+      showToast('Exam boss battle updated!', 'success');
+    } else {
+      const examId = generateId();
+      await db.exams.add({
+        id: examId,
+        courseId,
+        title: title.trim(),
+        examType,
+        examDate,
+        startTime,
+        hall: hall.trim() || undefined,
+        weight: Number(weight) || 30,
+        targetScore: Number(targetScore) || 85,
+        currentHp: 100,
+        maxHp: 100,
+        isDefeated: false,
+        createdAt: new Date().toISOString(),
+      });
+
+      if (parsedTopics.length > 0) {
+        const topicRecords: ExamTopic[] = parsedTopics.map((t) => ({
+          id: generateId(),
+          examId,
+          title: t,
+          isStudied: false,
+        }));
+        await db.examTopics.bulkPut(topicRecords);
+      }
+
+      showToast('University Boss Battle summoned!', 'success');
     }
 
-    showToast('University Boss Battle summoned!', 'success');
     setIsModalOpen(false);
   };
 
@@ -111,7 +179,7 @@ export const ExamsPage: React.FC = () => {
         amount: 15,
         stat: 'knowledge',
       });
-      showToast('Syllabus topic conquered! Boss HP reduced (-15 XP)', 'success');
+      showToast('Syllabus topic conquered! Boss HP reduced (+15 XP)', 'success');
     }
 
     if (remainingHp === 0 && !exam.isDefeated) {
@@ -151,7 +219,7 @@ export const ExamsPage: React.FC = () => {
           </div>
 
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={handleOpenAddExam}
             className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#B6E63E] text-stone-950 font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-lg shrink-0"
           >
             <Plus className="w-4 h-4" />
@@ -166,7 +234,7 @@ export const ExamsPage: React.FC = () => {
           <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-12 text-center text-xs text-[rgb(var(--c-muted))] font-flourish space-y-2">
             <div>No exam boss battles summoned yet. Add your midterms or lab finals to generate a study syllabus!</div>
             <button
-              onClick={() => setIsModalOpen(true)}
+              onClick={handleOpenAddExam}
               className="text-xs font-heading font-bold text-[rgb(var(--c-primary))] underline"
             >
               + Summon first examination
@@ -217,12 +285,22 @@ export const ExamsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => handleDeleteExam(exam.id)}
-                    className="p-1.5 rounded-lg text-[rgb(var(--c-muted))] hover:text-rose-500 hover:bg-[rgb(var(--c-surface2))]"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => handleOpenEditExam(exam)}
+                      className="p-1.5 rounded-lg text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] transition"
+                      title="Edit examination details"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setExamToDelete(exam)}
+                      className="p-1.5 rounded-lg text-[rgb(var(--c-muted))] hover:text-rose-500 hover:bg-[rgb(var(--c-surface2))] transition"
+                      title="Remove exam"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* HP Gauge */}
@@ -288,7 +366,7 @@ export const ExamsPage: React.FC = () => {
           <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))] mb-3">
               <div className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
-                Summon University Exam Boss
+                {editingExam ? 'Edit University Exam Boss' : 'Summon University Exam Boss'}
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
@@ -298,7 +376,7 @@ export const ExamsPage: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateExam} className="space-y-3">
+            <form onSubmit={handleSaveExam} className="space-y-3">
               <div>
                 <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
                   Target Course
@@ -422,9 +500,41 @@ export const ExamsPage: React.FC = () => {
                 type="submit"
                 className="w-full mt-3 py-2 rounded-xl bg-[#B6E63E] text-stone-950 font-heading text-xs font-bold hover:opacity-90 active:scale-98 transition shadow-xs"
               >
-                Summon Boss Battle
+                {editingExam ? 'Save Changes' : 'Summon Boss Battle'}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Exam Confirmation Modal */}
+      {examToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-pop">
+          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 max-w-sm w-full space-y-3 shadow-xl">
+            <h4 className="font-heading font-bold text-sm text-[rgb(var(--c-text))]">
+              Banish Exam Boss Battle?
+            </h4>
+            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+              Are you sure you want to remove <strong className="text-[rgb(var(--c-text))]">"{examToDelete.title}"</strong> and all its syllabus checklist topics?
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setExamToDelete(null)}
+                className="px-3.5 py-1.5 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const id = examToDelete.id;
+                  setExamToDelete(null);
+                  await handleDeleteExam(id);
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-heading font-bold hover:bg-rose-700 active:scale-95 transition"
+              >
+                Confirm Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

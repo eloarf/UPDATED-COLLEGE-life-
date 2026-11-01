@@ -14,6 +14,7 @@ import { MoreSheet } from './components/layout/MoreSheet';
 import { QuickAddModal } from './components/common/QuickAddModal';
 import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { ThemeSwitcherModal } from './components/common/ThemeSwitcherModal';
+import { OnboardingModal } from './components/common/OnboardingModal';
 import { ToastContainer } from './components/common/ToastContainer';
 import { OfflineIndicator } from './components/common/OfflineIndicator';
 
@@ -165,6 +166,7 @@ export default function App() {
       <QuickAddModal />
       <GlobalSearchModal />
       <ThemeSwitcherModal />
+      <OnboardingModal />
       <ToastContainer />
       <OfflineIndicator />
     </div>

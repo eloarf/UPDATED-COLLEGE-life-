@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../db/db';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../../store/uiStore';
 import { Course } from '../../types';
 import { generateId } from '../../utils/idGenerator';
@@ -30,6 +31,10 @@ export const CourseModal: React.FC<CourseModalProps> = ({
   onCourseSaved,
 }) => {
   const { showToast } = useUiStore();
+  const settings = useLiveQuery(() => db.settings.get('current_user'));
+  const semesters = useLiveQuery(() => db.semesters.toArray()) || [];
+
+  const defaultTerm = settings?.currentTermName || semesters[0]?.name || 'Semester 1';
 
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
@@ -37,7 +42,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
   const [room, setRoom] = useState('');
   const [instructor, setInstructor] = useState('');
   const [credits, setCredits] = useState<number | string>('');
-  const [term, setTerm] = useState('Year 1 - Semester I');
+  const [term, setTerm] = useState(defaultTerm);
   const [color, setColor] = useState(PRESET_COURSE_NEON_COLORS[0].hex);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -53,7 +58,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
           ? courseToEdit.creditHours
           : ''
       );
-      setTerm(courseToEdit.term || 'Year 1 - Semester I');
+      setTerm(courseToEdit.term || defaultTerm);
       setColor(courseToEdit.color || PRESET_COURSE_NEON_COLORS[0].hex);
       setConfirmDelete(false);
     } else {
@@ -63,14 +68,14 @@ export const CourseModal: React.FC<CourseModalProps> = ({
       setRoom('');
       setInstructor('');
       setCredits('');
-      setTerm('Year 1 - Semester I');
+      setTerm(defaultTerm);
       // Pick a random vibrant neon color on open
       const randomColor =
         PRESET_COURSE_NEON_COLORS[Math.floor(Math.random() * PRESET_COURSE_NEON_COLORS.length)].hex;
       setColor(randomColor);
       setConfirmDelete(false);
     }
-  }, [courseToEdit, isOpen]);
+  }, [courseToEdit, isOpen, defaultTerm]);
 
   if (!isOpen) return null;
 

@@ -27,6 +27,7 @@ import {
   Undo2,
   RefreshCw,
   HelpCircle,
+  Edit2,
 } from 'lucide-react';
 
 export const HabitsPage: React.FC = () => {
@@ -34,6 +35,7 @@ export const HabitsPage: React.FC = () => {
   const todayKey = getTodayKey();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<string>('health');
   const [customCategory, setCustomCategory] = useState('');
@@ -175,8 +177,31 @@ export const HabitsPage: React.FC = () => {
     showToast('Rest token retrieved.', 'info');
   };
 
-  // Create Habit
-  const handleAddHabit = async (e: React.FormEvent) => {
+  const handleOpenAddHabit = () => {
+    setEditingHabit(null);
+    setTitle('');
+    setCategory('health');
+    setCustomCategory('');
+    setMinimumVersion('');
+    setIsAddModalOpen(true);
+  };
+
+  const handleOpenEditHabit = (habit: Habit) => {
+    setEditingHabit(habit);
+    setTitle(habit.title);
+    if (['health', 'study', 'creative', 'mindset', 'routine'].includes(habit.category)) {
+      setCategory(habit.category);
+      setCustomCategory('');
+    } else {
+      setCategory('other');
+      setCustomCategory(habit.customCategory || habit.category);
+    }
+    setMinimumVersion(habit.minimumVersionText || '');
+    setIsAddModalOpen(true);
+  };
+
+  // Create or Update Habit
+  const handleSaveHabit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
@@ -187,29 +212,40 @@ export const HabitsPage: React.FC = () => {
 
     const savedCategory = category === 'other' ? customCategory.trim() : category;
 
-    const newId = generateId();
-    await db.habits.add({
-      id: newId,
-      title: title.trim(),
-      category: savedCategory,
-      customCategory: category === 'other' ? customCategory.trim() : undefined,
-      type: 'daily',
-      targetCount: 1,
-      minimumVersionText: minimumVersion.trim() || undefined,
-      color: '#B6E63E',
-      currentStreak: 0,
-      bestStreak: 0,
-      icon: 'Activity',
-      graceDaysLeft: 2,
-    });
+    if (editingHabit) {
+      await db.habits.update(editingHabit.id, {
+        title: title.trim(),
+        category: savedCategory,
+        customCategory: category === 'other' ? customCategory.trim() : undefined,
+        minimumVersionText: minimumVersion.trim() || undefined,
+      });
+      showToast('Habit updated in passport!', 'success');
+    } else {
+      const newId = generateId();
+      await db.habits.add({
+        id: newId,
+        title: title.trim(),
+        category: savedCategory,
+        customCategory: category === 'other' ? customCategory.trim() : undefined,
+        type: 'daily',
+        targetCount: 1,
+        minimumVersionText: minimumVersion.trim() || undefined,
+        color: '#B6E63E',
+        currentStreak: 0,
+        bestStreak: 0,
+        icon: 'Activity',
+        graceDaysLeft: 2,
+      });
+      setSelectedCalendarHabitId(newId);
+      showToast('New habit registered in passport!', 'success');
+    }
 
     setTitle('');
     setCategory('health');
     setCustomCategory('');
     setMinimumVersion('');
+    setEditingHabit(null);
     setIsAddModalOpen(false);
-    setSelectedCalendarHabitId(newId);
-    showToast('New habit registered in passport!', 'success');
   };
 
   // Delete Habit
@@ -246,7 +282,7 @@ export const HabitsPage: React.FC = () => {
             </div>
 
             <button
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={handleOpenAddHabit}
               className="flex items-center gap-1 px-3.5 py-1.5 rounded-full bg-[#B6E63E] text-stone-950 font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -384,6 +420,14 @@ export const HabitsPage: React.FC = () => {
                       </button>
 
                       <button
+                        onClick={() => handleOpenEditHabit(habit)}
+                        className="p-1.5 rounded-lg text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] transition"
+                        title="Edit habit"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
                         onClick={() => setHabitToDelete(habit)}
                         className="p-1.5 rounded-lg text-[rgb(var(--c-muted))] hover:text-rose-500 hover:bg-[rgb(var(--c-surface2))] transition"
                         title="Delete habit"
@@ -458,7 +502,7 @@ export const HabitsPage: React.FC = () => {
           <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5">
             <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))] mb-3">
               <div className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
-                Register New Habit Stamp
+                {editingHabit ? 'Edit Habit Stamp' : 'Register New Habit Stamp'}
               </div>
               <button
                 onClick={() => setIsAddModalOpen(false)}
@@ -468,7 +512,7 @@ export const HabitsPage: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleAddHabit} className="space-y-3">
+            <form onSubmit={handleSaveHabit} className="space-y-3">
               <div>
                 <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
                   Habit Name
@@ -538,7 +582,7 @@ export const HabitsPage: React.FC = () => {
                 type="submit"
                 className="w-full mt-3 py-2 rounded-xl bg-[#B6E63E] text-stone-950 font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition"
               >
-                Issue Habit Stamp
+                {editingHabit ? 'Save Changes' : 'Issue Habit Stamp'}
               </button>
             </form>
           </div>

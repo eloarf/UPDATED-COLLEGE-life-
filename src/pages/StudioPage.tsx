@@ -27,6 +27,7 @@ const DEFAULT_BOOK_STAGES = ['Idea', 'Outline', 'Draft', 'Revise', 'Done'];
 export const StudioPage: React.FC = () => {
   const { showToast } = useUiStore();
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<CreativeProject | null>(null);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -201,8 +202,9 @@ export const StudioPage: React.FC = () => {
                     + Stage ({p.currentStage})
                   </button>
                   <button
-                    onClick={() => handleDeleteProject(p.id)}
-                    className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:text-rose-500"
+                    onClick={() => setProjectToDelete(p)}
+                    className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:text-rose-500 hover:bg-[rgb(var(--c-surface2))] transition"
+                    title="Delete project"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -291,6 +293,38 @@ export const StudioPage: React.FC = () => {
                 Launch Pipeline
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Project Confirmation Modal */}
+      {projectToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-pop">
+          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 max-w-sm w-full space-y-3 shadow-xl">
+            <h4 className="font-heading font-bold text-sm text-[rgb(var(--c-text))]">
+              Delete Creative Project?
+            </h4>
+            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+              Remove <strong className="text-[rgb(var(--c-text))]">"{projectToDelete.title}"</strong> ({projectToDelete.type})? Current progress ({projectToDelete.progressPercent}%, stage: {projectToDelete.currentStage}) will be removed.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setProjectToDelete(null)}
+                className="px-3.5 py-1.5 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const id = projectToDelete.id;
+                  setProjectToDelete(null);
+                  await handleDeleteProject(id);
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-heading font-bold hover:bg-rose-700 active:scale-95 transition"
+              >
+                Confirm Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

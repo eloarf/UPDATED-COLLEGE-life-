@@ -13,6 +13,7 @@ interface UiState {
   isQuickAddOpen: boolean;
   isSearchOpen: boolean;
   isThemeSwitcherOpen: boolean;
+  isOnboardingOpen: boolean;
   toasts: ToastItem[];
   activeFocusTask: { taskId?: string; taskTitle?: string; courseId?: string } | null;
   setCurrentRoute: (route: string) => void;
@@ -21,6 +22,7 @@ interface UiState {
   setQuickAddOpen: (open: boolean) => void;
   setSearchOpen: (open: boolean) => void;
   setThemeSwitcherOpen: (open: boolean) => void;
+  setOnboardingOpen: (open: boolean) => void;
   showToast: (message: string, type?: 'success' | 'info' | 'warning' | 'danger', duration?: number) => void;
   dismissToast: (id: string) => void;
 }
@@ -31,6 +33,7 @@ export const useUiStore = create<UiState>((set) => ({
   isQuickAddOpen: false,
   isSearchOpen: false,
   isThemeSwitcherOpen: false,
+  isOnboardingOpen: false,
   toasts: [],
   activeFocusTask: null,
   setCurrentRoute: (route) => {
@@ -42,6 +45,7 @@ export const useUiStore = create<UiState>((set) => ({
   setQuickAddOpen: (open) => set({ isQuickAddOpen: open }),
   setSearchOpen: (open) => set({ isSearchOpen: open }),
   setThemeSwitcherOpen: (open) => set({ isThemeSwitcherOpen: open }),
+  setOnboardingOpen: (open) => set({ isOnboardingOpen: open }),
   showToast: (message, type = 'info', duration = 3000) => {
     const id = Math.random().toString(36).substring(2, 9);
     set((state) => ({

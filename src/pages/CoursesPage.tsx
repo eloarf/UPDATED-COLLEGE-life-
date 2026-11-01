@@ -22,6 +22,7 @@ export const CoursesPage: React.FC = () => {
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [courseToDelete, setCourseToDelete] = useState<Course | null>(null);
 
   const courses = useLiveQuery(() => db.courses.toArray()) || [];
   const selectedCourse = courses.find((c) => c.id === selectedCourseId) || courses[0];
@@ -77,64 +78,86 @@ export const CoursesPage: React.FC = () => {
       </div>
 
       {/* Luggage Tag Course Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {courses.map((course) => {
-          const isSelected = selectedCourse?.id === course.id;
-          const contrast = getContrastTextColor(course.color);
-          const locationParts = [course.building, course.room].filter(Boolean);
+      {courses.length === 0 ? (
+        <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-8 text-center space-y-4">
+          <div className="w-12 h-12 mx-auto rounded-2xl bg-[#8B5A3C]/10 text-[#8B5A3C] flex items-center justify-center">
+            <BookOpen className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="font-heading font-bold text-base text-[rgb(var(--c-text))]">
+              No Courses Registered Yet
+            </h3>
+            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish max-w-sm mx-auto mt-1">
+              Add your university modules, credit hours, lecture halls, and neon accent colors to link your timetable, GPA, and quests.
+            </p>
+          </div>
+          <button
+            onClick={handleOpenAddModal}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#8B5A3C] text-white font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Register Your First Course</span>
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {courses.map((course) => {
+            const isSelected = selectedCourse?.id === course.id;
+            const contrast = getContrastTextColor(course.color);
+            const locationParts = [course.building, course.room].filter(Boolean);
 
-          return (
-            <div
-              key={course.id}
-              onClick={() => setSelectedCourseId(course.id)}
-              className={`luggage-tag ticket-border rounded-2xl p-4 cursor-pointer transition relative group bg-[rgb(var(--c-surface))] ${
-                isSelected ? 'ring-2 ring-[#8B5A3C] shadow-md' : 'hover:border-[#8B5A3C]'
-              }`}
-            >
-              {/* Colored ribbon strip */}
+            return (
               <div
-                className="absolute top-0 left-0 right-0 h-2.5 rounded-t-xl"
-                style={{ backgroundColor: course.color }}
-              />
+                key={course.id}
+                onClick={() => setSelectedCourseId(course.id)}
+                className={`luggage-tag ticket-border rounded-2xl p-4 cursor-pointer transition relative group bg-[rgb(var(--c-surface))] ${
+                  isSelected ? 'ring-2 ring-[#8B5A3C] shadow-md' : 'hover:border-[#8B5A3C]'
+                }`}
+              >
+                {/* Colored ribbon strip */}
+                <div
+                  className="absolute top-0 left-0 right-0 h-2.5 rounded-t-xl"
+                  style={{ backgroundColor: course.color }}
+                />
 
-              <div className="pt-2 flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span
-                      className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shadow-2xs"
-                      style={{ backgroundColor: course.color, color: contrast }}
+                <div className="pt-2 flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shadow-2xs"
+                        style={{ backgroundColor: course.color, color: contrast }}
+                      >
+                        {course.code}
+                      </span>
+                    </div>
+                    <div className="text-sm font-heading font-bold text-[rgb(var(--c-text))] truncate">
+                      {course.name}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenEditModal(course);
+                      }}
+                      className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
+                      title="Edit course"
                     >
-                      {course.code}
-                    </span>
-                  </div>
-                  <div className="text-sm font-heading font-bold text-[rgb(var(--c-text))] truncate">
-                    {course.name}
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCourseToDelete(course);
+                      }}
+                      className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:text-rose-500 hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
+                      title="Delete course"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenEditModal(course);
-                    }}
-                    className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
-                    title="Edit course"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteCourse(course.id, course.name);
-                    }}
-                    className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:text-rose-500 hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
-                    title="Delete course"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
 
               <div className="mt-3 space-y-1 text-xs text-[rgb(var(--c-muted))]">
                 <div className="flex items-center gap-1.5">
@@ -158,6 +181,7 @@ export const CoursesPage: React.FC = () => {
           );
         })}
       </div>
+      )}
 
       {/* Selected Course Deep Detail Inspector */}
       {selectedCourse && (
@@ -219,6 +243,39 @@ export const CoursesPage: React.FC = () => {
               <div className="font-heading font-bold text-sm text-[rgb(var(--c-text))] mt-0.5 truncate">
                 {[selectedCourse.building, selectedCourse.room].filter(Boolean).join(' • ') || 'Campus Hall'}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Course Confirmation Modal */}
+      {courseToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-pop">
+          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 max-w-sm w-full space-y-3 shadow-xl">
+            <h4 className="font-heading font-bold text-sm text-[rgb(var(--c-text))]">
+              Delete Course?
+            </h4>
+            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+              Are you sure you want to remove <strong className="text-[rgb(var(--c-text))]">{courseToDelete.code} — {courseToDelete.name}</strong>? Timetable sessions and tasks referencing this course will remain safely in your database.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setCourseToDelete(null)}
+                className="px-3.5 py-1.5 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const id = courseToDelete.id;
+                  const name = courseToDelete.name;
+                  setCourseToDelete(null);
+                  await handleDeleteCourse(id, name);
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-heading font-bold hover:bg-rose-700 active:scale-95 transition"
+              >
+                Confirm Delete
+              </button>
             </div>
           </div>
         </div>

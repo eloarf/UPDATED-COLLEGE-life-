@@ -408,6 +408,7 @@ export interface AppSettings {
   attendanceThresholdPercent: number;
   accountBalances?: AccountBalancesConfig;
   departmentOptions?: DepartmentOption[];
+  hasCompletedOnboarding?: boolean;
 }
 
 export interface AccountBalancesConfig {

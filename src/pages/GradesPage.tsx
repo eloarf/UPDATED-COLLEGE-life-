@@ -48,6 +48,8 @@ export const GradesPage: React.FC = () => {
   const [weight, setWeight] = useState<number | string>(20);
   const [maxScore, setMaxScore] = useState<number | string>(100);
   const [earnedScore, setEarnedScore] = useState<number | string>(85);
+  const [componentToDelete, setComponentToDelete] = useState<GradeComponent | null>(null);
+  const [deptToDelete, setDeptToDelete] = useState<DepartmentOption | null>(null);
 
   // Department form state (add/edit)
   const [editingDept, setEditingDept] = useState<DepartmentOption | null>(null);
@@ -97,8 +99,9 @@ export const GradesPage: React.FC = () => {
   };
 
   // Live calculation of each course grade & cumulative CGPA
-  let totalCredits = 0;
+  let totalCreditsWithGrades = 0;
   let totalGradePoints = 0;
+  let totalEnrolledCredits = 0;
 
   const courseStats = courses.map((course) => {
     const courseComps = components.filter((c) => c.courseId === course.id);
@@ -113,27 +116,41 @@ export const GradesPage: React.FC = () => {
       }
     });
 
-    // Normalized to 100% or fallback to 85% if no components yet
-    const currentPercent =
-      totalWeightCompleted > 0 ? (earnedWeightedSum / totalWeightCompleted) * 100 : 85;
-    const { letter, gpa } = getLetterAndGpa(currentPercent);
-
     const credits = course.creditHours || 3;
-    totalCredits += credits;
-    totalGradePoints += gpa * credits;
+    totalEnrolledCredits += credits;
 
-    return {
-      course,
-      components: courseComps,
-      currentPercent: Math.round(currentPercent * 10) / 10,
-      letter,
-      gpa,
-      totalWeightCompleted,
-    };
+    if (totalWeightCompleted > 0) {
+      const rawPercent = (earnedWeightedSum / totalWeightCompleted) * 100;
+      const currentPercent = Math.round(rawPercent * 10) / 10;
+      const { letter, gpa } = getLetterAndGpa(currentPercent);
+      totalCreditsWithGrades += credits;
+      totalGradePoints += gpa * credits;
+
+      return {
+        course,
+        components: courseComps,
+        currentPercent: currentPercent as number | null,
+        letter,
+        gpa: gpa as number | null,
+        totalWeightCompleted,
+        hasGraded: true,
+      };
+    } else {
+      return {
+        course,
+        components: courseComps,
+        currentPercent: null as number | null,
+        letter: '—',
+        gpa: null as number | null,
+        totalWeightCompleted: 0,
+        hasGraded: false,
+      };
+    }
   });
 
-  const calculatedGpaNumber = totalCredits > 0 ? totalGradePoints / totalCredits : 3.88;
-  const calculatedGpa = calculatedGpaNumber.toFixed(2);
+  const calculatedGpaNumber =
+    totalCreditsWithGrades > 0 ? totalGradePoints / totalCreditsWithGrades : null;
+  const calculatedGpa = calculatedGpaNumber !== null ? calculatedGpaNumber.toFixed(2) : '—';
 
   // Handlers for Graded Components
   const handleOpenAddComponent = (preselectCourseId?: string) => {
@@ -355,7 +372,9 @@ export const GradesPage: React.FC = () => {
               {calculatedGpa}
             </div>
             <div className="text-[10px] text-[rgb(var(--c-muted))] font-flourish">
-              Weighted across {totalCredits} credit hours
+              {totalCreditsWithGrades > 0
+                ? `Weighted across ${totalCreditsWithGrades} graded credits`
+                : `No grades recorded (${totalEnrolledCredits} credits enrolled)`}
             </div>
           </div>
 
@@ -367,7 +386,11 @@ export const GradesPage: React.FC = () => {
               {targetCgpa.toFixed(2)}
             </div>
             <div className="text-[10px] text-emerald-700 dark:text-emerald-300 font-flourish">
-              {calculatedGpaNumber >= targetCgpa ? '✓ Competitive for choice #1' : 'Keep final exam push'}
+              {calculatedGpaNumber !== null
+                ? calculatedGpaNumber >= targetCgpa
+                  ? '✓ Competitive for choice #1'
+                  : 'Keep final exam push'
+                : 'Enter grades below to compare'}
             </div>
           </div>
 
@@ -480,12 +503,25 @@ export const GradesPage: React.FC = () => {
 
                         <div className="flex items-center gap-3 shrink-0">
                           <div className="text-right">
-                            <span className="text-base sm:text-lg font-heading font-bold text-[rgb(var(--c-primary))]">
-                              {letter} ({gpa.toFixed(1)})
-                            </span>
-                            <div className="text-[10px] text-[rgb(var(--c-muted))] font-bold">
-                              {currentPercent}%
-                            </div>
+                            {currentPercent !== null && gpa !== null ? (
+                              <>
+                                <span className="text-base sm:text-lg font-heading font-bold text-[rgb(var(--c-primary))]">
+                                  {letter} ({gpa.toFixed(1)})
+                                </span>
+                                <div className="text-[10px] text-[rgb(var(--c-muted))] font-bold">
+                                  {currentPercent}%
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-xs font-heading font-bold text-[rgb(var(--c-muted))] italic">
+                                  Pending
+                                </span>
+                                <div className="text-[10px] text-[rgb(var(--c-muted))]">
+                                  0% entered
+                                </div>
+                              </>
+                            )}
                           </div>
 
                           <button
@@ -533,7 +569,7 @@ export const GradesPage: React.FC = () => {
                                     <Edit2 className="w-3 h-3" />
                                   </button>
                                   <button
-                                    onClick={() => handleDeleteComponent(comp.id)}
+                                    onClick={() => setComponentToDelete(comp)}
                                     className="text-[rgb(var(--c-muted))] hover:text-rose-500"
                                     title="Delete assessment"
                                   >
@@ -590,9 +626,10 @@ export const GradesPage: React.FC = () => {
             {/* Department Cards */}
             <div className="space-y-3">
               {departmentOptions.map((dept, index) => {
-                const isEligible = calculatedGpaNumber >= dept.cutoffGpa;
-                const margin = calculatedGpaNumber - dept.cutoffGpa;
-                const isClose = !isEligible && margin >= -0.15;
+                const hasGpa = calculatedGpaNumber !== null;
+                const isEligible = hasGpa && calculatedGpaNumber >= dept.cutoffGpa;
+                const margin = hasGpa ? calculatedGpaNumber - dept.cutoffGpa : null;
+                const isClose = hasGpa && !isEligible && margin !== null && margin >= -0.15;
 
                 return (
                   <div
@@ -623,17 +660,23 @@ export const GradesPage: React.FC = () => {
 
                       {/* Eligibility Badge */}
                       <div className="flex items-center gap-2 shrink-0">
-                        {isEligible ? (
-                          <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-heading text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" /> Eligible (+{margin.toFixed(2)})
-                          </span>
-                        ) : isClose ? (
-                          <span className="px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-heading text-[10px] font-bold border border-amber-500/30 flex items-center gap-1">
-                            <AlertTriangle className="w-3 h-3" /> Close Target ({margin.toFixed(2)})
-                          </span>
+                        {hasGpa ? (
+                          isEligible ? (
+                            <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-heading text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> Eligible (+{margin!.toFixed(2)})
+                            </span>
+                          ) : isClose ? (
+                            <span className="px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-heading text-[10px] font-bold border border-amber-500/30 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" /> Close Target ({margin!.toFixed(2)})
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-heading text-[10px] font-bold border border-rose-500/30">
+                              Cutoff Gap ({margin!.toFixed(2)})
+                            </span>
+                          )
                         ) : (
-                          <span className="px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-heading text-[10px] font-bold border border-rose-500/30">
-                            Cutoff Gap ({margin.toFixed(2)})
+                          <span className="px-2.5 py-1 rounded-full bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))] font-heading text-[10px] font-bold border border-[rgb(var(--c-border))]">
+                            Needs Graded Credits
                           </span>
                         )}
 
@@ -663,7 +706,7 @@ export const GradesPage: React.FC = () => {
                             <Edit2 className="w-3 h-3" />
                           </button>
                           <button
-                            onClick={() => handleDeleteDepartment(dept.id, dept.name)}
+                            onClick={() => setDeptToDelete(dept)}
                             className="p-1 text-[rgb(var(--c-muted))] hover:text-rose-500"
                             title="Remove choice"
                           >
@@ -682,10 +725,10 @@ export const GradesPage: React.FC = () => {
                       <div className="w-full h-2 rounded-full bg-[rgb(var(--c-surface2))] overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all duration-500 ${
-                            isEligible ? 'bg-emerald-500' : isClose ? 'bg-amber-500' : 'bg-rose-500'
+                            !hasGpa ? 'bg-stone-300 dark:bg-stone-700' : isEligible ? 'bg-emerald-500' : isClose ? 'bg-amber-500' : 'bg-rose-500'
                           }`}
                           style={{
-                            width: `${Math.min(100, Math.max(10, (calculatedGpaNumber / dept.cutoffGpa) * 100))}%`,
+                            width: `${hasGpa ? Math.min(100, Math.max(10, (calculatedGpaNumber! / dept.cutoffGpa) * 100)) : 0}%`,
                           }}
                         />
                       </div>
@@ -1023,6 +1066,71 @@ export const GradesPage: React.FC = () => {
                 className="w-full py-2 rounded-xl bg-[#7A2E4A] text-white font-heading text-xs font-bold"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Component Confirmation Modal */}
+      {componentToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-pop">
+          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 max-w-sm w-full space-y-3 shadow-xl">
+            <h4 className="font-heading font-bold text-sm text-[rgb(var(--c-text))]">
+              Remove Assessment Component?
+            </h4>
+            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+              Are you sure you want to delete <strong className="text-[rgb(var(--c-text))]">"{componentToDelete.name}"</strong> ({componentToDelete.weight}%)? Course GPA will automatically recalculate.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setComponentToDelete(null)}
+                className="px-3.5 py-1.5 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const id = componentToDelete.id;
+                  setComponentToDelete(null);
+                  await handleDeleteComponent(id);
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-heading font-bold hover:bg-rose-700 active:scale-95 transition"
+              >
+                Delete Assessment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Department Confirmation Modal */}
+      {deptToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-pop">
+          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 max-w-sm w-full space-y-3 shadow-xl">
+            <h4 className="font-heading font-bold text-sm text-[rgb(var(--c-text))]">
+              Remove Department Preference?
+            </h4>
+            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+              Remove <strong className="text-[rgb(var(--c-text))]">"{deptToDelete.name}"</strong> ({deptToDelete.code}) from your ranking roster?
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setDeptToDelete(null)}
+                className="px-3.5 py-1.5 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const id = deptToDelete.id;
+                  const name = deptToDelete.name;
+                  setDeptToDelete(null);
+                  await handleDeleteDepartment(id, name);
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-heading font-bold hover:bg-rose-700 active:scale-95 transition"
+              >
+                Remove Choice
               </button>
             </div>
           </div>
