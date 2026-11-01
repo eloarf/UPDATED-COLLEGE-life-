@@ -4,7 +4,6 @@ const config: CapacitorConfig = {
   appId: 'com.eloarf.collegelifeos',
   appName: 'College Life OS',
   webDir: 'dist',
-  bundledWebRuntime: false,
   server: {
     // Uses local WebView scheme to serve dist files locally without internet
     androidScheme: 'https',
