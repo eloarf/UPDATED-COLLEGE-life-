@@ -1,68 +1,162 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../store/uiStore';
-import { formatMinutes, getTodayKey } from '../utils/dateUtils';
+import { formatMinutes } from '../utils/dateUtils';
 import { awardXp, triggerLevelUpConfetti } from '../services/rpgService';
 import { generateId } from '../utils/idGenerator';
+import {
+  PomodoroSettings,
+  DEFAULT_POMODORO_SETTINGS,
+} from '../types';
+import {
+  PomodoroPhase,
+  POMODORO_PRESETS,
+  POMODORO_STORAGE_KEY,
+  getPhaseDurationSeconds,
+  getNextPomodoroPhase,
+  calculateRemainingSeconds,
+  calculateFocusStats,
+} from '../utils/pomodoroEngine';
+import {
+  playPomodoroChime,
+  triggerHaptic,
+  requestNotificationPermission,
+  sendLocalNotification,
+} from '../utils/pomodoroSound';
 import {
   Clock,
   Play,
   Pause,
   RotateCcw,
-  Zap,
-  BookOpen,
-  Award,
-  Sparkles,
+  SkipForward,
+  Settings2,
+  BarChart3,
+  Flame,
   Volume2,
   VolumeX,
+  Vibrate,
+  Bell,
+  CheckCircle2,
+  Sparkles,
+  Zap,
+  BookOpen,
+  X,
+  Coffee,
+  Check,
 } from 'lucide-react';
 
 export const FocusPage: React.FC = () => {
   const { showToast, activeFocusTask, setActiveFocusTask } = useUiStore();
-  const todayKey = getTodayKey();
 
   const courses = useLiveQuery(() => db.courses.toArray()) || [];
   const focusSessions = useLiveQuery(() => db.focusSessions.toArray()) || [];
+  const appSettings = useLiveQuery(() => db.settings.get('current_user'));
 
-  // State
-  const [selectedDurationMins, setSelectedDurationMins] = useState(25);
-  const [selectedCourseId, setSelectedCourseId] = useState(activeFocusTask?.courseId || '');
+  // Load initial settings
+  const [settings, setSettings] = useState<PomodoroSettings>(() => {
+    try {
+      const saved = localStorage.getItem('college_os_pomodoro_settings');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DEFAULT_POMODORO_SETTINGS;
+  });
+
+  // Timer Core State
+  const [currentPhase, setCurrentPhase] = useState<PomodoroPhase>('work');
+  const [currentSessionIndex, setCurrentSessionIndex] = useState(1);
+  const [currentCycleIndex, setCurrentCycleIndex] = useState(1);
   const [isRunning, setIsRunning] = useState(false);
-  const [remainingSeconds, setRemainingSeconds] = useState(25 * 60);
+  const [remainingSeconds, setRemainingSeconds] = useState(() =>
+    getPhaseDurationSeconds('work', settings)
+  );
+  const [selectedCourseId, setSelectedCourseId] = useState(activeFocusTask?.courseId || '');
 
+  // UI Panels
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
+
+  // References for timestamp resilient timing
+  const targetEndTimestampRef = useRef<number | null>(null);
+  const wakeLockRef = useRef<any>(null);
+
+  // Sync activeFocusTask course
   useEffect(() => {
     if (activeFocusTask?.courseId) {
       setSelectedCourseId(activeFocusTask.courseId);
     }
   }, [activeFocusTask]);
 
-  // References for timestamp-based timing
-  const targetEndTimestampRef = useRef<number | null>(null);
-  const wakeLockRef = useRef<any>(null);
+  // Restore state from localStorage on first mount
+  useEffect(() => {
+    try {
+      const savedRaw = localStorage.getItem(POMODORO_STORAGE_KEY);
+      if (savedRaw) {
+        const saved = JSON.parse(savedRaw);
+        if (saved && typeof saved === 'object') {
+          if (saved.settings) setSettings(saved.settings);
+          if (saved.currentPhase) setCurrentPhase(saved.currentPhase);
+          if (typeof saved.currentSessionIndex === 'number') setCurrentSessionIndex(saved.currentSessionIndex);
+          if (typeof saved.currentCycleIndex === 'number') setCurrentCycleIndex(saved.currentCycleIndex);
+          if (saved.selectedCourseId) setSelectedCourseId(saved.selectedCourseId);
 
-  // Mode buttons
-  const modes = [
-    { label: '25 / 5', mins: 25, desc: 'Classic Pomodoro' },
-    { label: '45 / 10', mins: 45, desc: 'Deep University Block' },
-    { label: '15 / 3', mins: 15, desc: 'Low-Energy Sprint' },
-    { label: '2 Min', mins: 2, desc: 'Overcome Inertia' },
-  ];
+          if (saved.isRunning && saved.targetEndTimestamp) {
+            const now = Date.now();
+            if (now >= saved.targetEndTimestamp) {
+              // Timer finished while app was suspended / closed!
+              setRemainingSeconds(0);
+              targetEndTimestampRef.current = null;
+              setIsRunning(false);
+            } else {
+              targetEndTimestampRef.current = saved.targetEndTimestamp;
+              setRemainingSeconds(Math.ceil((saved.targetEndTimestamp - now) / 1000));
+              setIsRunning(true);
+            }
+          } else if (typeof saved.remainingSeconds === 'number') {
+            setRemainingSeconds(saved.remainingSeconds);
+            setIsRunning(false);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Could not restore Pomodoro state:', err);
+    }
+  }, []);
 
-  // Today's total focused minutes
-  const todayFocusMinutes = focusSessions
-    .filter((s) => s.completedAt.startsWith(todayKey))
-    .reduce((acc, curr) => acc + curr.minutesFocused, 0);
+  // Save state to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      const snapshot = {
+        isRunning,
+        targetEndTimestamp: targetEndTimestampRef.current,
+        remainingSeconds,
+        currentPhase,
+        currentSessionIndex,
+        currentCycleIndex,
+        selectedCourseId,
+        settings,
+        lastUpdated: Date.now(),
+      };
+      localStorage.setItem(POMODORO_STORAGE_KEY, JSON.stringify(snapshot));
+      localStorage.setItem('college_os_pomodoro_settings', JSON.stringify(settings));
+    } catch {}
+  }, [
+    isRunning,
+    remainingSeconds,
+    currentPhase,
+    currentSessionIndex,
+    currentCycleIndex,
+    selectedCourseId,
+    settings,
+  ]);
 
-  // Screen Wake Lock API helper
+  // Screen Wake Lock API
   const acquireWakeLock = async () => {
     try {
       if ('wakeLock' in navigator && !wakeLockRef.current) {
         wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
       }
-    } catch {
-      // Graceful fallback
-    }
+    } catch {}
   };
 
   const releaseWakeLock = () => {
@@ -71,34 +165,32 @@ export const FocusPage: React.FC = () => {
         wakeLockRef.current.release();
         wakeLockRef.current = null;
       }
-    } catch {
-      // Graceful fallback
-    }
+    } catch {}
   };
 
-  // Timestamp-based timing ticker
+  // Timer Tick Engine using Timestamps (impervious to throttling & sleep)
   useEffect(() => {
     let interval: any = null;
 
     if (isRunning && targetEndTimestampRef.current) {
       acquireWakeLock();
 
-      const updateRemaining = () => {
+      const checkTime = () => {
         if (!targetEndTimestampRef.current) return;
         const now = Date.now();
-        const diff = Math.max(0, Math.round((targetEndTimestampRef.current - now) / 1000));
+        const diff = Math.max(0, Math.ceil((targetEndTimestampRef.current - now) / 1000));
         setRemainingSeconds(diff);
 
         if (diff <= 0) {
-          handleSessionComplete();
+          handlePhaseComplete();
         }
       };
 
-      interval = setInterval(updateRemaining, 500);
+      interval = setInterval(checkTime, 500);
 
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
-          updateRemaining();
+          checkTime();
           acquireWakeLock();
         }
       };
@@ -112,67 +204,178 @@ export const FocusPage: React.FC = () => {
     } else {
       releaseWakeLock();
     }
-  }, [isRunning]);
+  }, [isRunning, currentPhase, currentSessionIndex, currentCycleIndex, settings]);
 
+  // Start timer
   const handleStartTimer = () => {
     targetEndTimestampRef.current = Date.now() + remainingSeconds * 1000;
     setIsRunning(true);
-    showToast('Focus session started. Screen wake locked.', 'info');
   };
 
+  // Pause timer
   const handlePauseTimer = () => {
     setIsRunning(false);
     targetEndTimestampRef.current = null;
     releaseWakeLock();
   };
 
-  const handleResetTimer = (mins: number = selectedDurationMins) => {
-    setIsRunning(false);
-    targetEndTimestampRef.current = null;
-    setSelectedDurationMins(mins);
-    setRemainingSeconds(mins * 60);
-    releaseWakeLock();
-  };
-
-  const handleSessionComplete = async () => {
+  // Restart current phase
+  const handleRestartPhase = () => {
     setIsRunning(false);
     targetEndTimestampRef.current = null;
     releaseWakeLock();
-
-    const now = new Date().toISOString();
-    const sessionId = generateId();
-
-    await db.focusSessions.add({
-      id: sessionId,
-      courseId: selectedCourseId || undefined,
-      mode: `${selectedDurationMins}min` as any,
-      minutesFocused: selectedDurationMins,
-      startedAt: new Date(Date.now() - selectedDurationMins * 60000).toISOString(),
-      completedAt: now,
-    });
-
-    const xpToAward = selectedDurationMins + 10; // 1 XP per min + 10 completion bonus
-    await awardXp({
-      source: 'focus_session',
-      sourceId: sessionId,
-      amount: xpToAward,
-      stat: 'knowledge',
-    });
-
-    triggerLevelUpConfetti();
-    showToast(`🎉 Focus block complete! ${selectedDurationMins} focused minutes logged (+${xpToAward} XP)!`, 'success');
-    setRemainingSeconds(selectedDurationMins * 60);
+    const dur = getPhaseDurationSeconds(currentPhase, settings);
+    setRemainingSeconds(dur);
   };
 
-  // Dial formatting
+  // Skip current phase
+  const handleSkipPhase = () => {
+    setIsRunning(false);
+    targetEndTimestampRef.current = null;
+    releaseWakeLock();
+
+    const next = getNextPomodoroPhase(currentPhase, currentSessionIndex, currentCycleIndex, settings);
+    setCurrentPhase(next.nextPhase);
+    setCurrentSessionIndex(next.nextSession);
+    setCurrentCycleIndex(next.nextCycle);
+    setRemainingSeconds(getPhaseDurationSeconds(next.nextPhase, settings));
+
+    showToast(`Skipped to ${formatPhaseTitle(next.nextPhase)}`, 'info');
+  };
+
+  // Handle phase completion
+  const handlePhaseComplete = async () => {
+    setIsRunning(false);
+    targetEndTimestampRef.current = null;
+    releaseWakeLock();
+
+    // Feedback
+    if (settings.soundEnabled) {
+      playPomodoroChime(currentPhase === 'work' ? 'work_complete' : 'break_complete');
+    }
+    if (settings.vibrationEnabled) {
+      triggerHaptic(currentPhase === 'work' ? [200, 100, 200, 100, 300] : [150, 80, 150]);
+    }
+
+    if (currentPhase === 'work') {
+      const minutesFocused = settings.focusDurationMins ?? settings.focusDurationMinutes ?? 25;
+      const now = new Date().toISOString();
+      const sessionId = generateId();
+
+      await db.focusSessions.add({
+        id: sessionId,
+        courseId: selectedCourseId || undefined,
+        mode: `${minutesFocused}min` as any,
+        minutesFocused,
+        startedAt: new Date(Date.now() - minutesFocused * 60000).toISOString(),
+        completedAt: now,
+      });
+
+      const xpToAward = minutesFocused + 10;
+      await awardXp({
+        source: 'focus_session',
+        sourceId: sessionId,
+        amount: xpToAward,
+        stat: 'knowledge',
+      });
+
+      triggerLevelUpConfetti();
+
+      if (settings.notificationsEnabled) {
+        sendLocalNotification(
+          '🎯 Focus Session Completed!',
+          `Great work! You finished ${minutesFocused} minutes of focus (+${xpToAward} XP). Time for a well-deserved break!`
+        );
+      }
+
+      showToast(`🎯 Focus session complete! +${xpToAward} XP earned!`, 'success');
+    } else {
+      if (settings.notificationsEnabled) {
+        sendLocalNotification(
+          '☕ Break Finished',
+          'Break is over! Ready to resume your focus flow?'
+        );
+      }
+      showToast('☕ Break ended. Ready for the next focus session!', 'info');
+    }
+
+    // Determine next phase
+    const next = getNextPomodoroPhase(currentPhase, currentSessionIndex, currentCycleIndex, settings);
+    setCurrentPhase(next.nextPhase);
+    setCurrentSessionIndex(next.nextSession);
+    setCurrentCycleIndex(next.nextCycle);
+
+    const nextDuration = getPhaseDurationSeconds(next.nextPhase, settings);
+    setRemainingSeconds(nextDuration);
+
+    if (next.isAllCyclesCompleted) {
+      showToast('🏆 Master Study Session Complete! All cycles finished.', 'success');
+    } else if (settings.autoTransition) {
+      // Auto-start next phase
+      targetEndTimestampRef.current = Date.now() + nextDuration * 1000;
+      setIsRunning(true);
+      showToast(`Auto-transitioning to ${formatPhaseTitle(next.nextPhase)}...`, 'info');
+    }
+  };
+
+  const formatPhaseTitle = (phase: PomodoroPhase) => {
+    switch (phase) {
+      case 'work':
+        return 'Focus Session';
+      case 'short_break':
+        return 'Short Break';
+      case 'long_break':
+        return 'Long Break';
+    }
+  };
+
+  // Preset Selection
+  const applyPreset = (presetKey: string) => {
+    if (presetKey === 'custom') {
+      setSettings((prev) => ({ ...prev, preset: 'custom' }));
+      return;
+    }
+    const p = POMODORO_PRESETS[presetKey];
+    if (p) {
+      const updated: PomodoroSettings = {
+        ...settings,
+        preset: presetKey as any,
+        focusDurationMinutes: p.focus,
+        shortBreakMinutes: p.shortBreak,
+        longBreakMinutes: p.longBreak,
+        sessionsBeforeLongBreak: p.sessionsBeforeLongBreak,
+      };
+      setSettings(updated);
+      if (!isRunning) {
+        setRemainingSeconds(getPhaseDurationSeconds(currentPhase, updated));
+      }
+      showToast(`Applied "${p.name}" preset`, 'info');
+    }
+  };
+
+  // Stats calculation
+  const stats = useMemo(() => {
+    return calculateFocusStats(focusSessions, courses);
+  }, [focusSessions, courses]);
+
+  // Dial calculations
+  const totalPhaseSeconds = getPhaseDurationSeconds(currentPhase, settings);
+  const progressRatio = Math.max(0, Math.min(1, (totalPhaseSeconds - remainingSeconds) / totalPhaseSeconds));
+
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = remainingSeconds % 60;
   const timeFormatted = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-  const progressRatio = (selectedDurationMins * 60 - remainingSeconds) / (selectedDurationMins * 60);
+
+  const phaseColor =
+    currentPhase === 'work'
+      ? '#B6E63E'
+      : currentPhase === 'short_break'
+      ? '#38bdf8'
+      : '#a855f7';
 
   return (
-    <div className="space-y-4 pb-20 animate-pop">
-      {/* Header */}
+    <div className="space-y-4 pb-24 animate-pop max-w-2xl mx-auto">
+      {/* Linked Task Banner */}
       {activeFocusTask?.taskTitle && (
         <div className="flex items-center justify-between p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -195,61 +398,58 @@ export const FocusPage: React.FC = () => {
         </div>
       )}
 
-      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-5 relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <div className="text-[10px] uppercase font-heading tracking-widest text-[#B6E63E] font-bold">
-              Monastic Deep Work Chamber
-            </div>
-            <h2 className="text-xl font-heading font-bold text-[rgb(var(--c-text))]">
-              Timestamped Focus Timer
-            </h2>
-            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
-              Survives browser sleep • Screen wake lock • 1 XP per focused minute
-            </p>
-          </div>
-
+      {/* Main Dial Card */}
+      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-6 sm:p-8 text-center flex flex-col items-center justify-center relative overflow-hidden">
+        {/* Top Header Bar */}
+        <div className="w-full flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full bg-[rgb(var(--c-surface2))] border border-[rgb(var(--c-border))] text-xs font-heading font-bold text-[rgb(var(--c-primary))]">
-              Today: {formatMinutes(todayFocusMinutes)} Focused
+            <span
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-heading font-bold uppercase tracking-wider"
+              style={{
+                backgroundColor: `${phaseColor}20`,
+                color: phaseColor,
+                border: `1px solid ${phaseColor}40`,
+              }}
+            >
+              {currentPhase === 'work' ? (
+                <Sparkles className="w-3.5 h-3.5" />
+              ) : (
+                <Coffee className="w-3.5 h-3.5" />
+              )}
+              {formatPhaseTitle(currentPhase)}
+            </span>
+            <span className="text-xs font-heading text-[rgb(var(--c-muted))]">
+              Session {currentSessionIndex}/{settings.sessionsBeforeLongBreak} • Cycle {currentCycleIndex}/{settings.cyclesPerSession}
             </span>
           </div>
-        </div>
 
-        {/* Mode Selector */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-          {modes.map((m) => (
+          <div className="flex items-center gap-1.5">
             <button
-              key={m.label}
-              onClick={() => handleResetTimer(m.mins)}
-              disabled={isRunning}
-              className={`p-2.5 rounded-xl border text-center transition active:scale-95 ${
-                selectedDurationMins === m.mins
-                  ? 'border-[#B6E63E] bg-[#B6E63E] text-stone-950 font-bold shadow-xs'
-                  : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] hover:border-[#B6E63E]'
-              } ${isRunning ? 'opacity-60 cursor-not-allowed' : ''}`}
+              onClick={() => setIsStatsOpen(true)}
+              className="p-2 rounded-xl border border-[rgb(var(--c-border))] hover:bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] transition active:scale-95"
+              title="Study Statistics"
             >
-              <div className="text-xs font-heading font-bold">{m.label}</div>
-              <div className="text-[10px] opacity-75">{m.desc}</div>
+              <BarChart3 className="w-4 h-4" />
             </button>
-          ))}
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-2 rounded-xl border border-[rgb(var(--c-border))] hover:bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] transition active:scale-95"
+              title="Customize Timer"
+            >
+              <Settings2 className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Grand Dial Card */}
-      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-8 text-center flex flex-col items-center justify-center space-y-6">
-        {/* Course Assignment */}
-        <div className="w-full max-w-xs">
-          <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] uppercase mb-1">
-            Focus Module / Purpose
-          </label>
+        {/* Course Assignment Dropdown */}
+        <div className="w-full max-w-xs mb-4">
           <select
             value={selectedCourseId}
             onChange={(e) => setSelectedCourseId(e.target.value)}
             disabled={isRunning}
-            className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
+            className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:border-[#B6E63E]"
           >
-            <option value="">General University Work</option>
+            <option value="">General Academic Work</option>
             {courses.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.code} — {c.name}
@@ -258,27 +458,26 @@ export const FocusPage: React.FC = () => {
           </select>
         </div>
 
-        {/* Big Dial */}
-        <div className="relative w-64 h-64 flex items-center justify-center">
-          {/* Circular SVG Ring */}
+        {/* Circular Dial */}
+        <div className="relative w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center my-2">
           <svg className="w-full h-full transform -rotate-90">
             <circle
-              cx="128"
-              cy="128"
-              r="110"
+              cx="50%"
+              cy="50%"
+              r="40%"
               stroke="currentColor"
               strokeWidth="8"
               className="text-[rgb(var(--c-surface2))]"
               fill="transparent"
             />
             <circle
-              cx="128"
-              cy="128"
-              r="110"
-              stroke="#B6E63E"
+              cx="50%"
+              cy="50%"
+              r="40%"
+              stroke={phaseColor}
               strokeWidth="10"
-              strokeDasharray={2 * Math.PI * 110}
-              strokeDashoffset={2 * Math.PI * 110 * (1 - progressRatio)}
+              strokeDasharray={2 * Math.PI * 115}
+              strokeDashoffset={2 * Math.PI * 115 * (1 - progressRatio)}
               strokeLinecap="round"
               fill="transparent"
               className="transition-all duration-300"
@@ -287,21 +486,25 @@ export const FocusPage: React.FC = () => {
 
           {/* Time Digits in Center */}
           <div className="absolute flex flex-col items-center">
-            <div className="text-5xl font-heading font-bold tracking-tight text-[rgb(var(--c-text))]">
+            <div className="text-5xl sm:text-6xl font-heading font-bold tracking-tight text-[rgb(var(--c-text))]">
               {timeFormatted}
             </div>
             <div className="text-xs text-[rgb(var(--c-muted))] font-flourish mt-1">
-              {isRunning ? 'Flow in progress...' : 'Ready to engage'}
+              {isRunning
+                ? currentPhase === 'work'
+                  ? 'Focus flow locked • Screen awake'
+                  : 'Resting & regenerating...'
+                : 'Paused • Press Play to engage'}
             </div>
           </div>
         </div>
 
         {/* Controls */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 mt-4">
           <button
-            onClick={() => handleResetTimer(selectedDurationMins)}
-            className="p-3 rounded-full border border-[rgb(var(--c-border))] hover:bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))] active:scale-90 transition"
-            title="Reset Dial"
+            onClick={handleRestartPhase}
+            className="p-3 rounded-2xl border border-[rgb(var(--c-border))] hover:bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))] active:scale-90 transition"
+            title="Restart Current Phase"
           >
             <RotateCcw className="w-5 h-5" />
           </button>
@@ -309,7 +512,7 @@ export const FocusPage: React.FC = () => {
           {isRunning ? (
             <button
               onClick={handlePauseTimer}
-              className="px-8 py-3 rounded-full bg-amber-500 text-stone-950 font-heading text-sm font-bold shadow-lg hover:opacity-90 active:scale-95 transition flex items-center gap-2"
+              className="px-8 py-3.5 rounded-2xl bg-amber-500 text-stone-950 font-heading text-sm font-bold shadow-lg hover:opacity-95 active:scale-95 transition flex items-center gap-2"
             >
               <Pause className="w-5 h-5 fill-current" />
               <span>Pause Block</span>
@@ -317,14 +520,452 @@ export const FocusPage: React.FC = () => {
           ) : (
             <button
               onClick={handleStartTimer}
-              className="px-8 py-3 rounded-full bg-[#B6E63E] text-stone-950 font-heading text-sm font-bold shadow-lg hover:opacity-90 active:scale-95 transition flex items-center gap-2"
+              className="px-8 py-3.5 rounded-2xl bg-[#B6E63E] text-stone-950 font-heading text-sm font-bold shadow-lg hover:opacity-95 active:scale-95 transition flex items-center gap-2"
             >
               <Play className="w-5 h-5 fill-current" />
-              <span>Engage Flow</span>
+              <span>{remainingSeconds === totalPhaseSeconds ? 'Start Flow' : 'Resume Flow'}</span>
             </button>
           )}
+
+          <button
+            onClick={handleSkipPhase}
+            className="p-3 rounded-2xl border border-[rgb(var(--c-border))] hover:bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))] active:scale-90 transition"
+            title="Skip to Next Phase"
+          >
+            <SkipForward className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Quick Presets Strip */}
+        <div className="grid grid-cols-3 gap-2 w-full max-w-md mt-6 pt-5 border-t border-[rgb(var(--c-border))]">
+          {Object.entries(POMODORO_PRESETS).map(([key, p]) => {
+            const isSelected = settings.preset === key;
+            return (
+              <button
+                key={key}
+                onClick={() => applyPreset(key)}
+                disabled={isRunning}
+                className={`p-2 rounded-xl text-center border transition text-xs active:scale-95 ${
+                  isSelected
+                    ? 'border-[#B6E63E] bg-[#B6E63E]/10 text-[rgb(var(--c-text))] font-bold'
+                    : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))] hover:border-[rgb(var(--c-text))]'
+                } ${isRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className="font-heading font-bold">{p.focus}m / {p.shortBreak}m</div>
+                <div className="text-[10px] opacity-75 truncate">{p.name}</div>
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      {/* Mini Today Summary Bar */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="p-3.5 rounded-2xl ticket-border bg-[rgb(var(--c-surface))] text-center">
+          <div className="text-[10px] uppercase font-heading text-[rgb(var(--c-muted))]">Today's Focus</div>
+          <div className="text-base font-heading font-bold text-[#B6E63E] mt-0.5">
+            {formatMinutes(stats.dailyMinutes)}
+          </div>
+        </div>
+        <div className="p-3.5 rounded-2xl ticket-border bg-[rgb(var(--c-surface))] text-center">
+          <div className="text-[10px] uppercase font-heading text-[rgb(var(--c-muted))]">Sessions Done</div>
+          <div className="text-base font-heading font-bold text-[rgb(var(--c-text))] mt-0.5">
+            {stats.totalCompletedSessions}
+          </div>
+        </div>
+        <div className="p-3.5 rounded-2xl ticket-border bg-[rgb(var(--c-surface))] text-center">
+          <div className="text-[10px] uppercase font-heading text-[rgb(var(--c-muted))] flex items-center justify-center gap-1">
+            <Flame className="w-3 h-3 text-amber-500" />
+            <span>Streak</span>
+          </div>
+          <div className="text-base font-heading font-bold text-amber-500 mt-0.5">
+            {stats.currentStreakDays} {stats.currentStreakDays === 1 ? 'day' : 'days'}
+          </div>
+        </div>
+      </div>
+
+      {/* SETTINGS MODAL */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-[rgb(var(--c-surface))] ticket-border rounded-3xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
+              <div className="flex items-center gap-2">
+                <Settings2 className="w-5 h-5 text-[#B6E63E]" />
+                <h3 className="font-heading font-bold text-base text-[rgb(var(--c-text))]">
+                  Pomodoro Customization
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsSettingsOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Presets Radio */}
+            <div>
+              <label className="block text-xs font-heading font-bold text-[rgb(var(--c-text))] uppercase mb-2">
+                Preset Selection
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {Object.entries(POMODORO_PRESETS).map(([key, p]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => applyPreset(key)}
+                    className={`p-2.5 rounded-xl border text-left transition text-xs ${
+                      settings.preset === key
+                        ? 'border-[#B6E63E] bg-[#B6E63E]/15 font-bold text-[rgb(var(--c-text))]'
+                        : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))]'
+                    }`}
+                  >
+                    <div className="font-heading">{p.name}</div>
+                    <div className="text-[10px] opacity-75">{p.focus}m / {p.shortBreak}m / {p.longBreak}m</div>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => applyPreset('custom')}
+                  className={`p-2.5 rounded-xl border text-left transition text-xs ${
+                    settings.preset === 'custom'
+                      ? 'border-[#B6E63E] bg-[#B6E63E]/15 font-bold text-[rgb(var(--c-text))]'
+                      : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))]'
+                  }`}
+                >
+                  <div className="font-heading">Custom Settings</div>
+                  <div className="text-[10px] opacity-75">Tailored durations</div>
+                </button>
+              </div>
+            </div>
+
+            {/* Durations */}
+            <div className="space-y-3 pt-2 border-t border-[rgb(var(--c-border))]">
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
+                    Focus (min)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="180"
+                    value={settings.focusDurationMinutes}
+                    onChange={(e) => {
+                      const v = Math.max(1, parseInt(e.target.value) || 25);
+                      setSettings((prev) => ({ ...prev, preset: 'custom', focusDurationMinutes: v }));
+                      if (!isRunning && currentPhase === 'work') setRemainingSeconds(v * 60);
+                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] text-sm font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
+                    Short Break (min)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={settings.shortBreakMinutes}
+                    onChange={(e) => {
+                      const v = Math.max(1, parseInt(e.target.value) || 5);
+                      setSettings((prev) => ({ ...prev, preset: 'custom', shortBreakMinutes: v }));
+                      if (!isRunning && currentPhase === 'short_break') setRemainingSeconds(v * 60);
+                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] text-sm font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
+                    Long Break (min)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="90"
+                    value={settings.longBreakMinutes}
+                    onChange={(e) => {
+                      const v = Math.max(1, parseInt(e.target.value) || 15);
+                      setSettings((prev) => ({ ...prev, preset: 'custom', longBreakMinutes: v }));
+                      if (!isRunning && currentPhase === 'long_break') setRemainingSeconds(v * 60);
+                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] text-sm font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
+                    Sessions Before Long Break
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="12"
+                    value={settings.sessionsBeforeLongBreak}
+                    onChange={(e) => {
+                      const v = Math.max(1, parseInt(e.target.value) || 4);
+                      setSettings((prev) => ({ ...prev, sessionsBeforeLongBreak: v }));
+                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] text-sm font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
+                    Cycles Per Session
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={settings.cyclesPerSession}
+                    onChange={(e) => {
+                      const v = Math.max(1, parseInt(e.target.value) || 2);
+                      setSettings((prev) => ({ ...prev, cyclesPerSession: v }));
+                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] text-sm font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Toggles */}
+            <div className="space-y-2.5 pt-2 border-t border-[rgb(var(--c-border))]">
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] cursor-pointer">
+                <div>
+                  <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                    Auto-Transition Sessions
+                  </div>
+                  <div className="text-[10px] text-[rgb(var(--c-muted))]">
+                    Automatically launch break or work when timer hits zero
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.autoTransition}
+                  onChange={(e) => setSettings((prev) => ({ ...prev, autoTransition: e.target.checked }))}
+                  className="rounded text-[#B6E63E] focus:ring-[#B6E63E] w-4 h-4"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Volume2 className="w-4 h-4 text-[#B6E63E]" />
+                  <div>
+                    <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                      Sound Chime
+                    </div>
+                    <div className="text-[10px] text-[rgb(var(--c-muted))]">
+                      Synthesized offline audio chime at session end
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.soundEnabled}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setSettings((prev) => ({ ...prev, soundEnabled: checked }));
+                    if (checked) playPomodoroChime('work_complete');
+                  }}
+                  className="rounded text-[#B6E63E] focus:ring-[#B6E63E] w-4 h-4"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Vibrate className="w-4 h-4 text-[#B6E63E]" />
+                  <div>
+                    <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                      Vibration Haptics
+                    </div>
+                    <div className="text-[10px] text-[rgb(var(--c-muted))]">
+                      Device vibration pulse when session completes
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.vibrationEnabled}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setSettings((prev) => ({ ...prev, vibrationEnabled: checked }));
+                    if (checked) triggerHaptic([100]);
+                  }}
+                  className="rounded text-[#B6E63E] focus:ring-[#B6E63E] w-4 h-4"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-[#B6E63E]" />
+                  <div>
+                    <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                      Push / System Notifications
+                    </div>
+                    <div className="text-[10px] text-[rgb(var(--c-muted))]">
+                      Background alerts when timer runs in background
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.notificationsEnabled}
+                  onChange={async (e) => {
+                    const checked = e.target.checked;
+                    if (checked) {
+                      const granted = await requestNotificationPermission();
+                      if (!granted) {
+                        showToast('Notification permission not granted by browser/system.', 'warning');
+                      }
+                    }
+                    setSettings((prev) => ({ ...prev, notificationsEnabled: checked }));
+                  }}
+                  className="rounded text-[#B6E63E] focus:ring-[#B6E63E] w-4 h-4"
+                />
+              </label>
+            </div>
+
+            <button
+              onClick={() => {
+                setIsSettingsOpen(false);
+                showToast('Pomodoro settings saved!', 'success');
+              }}
+              className="w-full py-3 rounded-2xl bg-[#B6E63E] text-stone-950 font-heading font-bold text-sm shadow-md active:scale-95 transition"
+            >
+              Apply Settings
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STATISTICS DRAWER / MODAL */}
+      {isStatsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-[rgb(var(--c-surface))] ticket-border rounded-3xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-[#B6E63E]" />
+                <h3 className="font-heading font-bold text-base text-[rgb(var(--c-text))]">
+                  Study & Focus Analytics
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsStatsOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Key Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-center">
+                <div className="text-[10px] uppercase font-heading text-[rgb(var(--c-muted))]">Today</div>
+                <div className="text-sm font-heading font-bold text-[#B6E63E] mt-0.5">
+                  {formatMinutes(stats.dailyMinutes)}
+                </div>
+              </div>
+              <div className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-center">
+                <div className="text-[10px] uppercase font-heading text-[rgb(var(--c-muted))]">7-Day Total</div>
+                <div className="text-sm font-heading font-bold text-[rgb(var(--c-text))] mt-0.5">
+                  {formatMinutes(stats.weeklyMinutes)}
+                </div>
+              </div>
+              <div className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-center">
+                <div className="text-[10px] uppercase font-heading text-[rgb(var(--c-muted))]">30-Day Total</div>
+                <div className="text-sm font-heading font-bold text-[rgb(var(--c-text))] mt-0.5">
+                  {formatMinutes(stats.monthlyMinutes)}
+                </div>
+              </div>
+              <div className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-center">
+                <div className="text-[10px] uppercase font-heading text-[rgb(var(--c-muted))]">Avg Session</div>
+                <div className="text-sm font-heading font-bold text-[rgb(var(--c-text))] mt-0.5">
+                  {stats.averageSessionMinutes}m
+                </div>
+              </div>
+            </div>
+
+            {/* Streak & Sessions Card */}
+            <div className="p-4 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                  <Flame className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                    Current Study Streak
+                  </div>
+                  <div className="text-[11px] text-[rgb(var(--c-muted))]">
+                    {stats.currentStreakDays > 0
+                      ? `${stats.currentStreakDays} consecutive active study days`
+                      : 'Complete a session today to start your streak!'}
+                  </div>
+                </div>
+              </div>
+              <div className="text-xl font-heading font-bold text-amber-500">
+                {stats.currentStreakDays}d
+              </div>
+            </div>
+
+            {/* Course Breakdown */}
+            <div>
+              <div className="text-xs font-heading font-bold uppercase text-[rgb(var(--c-text))] mb-2 flex items-center justify-between">
+                <span>Focus Time by Course</span>
+                <span className="text-[10px] text-[rgb(var(--c-muted))] lowercase font-normal">
+                  {stats.totalCompletedSessions} total sessions
+                </span>
+              </div>
+              {stats.courseBreakdown.length === 0 ? (
+                <div className="p-4 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-center text-xs text-[rgb(var(--c-muted))]">
+                  No focus sessions recorded yet. Engage your first session above!
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-56 overflow-y-auto">
+                  {stats.courseBreakdown.map((item) => {
+                    const ratio = stats.totalFocusedMinutes > 0
+                      ? Math.round((item.minutes / stats.totalFocusedMinutes) * 100)
+                      : 0;
+                    return (
+                      <div
+                        key={item.courseId}
+                        className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-heading font-bold text-[rgb(var(--c-text))]">
+                            {item.courseCode} — {item.courseName}
+                          </span>
+                          <span className="font-heading font-bold text-[#B6E63E]">
+                            {formatMinutes(item.minutes)} ({ratio}%)
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 rounded-full bg-[rgb(var(--c-surface2))] overflow-hidden">
+                          <div
+                            className="h-full bg-[#B6E63E] rounded-full transition-all duration-500"
+                            style={{ width: `${ratio}%` }}
+                          />
+                        </div>
+                        <div className="text-[10px] text-[rgb(var(--c-muted))]">
+                          {item.sessionCount} {item.sessionCount === 1 ? 'block' : 'blocks'} completed
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setIsStatsOpen(false)}
+              className="w-full py-2.5 rounded-2xl bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading font-bold text-xs hover:bg-[rgb(var(--c-border))] transition"
+            >
+              Close Analytics
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

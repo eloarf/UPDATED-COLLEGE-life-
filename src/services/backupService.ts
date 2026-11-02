@@ -34,6 +34,9 @@ import {
   Semester,
   RestDay,
   DailyReflection,
+  FinancialAccount,
+  DebtRecord,
+  RecurringTransaction,
 } from '../types';
 
 export const CURRENT_BACKUP_VERSION = 2;
@@ -64,6 +67,9 @@ export interface BackupData {
     transactions?: Transaction[];
     budgets?: Budget[];
     savingsGoals?: SavingsGoal[];
+    financialAccounts?: FinancialAccount[];
+    debts?: DebtRecord[];
+    recurringTransactions?: RecurringTransaction[];
     creativeProjects?: CreativeProject[];
     creativeSessions?: CreativeSession[];
     readingItems?: ReadingItem[];
@@ -101,6 +107,9 @@ const ALL_TABLES = [
   db.transactions,
   db.budgets,
   db.savingsGoals,
+  db.financialAccounts,
+  db.debts,
+  db.recurringTransactions,
   db.creativeProjects,
   db.creativeSessions,
   db.readingItems,
@@ -141,6 +150,9 @@ export async function exportDatabaseToJson(): Promise<string> {
       transactions: await db.transactions.toArray(),
       budgets: await db.budgets.toArray(),
       savingsGoals: await db.savingsGoals.toArray(),
+      financialAccounts: await db.financialAccounts.toArray(),
+      debts: await db.debts.toArray(),
+      recurringTransactions: await db.recurringTransactions.toArray(),
       creativeProjects: await db.creativeProjects.toArray(),
       creativeSessions: await db.creativeSessions.toArray(),
       readingItems: await db.readingItems.toArray(),
@@ -323,6 +335,9 @@ export async function restoreDatabase(
         if (d.transactions?.length) await db.transactions.bulkPut(d.transactions);
         if (d.budgets?.length) await db.budgets.bulkPut(d.budgets);
         if (d.savingsGoals?.length) await db.savingsGoals.bulkPut(d.savingsGoals);
+        if (d.financialAccounts?.length) await db.financialAccounts.bulkPut(d.financialAccounts);
+        if (d.debts?.length) await db.debts.bulkPut(d.debts);
+        if (d.recurringTransactions?.length) await db.recurringTransactions.bulkPut(d.recurringTransactions);
         if (d.creativeProjects?.length) await db.creativeProjects.bulkPut(d.creativeProjects);
         if (d.creativeSessions?.length) await db.creativeSessions.bulkPut(d.creativeSessions);
         if (d.readingItems?.length) await db.readingItems.bulkPut(d.readingItems);
@@ -361,6 +376,9 @@ export async function restoreDatabase(
         if (d.transactions?.length) await db.transactions.bulkPut(d.transactions);
         if (d.budgets?.length) await db.budgets.bulkPut(d.budgets);
         if (d.savingsGoals?.length) await db.savingsGoals.bulkPut(d.savingsGoals);
+        if (d.financialAccounts?.length) await db.financialAccounts.bulkPut(d.financialAccounts);
+        if (d.debts?.length) await db.debts.bulkPut(d.debts);
+        if (d.recurringTransactions?.length) await db.recurringTransactions.bulkPut(d.recurringTransactions);
         if (d.creativeProjects?.length) await db.creativeProjects.bulkPut(d.creativeProjects);
         if (d.creativeSessions?.length) await db.creativeSessions.bulkPut(d.creativeSessions);
         if (d.readingItems?.length) await db.readingItems.bulkPut(d.readingItems);

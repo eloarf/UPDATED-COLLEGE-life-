@@ -34,6 +34,9 @@ import {
   RestDay,
   DailyReflection,
   AppSettings,
+  FinancialAccount,
+  DebtRecord,
+  RecurringTransaction,
   DEFAULT_ACCOUNT_BALANCES,
   DEFAULT_DEPARTMENTS,
 } from '../types';
@@ -61,6 +64,9 @@ export class CollegeLifeOSDatabase extends Dexie {
   transactions!: Table<Transaction, string>;
   budgets!: Table<Budget, string>;
   savingsGoals!: Table<SavingsGoal, string>;
+  financialAccounts!: Table<FinancialAccount, string>;
+  debts!: Table<DebtRecord, string>;
+  recurringTransactions!: Table<RecurringTransaction, string>;
   creativeProjects!: Table<CreativeProject, string>;
   creativeSessions!: Table<CreativeSession, string>;
   readingItems!: Table<ReadingItem, string>;
@@ -165,6 +171,15 @@ export class CollegeLifeOSDatabase extends Dexie {
     this.version(4).stores({
       journalEntries: 'id, date, isPinned, isFavorite, deletedAt',
     });
+
+    this.version(5).stores({
+      financialAccounts: 'id, name, type, isDefault, isArchived',
+      debts: 'id, type, status, dueDate',
+      recurringTransactions: 'id, type, accountId, frequency, nextDueDate, isActive',
+      transactions: 'id, type, date, category, accountId, toAccountId',
+      budgets: 'id, category, period',
+      savingsGoals: 'id, accountId',
+    });
   }
 }
 
@@ -261,6 +276,9 @@ export interface EmergencyBackupPayload {
     transactions?: Transaction[];
     budgets?: Budget[];
     savingsGoals?: SavingsGoal[];
+    financialAccounts?: FinancialAccount[];
+    debts?: DebtRecord[];
+    recurringTransactions?: RecurringTransaction[];
     creativeProjects?: CreativeProject[];
     creativeSessions?: CreativeSession[];
     readingItems?: ReadingItem[];
@@ -318,6 +336,9 @@ function attachDatabaseHooks() {
     db.transactions,
     db.budgets,
     db.savingsGoals,
+    db.financialAccounts,
+    db.debts,
+    db.recurringTransactions,
     db.creativeProjects,
     db.creativeSessions,
     db.readingItems,
@@ -508,6 +529,9 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         transactions,
         budgets,
         savingsGoals,
+        financialAccounts,
+        debts,
+        recurringTransactions,
         creativeProjects,
         creativeSessions,
         readingItems,
@@ -542,6 +566,9 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         db.transactions.toArray().catch(() => []),
         db.budgets.toArray().catch(() => []),
         db.savingsGoals.toArray().catch(() => []),
+        db.financialAccounts.toArray().catch(() => []),
+        db.debts.toArray().catch(() => []),
+        db.recurringTransactions.toArray().catch(() => []),
         db.creativeProjects.toArray().catch(() => []),
         db.creativeSessions.toArray().catch(() => []),
         db.readingItems.toArray().catch(() => []),
@@ -578,6 +605,9 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         transactions: transactions.length,
         budgets: budgets.length,
         savingsGoals: savingsGoals.length,
+        financialAccounts: financialAccounts.length,
+        debts: debts.length,
+        recurringTransactions: recurringTransactions.length,
         creativeProjects: creativeProjects.length,
         creativeSessions: creativeSessions.length,
         readingItems: readingItems.length,
@@ -614,7 +644,7 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
       if (totalRecords === 0) return false;
 
       const payload: EmergencyBackupPayload = {
-        version: 4,
+        version: 5,
         savedAt: new Date().toISOString(),
         totalRecords,
         data: {
@@ -640,6 +670,9 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
           transactions,
           budgets,
           savingsGoals,
+          financialAccounts,
+          debts,
+          recurringTransactions,
           creativeProjects,
           creativeSessions,
           readingItems,
@@ -757,6 +790,9 @@ export async function checkAndRestoreFromEmergencyBackup(
       { name: 'transactions', table: db.transactions, records: d.transactions },
       { name: 'budgets', table: db.budgets, records: d.budgets },
       { name: 'savingsGoals', table: db.savingsGoals, records: d.savingsGoals },
+      { name: 'financialAccounts', table: db.financialAccounts, records: d.financialAccounts },
+      { name: 'debts', table: db.debts, records: d.debts },
+      { name: 'recurringTransactions', table: db.recurringTransactions, records: d.recurringTransactions },
       { name: 'creativeProjects', table: db.creativeProjects, records: d.creativeProjects },
       { name: 'creativeSessions', table: db.creativeSessions, records: d.creativeSessions },
       { name: 'readingItems', table: db.readingItems, records: d.readingItems },

@@ -20,6 +20,7 @@ export interface Course {
   code: string;
   name: string;
   creditHours?: number;
+  credits?: number;
   instructor?: string;
   room?: string; // Class number / Hall
   building?: string; // Block number
@@ -183,7 +184,7 @@ export interface FocusSession {
   courseId?: string;
   projectId?: string;
   taskId?: string;
-  mode: '25/5' | '45/10' | '15/3' | 'custom' | '2min';
+  mode: '25/5' | '45/10' | '15/3' | 'custom' | '2min' | 'pomodoro' | string;
   minutesFocused: number;
   startedAt: string;
   completedAt: string;
@@ -261,23 +262,60 @@ export interface DepartmentOption {
   notes?: string;
 }
 
+export type FinancialAccountType = 'bank' | 'mobile_money' | 'cash' | 'savings' | 'digital_wallet' | 'other' | 'custom';
+
+export interface FinancialAccount {
+  id: string;
+  name: string;
+  type?: FinancialAccountType;
+  accountType?: FinancialAccountType;
+  institution?: string; // e.g. 'CBE', 'Bank of Abyssinia', 'Awash Bank', 'Dashen Bank', 'Telebirr', 'HelloCash', or custom
+  openingBalance: number;
+  currency: string; // default 'ETB'
+  notes?: string;
+  isDefault?: boolean;
+  isArchived?: boolean;
+  color?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Transaction {
   id: string;
-  type: 'expense' | 'income' | 'saving';
+  type: 'expense' | 'income' | 'transfer' | 'saving';
   amount: number;
-  currency: string;
+  currency?: string;
   category: string;
-  account: 'cash' | 'bank' | 'mobile_money';
+  account?: 'cash' | 'bank' | 'mobile_money'; // legacy support
+  accountId?: string; // ID of the account
+  financialAccountId?: string;
+  sourceAccountId?: string;
+  targetAccountId?: string;
+  toAccountId?: string; // destination account if type === 'transfer'
+  linkedTransferId?: string;
   date: string; // YYYY-MM-DD
+  time?: string; // HH:MM
+  description?: string;
   notes?: string;
+  tags?: string[];
   savingsGoalId?: string;
+  debtId?: string;
+  recurringId?: string;
+  createdAt?: string;
 }
 
 export interface Budget {
   id: string;
-  category: string;
-  monthlyLimit: number;
-  spent: number;
+  name?: string;
+  category: string; // 'all' for overall budget or specific category
+  period: 'monthly' | 'weekly' | 'custom';
+  monthlyLimit?: number; // legacy support
+  amount: number;
+  month?: string; // YYYY-MM
+  currency?: string;
+  startDate?: string;
+  endDate?: string;
+  spent?: number;
 }
 
 export interface SavingsGoal {
@@ -285,11 +323,89 @@ export interface SavingsGoal {
   title: string;
   targetAmount: number;
   currentAmount: number;
+  currency?: string;
   deadline?: string;
+  accountId?: string;
   category?: string;
+  notes?: string;
   color?: string;
   createdAt?: string;
 }
+
+export interface DebtRecord {
+  id: string;
+  type: 'owe' | 'owed' | 'payable' | 'receivable'; // 'owe'/'payable' = I owe someone, 'owed'/'receivable' = someone owes me
+  person?: string;
+  personName?: string;
+  amount?: number;
+  originalAmount?: number;
+  paidAmount: number;
+  remainingAmount?: number;
+  currency?: string;
+  dueDate?: string;
+  status: 'pending' | 'partial' | 'settled';
+  notes?: string;
+  accountId?: string;
+  createdAt: string;
+  settledAt?: string;
+}
+
+export interface RecurringTransaction {
+  id: string;
+  title?: string;
+  type: 'income' | 'expense';
+  amount: number;
+  currency?: string;
+  accountId?: string;
+  financialAccountId?: string;
+  category: string;
+  frequency: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
+  intervalDays?: number;
+  startDate?: string;
+  nextDueDate: string;
+  lastGeneratedDate?: string;
+  isActive: boolean;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface PomodoroSettings {
+  preset?: 'classic' | 'deep_work' | 'extended' | 'custom';
+  focusDurationMins: number;
+  focusDurationMinutes?: number;
+  shortBreakMins: number;
+  shortBreakMinutes?: number;
+  longBreakMins: number;
+  longBreakMinutes?: number;
+  sessionsBeforeLongBreak: number;
+  totalCycles: number;
+  cyclesPerSession?: number;
+  autoTransition?: boolean;
+  autoStartBreaks?: boolean;
+  autoStartWork?: boolean;
+  soundEnabled: boolean;
+  vibrationEnabled: boolean;
+  notificationsEnabled: boolean;
+}
+
+export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
+  preset: 'classic',
+  focusDurationMins: 25,
+  focusDurationMinutes: 25,
+  shortBreakMins: 5,
+  shortBreakMinutes: 5,
+  longBreakMins: 15,
+  longBreakMinutes: 15,
+  sessionsBeforeLongBreak: 4,
+  totalCycles: 2,
+  cyclesPerSession: 2,
+  autoTransition: false,
+  autoStartBreaks: false,
+  autoStartWork: false,
+  soundEnabled: true,
+  vibrationEnabled: true,
+  notificationsEnabled: true,
+};
 
 export interface CreativeProject {
   id: string;
@@ -409,6 +525,7 @@ export interface AppSettings {
   accountBalances?: AccountBalancesConfig;
   departmentOptions?: DepartmentOption[];
   hasCompletedOnboarding?: boolean;
+  pomodoroSettings?: PomodoroSettings;
 }
 
 export interface AccountBalancesConfig {
