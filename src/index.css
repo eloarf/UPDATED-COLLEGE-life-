@@ -733,3 +733,193 @@ body {
   background-size: 24px 24px;
 }
 
+/* --- Orthogonal Appearance Styles --- */
+
+/* 1. Typography Modes */
+[data-font-style="serif"] .font-flourish {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-style: italic;
+}
+
+[data-font-style="sans"] .font-heading {
+  font-family: 'Josefin Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: 0.05em;
+}
+
+[data-font-style="sans"] .font-flourish {
+  font-family: 'Nunito Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* 2. Layout Density */
+[data-density="compact"] .p-4 {
+  padding: 0.75rem;
+}
+[data-density="compact"] .p-5 {
+  padding: 0.95rem;
+}
+[data-density="compact"] .p-6 {
+  padding: 1.15rem;
+}
+[data-density="compact"] .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.75rem;
+}
+[data-density="compact"] .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.5rem;
+}
+[data-density="compact"] .gap-4 {
+  gap: 0.75rem;
+}
+[data-density="compact"] .gap-3 {
+  gap: 0.5rem;
+}
+
+/* 3. Card Border Glow */
+.theme-glow .ticket-border {
+  box-shadow: 0 0 14px rgb(var(--c-primary) / 0.22), inset 0 0 0 2px rgb(var(--c-surface2) / 0.5);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.theme-glow .ticket-border:hover {
+  box-shadow: 0 0 20px rgb(var(--c-primary) / 0.38), inset 0 0 0 2px rgb(var(--c-surface2) / 0.7);
+}
+
+/* =========================================================================
+   STAGE 2 — TWO-LAYER THEME SYSTEM: APPEARANCE MODE & DESIGN STYLES
+   ========================================================================= */
+
+/* THEME A — APPEARANCE MODE BRIGHTNESS & COLOR HARMONIZATION */
+[data-appearance="dark"] {
+  color-scheme: dark;
+}
+[data-appearance="light"] {
+  color-scheme: light;
+}
+
+/* Fallback inversion overrides when a light palette is forced to dark mode */
+[data-appearance="dark"][data-theme="pink-lobby"],
+[data-appearance="dark"][data-theme="matcha-cream"],
+[data-appearance="dark"][data-theme="blush-cocoa"],
+[data-appearance="dark"][data-theme="daring-mustard"],
+[data-appearance="dark"][data-theme="warm-terracotta"],
+[data-appearance="dark"][data-theme="sunlit-clementine"] {
+  --c-bg: 24 20 22;
+  --c-surface: 36 29 32;
+  --c-surface2: 48 38 42;
+  --c-border: 75 58 66;
+  --c-text: 248 241 236;
+  --c-muted: 186 168 174;
+}
+
+/* Fallback overrides when a dark palette is forced to light mode */
+[data-appearance="light"][data-theme="chocolate-lime"],
+[data-appearance="light"][data-theme="midnight-plum"],
+[data-appearance="light"][data-theme="burgundy-velvet"],
+[data-appearance="light"][data-theme="cyber-neon-blue"],
+[data-appearance="light"][data-theme="dark-wood-crimson"],
+[data-appearance="light"][data-theme="dark-academia"],
+[data-appearance="light"][data-theme="gothic-romance"],
+[data-appearance="light"][data-theme="oceanic-abyss"] {
+  --c-bg: 248 245 240;
+  --c-surface: 255 255 255;
+  --c-surface2: 240 236 228;
+  --c-border: 216 208 196;
+  --c-text: 32 26 28;
+  --c-muted: 112 102 106;
+}
+
+/* THEME B — DESIGN STYLES */
+
+/* 1. EDITORIAL RETRO (Wes Anderson + Vintage PC + Physical Journal) */
+[data-design-style="editorial-retro"] {
+  --style-border-radius: 1.25rem;
+  --style-border-width: 1.5px;
+}
+[data-design-style="editorial-retro"] body {
+  background-image: radial-gradient(rgba(var(--c-border) / 0.18) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+[data-design-style="editorial-retro"] .ticket-border {
+  border: 1.5px solid rgb(var(--c-border));
+  box-shadow: inset 0 0 0 2px rgb(var(--c-surface2) / 0.4), 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+[data-design-style="editorial-retro"] .font-heading {
+  font-family: 'Josefin Sans', Georgia, 'Times New Roman', Charter, serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+[data-design-style="editorial-retro"] .font-flourish {
+  font-family: 'Cormorant Garamond', Garamond, Georgia, 'Baskerville', serif;
+  font-style: italic;
+}
+
+/* 2. QUIET MINIMAL (Japanese Stationery + Zen Wabi-Sabi Paper) */
+[data-design-style="quiet-minimal"] {
+  --style-border-radius: 0.75rem;
+  --style-border-width: 1px;
+}
+[data-design-style="quiet-minimal"] body {
+  background-image: radial-gradient(rgba(var(--c-border) / 0.08) 0.8px, transparent 0.8px);
+  background-size: 16px 16px;
+}
+[data-design-style="quiet-minimal"] .ticket-border {
+  border: 1px solid rgb(var(--c-border) / 0.75);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  border-radius: 0.75rem;
+}
+[data-design-style="quiet-minimal"] .font-heading {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  font-weight: 700;
+}
+[data-design-style="quiet-minimal"] .font-flourish {
+  font-family: 'Charter', 'Palatino Linotype', 'Baskerville', Georgia, serif;
+  font-style: normal;
+  letter-spacing: 0.01em;
+}
+[data-design-style="quiet-minimal"] .rounded-3xl {
+  border-radius: 1rem !important;
+}
+
+/* 3. CREATIVE STUDIO (Retro-Futurist Terminal & Deck) */
+[data-design-style="creative-studio"] {
+  --style-border-radius: 0.5rem;
+  --style-border-width: 2px;
+}
+[data-design-style="creative-studio"] body {
+  background-image: linear-gradient(to right, rgba(var(--c-border) / 0.09) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(var(--c-border) / 0.09) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+[data-design-style="creative-studio"] .ticket-border {
+  border: 2px solid rgb(var(--c-border));
+  box-shadow: 3px 3px 0px rgb(var(--c-border) / 0.65);
+  border-radius: 0.5rem;
+}
+[data-design-style="creative-studio"] .font-heading {
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, monospace;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+[data-design-style="creative-studio"] .font-flourish {
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
+  font-style: normal;
+  font-size: 0.9em;
+  letter-spacing: 0.02em;
+}
+[data-design-style="creative-studio"] .rounded-3xl {
+  border-radius: 0.625rem !important;
+}
+[data-design-style="creative-studio"] .rounded-2xl {
+  border-radius: 0.5rem !important;
+}
+[data-design-style="creative-studio"] .rounded-xl {
+  border-radius: 0.375rem !important;
+}
+
+
+

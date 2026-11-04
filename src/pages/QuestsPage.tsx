@@ -27,17 +27,28 @@ import {
   X,
   Search,
   Check,
+  Target,
 } from 'lucide-react';
+import { SemesterGoalsSection } from '../components/goals/SemesterGoalsSection';
 
 export const QuestsPage: React.FC = () => {
-  const { showToast } = useUiStore();
+  const { showToast, currentRoute } = useUiStore();
   const todayKey = getTodayKey();
 
-  const [activeTab, setActiveTab] = useState<'today' | 'upcoming' | 'by_day' | 'overdue' | 'done'>('today');
+  const [activeTab, setActiveTab] = useState<'today' | 'upcoming' | 'by_day' | 'overdue' | 'done' | 'goals'>(() => {
+    return window.location.hash.includes('goals') ? 'goals' : 'today';
+  });
   const [selectedDay, setSelectedDay] = useState<string>(todayKey);
   const [searchQuery, setSearchQuery] = useState('');
   const [quickInput, setQuickInput] = useState('');
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
+
+  // Sync with global hash route
+  React.useEffect(() => {
+    if (currentRoute === '#/goals') {
+      setActiveTab('goals');
+    }
+  }, [currentRoute]);
 
   // Add Task Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -64,6 +75,8 @@ export const QuestsPage: React.FC = () => {
 
   const courses = useLiveQuery(() => db.courses.toArray()) || [];
   const tasks = useLiveQuery(() => db.tasks.toArray()) || [];
+  const academicGoals = useLiveQuery(() => db.academicGoals.toArray()) || [];
+  const activeGoalsCount = academicGoals.filter((g) => g.status !== 'completed').length;
 
   const courseMap = new Map<string, Course>();
   courses.forEach((c) => courseMap.set(c.id, c));
@@ -271,10 +284,12 @@ export const QuestsPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h1 className="text-xl sm:text-2xl font-heading font-bold text-[rgb(var(--c-text))]">
-              Tasks &amp; Assignments
+              {activeTab === 'goals' ? 'Semester Goals & Milestones' : 'Tasks & Assignments'}
             </h1>
             <p className="text-xs text-[rgb(var(--c-muted))] mt-0.5">
-              Organize daily coursework, readings, and personal tasks with instant completion.
+              {activeTab === 'goals'
+                ? 'Track semester objectives, GPA targets, research, and career milestones.'
+                : 'Organize daily coursework, readings, and personal tasks with instant completion.'}
             </p>
           </div>
 
@@ -287,54 +302,58 @@ export const QuestsPage: React.FC = () => {
               <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               <span className="hidden xs:inline">Verify XP</span>
             </button>
-            <button
-              onClick={() => openAddModal()}
-              className="min-h-[44px] px-4 py-2 rounded-xl bg-[#7A2E4A] text-white font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-xs flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Task</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Quick Add Bar & Search */}
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <form onSubmit={handleQuickAdd} className="sm:col-span-2 flex items-center gap-2">
-            <input
-              type="text"
-              value={quickInput}
-              onChange={(e) => setQuickInput(e.target.value)}
-              placeholder={`Quick add task for ${activeTab === 'by_day' ? formatDisplayDate(selectedDay) : 'today'}... (Press Enter)`}
-              className="min-h-[44px] flex-1 px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[#7A2E4A]"
-            />
-            <button
-              type="submit"
-              className="min-h-[44px] px-4 py-2 rounded-xl bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] border border-[rgb(var(--c-border))] font-heading text-xs font-bold hover:bg-[#7A2E4A] hover:text-white active:scale-95 transition shadow-xs flex items-center gap-1 shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add</span>
-            </button>
-          </form>
-
-          <div className="relative flex items-center">
-            <Search className="w-4 h-4 text-[rgb(var(--c-muted))] absolute left-3 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search tasks or courses..."
-              className="min-h-[44px] w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[#7A2E4A]"
-            />
-            {searchQuery && (
+            {activeTab !== 'goals' && (
               <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 p-1 text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))]"
+                onClick={() => openAddModal()}
+                className="min-h-[44px] px-4 py-2 rounded-xl bg-[#7A2E4A] text-white font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-xs flex items-center gap-1.5"
               >
-                <X className="w-3.5 h-3.5" />
+                <Plus className="w-4 h-4" />
+                <span>Add Task</span>
               </button>
             )}
           </div>
         </div>
+
+        {/* Quick Add Bar & Search (For Tasks) */}
+        {activeTab !== 'goals' && (
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <form onSubmit={handleQuickAdd} className="sm:col-span-2 flex items-center gap-2">
+              <input
+                type="text"
+                value={quickInput}
+                onChange={(e) => setQuickInput(e.target.value)}
+                placeholder={`Quick add task for ${activeTab === 'by_day' ? formatDisplayDate(selectedDay) : 'today'}... (Press Enter)`}
+                className="min-h-[44px] flex-1 px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[#7A2E4A]"
+              />
+              <button
+                type="submit"
+                className="min-h-[44px] px-4 py-2 rounded-xl bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] border border-[rgb(var(--c-border))] font-heading text-xs font-bold hover:bg-[#7A2E4A] hover:text-white active:scale-95 transition shadow-xs flex items-center gap-1 shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add</span>
+              </button>
+            </form>
+
+            <div className="relative flex items-center">
+              <Search className="w-4 h-4 text-[rgb(var(--c-muted))] absolute left-3 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search tasks or courses..."
+                className="min-h-[44px] w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-2 focus:ring-[#7A2E4A]"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 p-1 text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))]"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Tab Filters */}
         <div className="flex items-center gap-1.5 mt-4 border-b border-[rgb(var(--c-border))] pb-1 overflow-x-auto scrollbar-none">
@@ -344,6 +363,7 @@ export const QuestsPage: React.FC = () => {
             { key: 'by_day', label: 'By Day', count: tasks.filter((t) => t.dueDate === selectedDay).length },
             { key: 'overdue', label: 'Overdue', count: overdueCount },
             { key: 'done', label: 'Completed', count: doneCount },
+            { key: 'goals', label: '🎯 Semester Goals', count: activeGoalsCount },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -400,8 +420,12 @@ export const QuestsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Task List */}
-      <div className="space-y-2">
+      {/* Main Viewport Content: Goals or Tasks */}
+      {activeTab === 'goals' ? (
+        <SemesterGoalsSection />
+      ) : (
+        /* Task List */
+        <div className="space-y-2">
         {filteredTasks.length === 0 ? (
           <div className="bg-[rgb(var(--c-surface))] rounded-2xl p-8 text-center space-y-3 border border-[rgb(var(--c-border))]">
             <p className="text-xs text-[rgb(var(--c-muted))]">
@@ -544,6 +568,7 @@ export const QuestsPage: React.FC = () => {
           })
         )}
       </div>
+      )}
 
       {/* MODAL 1: Add Task Modal */}
       {isAddModalOpen && (

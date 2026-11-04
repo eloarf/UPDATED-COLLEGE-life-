@@ -499,6 +499,29 @@ export interface DailyReflection {
   updatedAt: string;
 }
 
+export interface GoalMilestone {
+  id: string;
+  title: string;
+  isCompleted: boolean;
+  completed?: boolean;
+  dueDate?: string;
+}
+
+export interface AcademicGoal {
+  id: string;
+  title: string;
+  category: 'academic' | 'career' | 'health' | 'personal' | 'skill' | 'creative';
+  targetDate?: string;
+  semesterId?: string;
+  courseId?: string;
+  progressPercent: number; // 0-100
+  status: 'active' | 'completed' | 'paused' | 'in_progress';
+  milestones?: GoalMilestone[];
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface AppSettings {
   id: string;
   userName: string;
@@ -517,6 +540,11 @@ export interface AppSettings {
   backupReminderDays: number;
   lastBackupDate?: string;
   theme: string;
+  appearanceMode?: 'light' | 'dark' | 'system';
+  designStyle?: 'editorial-retro' | 'quiet-minimal' | 'creative-studio';
+  fontStyle?: 'serif' | 'sans';
+  layoutDensity?: 'comfortable' | 'compact';
+  cardBorderGlow?: boolean;
   pageAccents: Record<string, string>;
   pinLock?: string;
   storageProtected: boolean;

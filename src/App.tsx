@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useUiStore } from './store/uiStore';
 import { initializeDatabase, db, saveEmergencyBackup } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { applyTheme } from './theme/themeUtils';
+import { applyTheme, applyAppearanceStyles, applyAppearanceMode, applyDesignStyle } from './theme/themeUtils';
 
 // Layout
 import { TopBar } from './components/layout/TopBar';
@@ -89,10 +89,26 @@ export default function App() {
   }, [setCurrentRoute, showToast]);
 
   useEffect(() => {
-    if (settings?.theme) {
-      applyTheme(settings.theme);
+    if (settings) {
+      if (settings.theme) {
+        applyTheme(settings.theme);
+      }
+      applyAppearanceMode(settings.appearanceMode || 'light');
+      applyDesignStyle(settings.designStyle || 'editorial-retro');
+      applyAppearanceStyles({
+        fontStyle: settings.fontStyle,
+        layoutDensity: settings.layoutDensity,
+        cardBorderGlow: settings.cardBorderGlow,
+      });
     }
-  }, [settings?.theme]);
+  }, [
+    settings?.theme,
+    settings?.appearanceMode,
+    settings?.designStyle,
+    settings?.fontStyle,
+    settings?.layoutDensity,
+    settings?.cardBorderGlow,
+  ]);
 
   // Render active page
   const renderPage = () => {
@@ -102,6 +118,7 @@ export default function App() {
       case '#/courses':
         return <CoursesPage />;
       case '#/tasks':
+      case '#/goals':
         return <QuestsPage />;
       case '#/exams':
         return <ExamsPage />;

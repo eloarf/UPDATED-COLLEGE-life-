@@ -83,6 +83,17 @@ export const ThemeSwitcherModal: React.FC = () => {
             );
           })}
         </div>
+
+        {/* Footer Link to Themes & Design Styles */}
+        <div className="pt-2.5 mt-2.5 border-t border-[rgb(var(--c-border))] flex items-center justify-between text-xs">
+          <a
+            href="#/themes"
+            onClick={() => setThemeSwitcherOpen(false)}
+            className="text-[11px] font-heading font-bold text-[rgb(var(--c-primary))] hover:underline flex items-center gap-1"
+          >
+            <span>Appearance Modes &amp; Design Styles &rarr;</span>
+          </a>
+        </div>
       </div>
     </div>
   );

@@ -23,6 +23,7 @@ import {
   Sparkles,
   Search,
   X,
+  Target,
 } from 'lucide-react';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 
@@ -46,6 +47,7 @@ export const MoreSheet: React.FC = () => {
     { name: 'Focus Timer', subtitle: 'Pomodoro timer & flow session tracker', route: '#/focus', icon: Clock, category: 'Daily' },
 
     // Academics
+    { name: 'Semester Goals', subtitle: 'Roadmap objectives & milestone tracking', route: '#/goals', icon: Target, category: 'Academics' },
     { name: 'Courses & Syllabi', subtitle: 'Instructors, modules & lecture materials', route: '#/courses', icon: BookOpen, category: 'Academics' },
     { name: 'Exams & Deadlines', subtitle: 'Countdown timers & revision topics', route: '#/exams', icon: ShieldAlert, category: 'Academics' },
     { name: 'Grades & GPA', subtitle: 'CGPA calculator & target projections', route: '#/grades', icon: GraduationCap, category: 'Academics' },

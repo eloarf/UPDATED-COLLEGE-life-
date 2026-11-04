@@ -37,6 +37,7 @@ import {
   FinancialAccount,
   DebtRecord,
   RecurringTransaction,
+  AcademicGoal,
 } from '../types';
 
 export const CURRENT_BACKUP_VERSION = 2;
@@ -81,6 +82,7 @@ export interface BackupData {
     semesters?: Semester[];
     restDays?: RestDay[];
     dailyReflections?: DailyReflection[];
+    academicGoals?: AcademicGoal[];
   };
 }
 
@@ -121,6 +123,7 @@ const ALL_TABLES = [
   db.semesters,
   db.restDays,
   db.dailyReflections,
+  db.academicGoals,
 ];
 
 export async function exportDatabaseToJson(): Promise<string> {
@@ -164,6 +167,7 @@ export async function exportDatabaseToJson(): Promise<string> {
       semesters: await db.semesters.toArray(),
       restDays: await db.restDays.toArray(),
       dailyReflections: await db.dailyReflections.toArray(),
+      academicGoals: await db.academicGoals.toArray(),
     },
   };
 
@@ -349,6 +353,7 @@ export async function restoreDatabase(
         if (d.semesters?.length) await db.semesters.bulkPut(d.semesters);
         if (d.restDays?.length) await db.restDays.bulkPut(d.restDays);
         if (d.dailyReflections?.length) await db.dailyReflections.bulkPut(d.dailyReflections);
+        if (d.academicGoals?.length) await db.academicGoals.bulkPut(d.academicGoals);
       });
     } else {
       // Merge mode
@@ -390,6 +395,7 @@ export async function restoreDatabase(
         if (d.semesters?.length) await db.semesters.bulkPut(d.semesters);
         if (d.restDays?.length) await db.restDays.bulkPut(d.restDays);
         if (d.dailyReflections?.length) await db.dailyReflections.bulkPut(d.dailyReflections);
+        if (d.academicGoals?.length) await db.academicGoals.bulkPut(d.academicGoals);
       });
     }
 

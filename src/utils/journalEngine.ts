@@ -432,3 +432,43 @@ export function buildStructuredReflectionContent(params: {
   }
   return result.trim();
 }
+
+export interface ReflectionTemplate {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  content: string;
+}
+
+export const QUICK_REFLECTION_TEMPLATES: ReflectionTemplate[] = [
+  {
+    id: 'morning-intent',
+    name: 'Morning Intent',
+    icon: 'Sun',
+    description: 'Focus, primary deliverable, and personal mindset',
+    content: `## 🌅 Morning Intent\n\n### 🎯 Top 3 Priorities for Today\n- [ ] 1. \n- [ ] 2. \n- [ ] 3. \n\n### 🧘 Daily Mindset & Intention\n- Intention: \n- Distractions to guard against: \n`,
+  },
+  {
+    id: 'evening-audit',
+    name: 'Evening Audit',
+    icon: 'Moon',
+    description: 'Honest review of wins, insights, and tomorrow prep',
+    content: `## 🌙 Evening Audit\n\n### 🏆 What Went Well Today?\n- \n\n### 💡 Key Insight / Lesson Learned\n- \n\n### 🔄 Tomorrow's Headstart\n- [ ] First task tomorrow morning: \n`,
+  },
+  {
+    id: 'exam-postmortem',
+    name: 'Exam Post-Mortem',
+    icon: 'GraduationCap',
+    description: 'Deconstruct exam performance and study adjustments',
+    content: `## 📝 Exam Post-Mortem\n\n### 📚 Course & Assessment\n- Course: \n- Topics covered: \n\n### 🔍 Study Strategy Reflection\n- What worked: \n- What surprised me: \n\n### 🛠️ Adjustments for Next Exam\n- \n`,
+  },
+  {
+    id: 'brain-dump',
+    name: 'Brain Dump',
+    icon: 'Sparkles',
+    description: 'Unload mental clutter and pending decisions',
+    content: `## 🧠 Brain Dump & Mental Declutter\n\n### 🌪️ Lingering Thoughts & Tasks\n- \n\n### 💡 Sparks of Inspiration\n- \n\n### ⚡ Immediate Actions\n- [ ] \n`,
+  },
+];
+

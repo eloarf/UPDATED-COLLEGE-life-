@@ -342,6 +342,155 @@ export const THEMES: ThemeDefinition[] = [
   },
 ];
 
+export type AppearanceMode = 'light' | 'dark' | 'system';
+export type DesignStyle = 'editorial-retro' | 'quiet-minimal' | 'creative-studio';
+
+export interface AppearanceModeDefinition {
+  id: AppearanceMode;
+  name: string;
+  description: string;
+}
+
+export const APPEARANCE_MODES: AppearanceModeDefinition[] = [
+  {
+    id: 'light',
+    name: 'Daylight Paper',
+    description: 'Crisp, high-contrast daylight with warm paper surfaces.',
+  },
+  {
+    id: 'dark',
+    name: 'Midnight Ink',
+    description: 'Deep velvet nocturnal styling for evening focus.',
+  },
+  {
+    id: 'system',
+    name: 'System Sync',
+    description: 'Automatically follows your device / OS appearance.',
+  },
+];
+
+export interface DesignStyleDefinition {
+  id: DesignStyle;
+  name: string;
+  subtitle: string;
+  description: string;
+  badge: string;
+  characteristics: string[];
+  sampleQuote: string;
+  accentColor: string;
+}
+
+export const DESIGN_STYLES: DesignStyleDefinition[] = [
+  {
+    id: 'editorial-retro',
+    name: 'Editorial Retro',
+    subtitle: 'Wes Anderson & Vintage Computer',
+    description: 'Symmetrical editorial layout, warm bookish typography, ticket-stub borders, subtle millimeter dot grids, and nostalgic storybook charm.',
+    badge: 'Default Signature',
+    characteristics: [
+      'Symmetrical cards with vintage ticket borders',
+      'Warm serif headlines paired with editorial captions',
+      'Millimeter dot grids & nostalgic paper textures',
+      'Curated stationery tags and brass insignia details',
+    ],
+    sampleQuote: '“The concourse was quiet, save for the bellhop and a vintage typewriter.”',
+    accentColor: '#D97838',
+  },
+  {
+    id: 'quiet-minimal',
+    name: 'Quiet Minimal',
+    subtitle: 'Japanese Stationery & Zen Paper',
+    description: 'Crisp hairline borders, generous breathing whitespace, calm restrained typography, tactile ivory paper feel, and zen discipline.',
+    badge: 'Stationery Zen',
+    characteristics: [
+      'Crisp single hairline borders (1px) with soft radii',
+      'Generous whitespace and serene layout pacing',
+      'Understated ink tones with muted natural highlights',
+      'Porous washi paper aesthetic and minimal ornamentation',
+    ],
+    sampleQuote: '“A blank notebook, black sumi ink, and the quiet hour before dawn.”',
+    accentColor: '#89916B',
+  },
+  {
+    id: 'creative-studio',
+    name: 'Creative Studio',
+    subtitle: 'Retro-Futurist Terminal & Deck',
+    description: 'High-contrast geometric geometry, technical monospace telemetry, bold punchy accents, and expressive command-deck details.',
+    badge: 'Retro-Futurism',
+    characteristics: [
+      'Technical engineered borders (2px) and sharp accents',
+      'Monospaced telemetry badges and micro data tags',
+      'Tactile control-deck buttons with industrial cues',
+      'Dynamic contrast and expressive retro-futurist energy',
+    ],
+    sampleQuote: '“SYS_OS // REV 4.2 // TELEMETRY NOMINAL // ALL SYSTEMS GO”',
+    accentColor: '#D9A441',
+  },
+];
+
+let systemThemeMediaQuery: MediaQueryList | null = null;
+let systemThemeListener: ((e: MediaQueryListEvent) => void) | null = null;
+
+export function applyAppearanceMode(mode: AppearanceMode = 'light') {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+
+  if (systemThemeMediaQuery && systemThemeListener) {
+    try {
+      systemThemeMediaQuery.removeEventListener('change', systemThemeListener);
+    } catch {
+      // Ignore
+    }
+    systemThemeListener = null;
+    systemThemeMediaQuery = null;
+  }
+
+  const resolveAndApply = (isDark: boolean) => {
+    root.setAttribute('data-appearance', isDark ? 'dark' : 'light');
+    if (isDark) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  };
+
+  if (mode === 'system') {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      systemThemeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      resolveAndApply(systemThemeMediaQuery.matches);
+      systemThemeListener = (e: MediaQueryListEvent) => resolveAndApply(e.matches);
+      try {
+        systemThemeMediaQuery.addEventListener('change', systemThemeListener);
+      } catch {
+        // Fallback for older Safari
+        systemThemeMediaQuery.addListener(systemThemeListener);
+      }
+    } else {
+      resolveAndApply(false);
+    }
+  } else {
+    resolveAndApply(mode === 'dark');
+  }
+
+  root.setAttribute('data-appearance-mode', mode);
+  try {
+    localStorage.setItem('college_os_appearance_mode', mode);
+  } catch {
+    // Ignore
+  }
+}
+
+export function applyDesignStyle(style: DesignStyle = 'editorial-retro') {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  root.setAttribute('data-design-style', style);
+  try {
+    localStorage.setItem('college_os_design_style', style);
+  } catch {
+    // Ignore
+  }
+}
+
 export function applyTheme(themeId: string) {
   if (typeof document === 'undefined') return;
   document.documentElement.setAttribute('data-theme', themeId);
@@ -356,6 +505,38 @@ export function applyTheme(themeId: string) {
     // Ignore
   }
 }
+
+export interface AppearanceOptions {
+  fontStyle?: 'serif' | 'sans';
+  layoutDensity?: 'comfortable' | 'compact';
+  cardBorderGlow?: boolean;
+}
+
+export function applyAppearanceStyles(options?: AppearanceOptions) {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  const fontStyle = options?.fontStyle || 'serif';
+  const density = options?.layoutDensity || 'comfortable';
+  const glow = !!options?.cardBorderGlow;
+
+  root.setAttribute('data-font-style', fontStyle);
+  root.setAttribute('data-density', density);
+
+  if (glow) {
+    root.classList.add('theme-glow');
+  } else {
+    root.classList.remove('theme-glow');
+  }
+
+  try {
+    localStorage.setItem('college_os_font_style', fontStyle);
+    localStorage.setItem('college_os_density', density);
+    localStorage.setItem('college_os_glow', glow ? '1' : '0');
+  } catch {
+    // Ignore
+  }
+}
+
 
 export interface CourseNeonColor {
   hex: string;

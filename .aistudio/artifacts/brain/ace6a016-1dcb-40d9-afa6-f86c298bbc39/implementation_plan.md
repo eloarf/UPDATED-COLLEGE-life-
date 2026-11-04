@@ -1,144 +1,134 @@
-# Implementation Plan: College Life OS — Controlled Balance & Finance Upgrade
+# Stage 1 — Codebase Audit & Safe Implementation Plan: College Life OS Enhancements
 
-## 1. System Audit & Baseline Architecture
-
-### A. Current Persistence Architecture
-- **Primary Data Store**: Client-side **Dexie.js (IndexedDB)** database named `CollegeLifeOSDB` (version 1) initialized in `src/db/db.ts`.
-- **Entities & Tables**:
-  - `courses`, `classSessions`, `classExceptions`, `attendance`, `gradeComponents`: Academic timetable and grading.
-  - `tasks`, `exams`, `examTopics`: Assignment tickets and syllabus boss battles.
-  - `projects`, `projectMilestones`, `projectTasks`, `projectMembers`, `projectMeetings`: Coursework projects.
-  - `habits`, `habitLogs`: Passport stamp habit tracker.
-  - `journalEntries`: Daily reflections and mood scores.
-  - `transactions`, `budgets`, `savingsGoals`: Financial ledger, spending limits, and goal vaults.
-  - `settings`: Single-record table (`id: 'current_user'`) containing `AppSettings`.
-  - `xpEvents`, `achievementsUnlocked`, `quests`: RPG leveling engine.
-- **Secondary Storage**: `localStorage` stores current route (`college_os_route`), active theme (`college_os_theme`), and legacy checklist states.
-- **Offline & PWA Mechanism**:
-  - PWA configured via `public/manifest.json` (`id: "./"`, `start_url: "./"`, `scope: "./"`) and `public/sw.js` (cache name `aastu-os-pwa-v2`).
-  - Service worker caches core app shell and assets via `stale-while-revalidate` and handles offline navigation fallback to `./index.html`.
-  - Offline changes are committed directly into IndexedDB on the device, requiring zero network calls.
-
-### B. Shared Components & Data Interactions
-- **`src/components/common/QuickAddModal.tsx`**: Universal "+" modal opened from the header and bottom nav. Shared across tasks, habits, focus, notes, and money.
-- **`src/services/rpgService.ts`**: Awards XP for completing tasks, logging expenses (+5 XP), and stashing savings (+15 XP).
-- **`src/pages/LobbyPage.tsx`**: Renders live treasury preview using `db.transactions` and `db.savingsGoals`.
-- **`src/pages/FinancePage.tsx`**: Full finance dashboard with chart visualizations (7/14/30 days), savings goal vaults, and transaction ledger.
-
-### C. Existing Transaction & Balance Mechanics
-- `Transaction` interface in `src/types/index.ts` already defines:
-  - `type: 'expense' | 'income' | 'saving'`
-  - `account: 'cash' | 'bank' | 'mobile_money'`
-  - `amount: number`, `date: string`, `notes?: string`, `savingsGoalId?: string`.
-- **Current Limitation**: 
-  - `FinancePage.tsx` currently only calculates total expenses per account (`accountTotals = { mobile_money: ..., bank: ..., cash: ... }`).
-  - There is currently no UI to log an **Income / Deposit** transaction (only Expense and Savings).
-  - There are no configurable starting balances for Cash, Telebirr, or CBE Bank, meaning the app could not display true live running account balances.
-  - There is no low-balance alert system when funds drop below safe limits.
-
-### D. Risks to Existing User Data & Mobile App
-- **IndexedDB Protection**: Any schema change must NOT delete or bump tables destructively. We must keep `CollegeLifeOSDB` backward-compatible.
-- **Zero Data Loss Guarantee**: Starting balances will be stored as optional fields on the existing `settings` table (`id: 'current_user'`) or defaults in memory so existing user profiles load seamlessly without database resets.
-- **PWA Integrity**: All changes remain 100% static React and TypeScript; no external servers, backend routes, or breaking assets will be introduced.
+## Executive Summary
+This document provides an exhaustive architectural audit of the current **College Life OS** offline-first React + TypeScript + Vite + Dexie + Capacitor application. It details the existing architecture across theme and appearance systems, goals, journaling, database persistence, and mobile APK runtime, followed by a strict, non-destructive implementation plan addressing sections **A through F** requested by the user.
 
 ---
 
-## 2. Architectural Design & Visual Specification
+## 1. Codebase Architecture Audit
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                   COLLEGE LIFE OS — CAMPUS TREASURY                    │
-├────────────────────────────────────────────────────────────────────────┤
-│ [Total Net Worth: 4,850 ETB]  [+ Quick Deposit]  [⚙ Adjust Balances]   │
-├───────────────────┬───────────────────┬────────────────────────────────┤
-│ 💵 PHYSICAL CASH  │ 📱 TELEBIRR       │ 🏛️ CBE BANK                    │
-│   650.00 ETB      │   1,420.00 ETB    │   2,780.00 ETB                 │
-│   Base: 500 ETB   │   Base: 1,200 ETB │   Base: 2,500 ETB              │
-│   ● Healthy       │   ● Healthy       │   ● Healthy                    │
-└───────────────────┴───────────────────┴────────────────────────────────┘
-  ▲ Optional Warning Banner when any account drops below Low-Balance Threshold
-```
+### 1.1 Themes & Appearance System
+- **Location**: `src/theme/themeUtils.ts` and `src/index.css`.
+- **Mechanism**: The app defines 27 curated themes (`THEMES`), categorized into `classic`, `premier`, `cyberpunk`, `dark-wood`, and `daring-brights`. Each theme provides RGB color channel definitions in CSS (`src/index.css`) attached to `[data-theme="<theme-id>"]`:
+  - `--c-bg`, `--c-surface`, `--c-surface2`, `--c-border`, `--c-text`, `--c-muted`, `--c-primary`, `--c-on-primary`, `--c-accent`, `--c-accent2`, `--c-page-accent`, `--c-success`, `--c-warning`, `--c-danger`, `--c-xp`.
+- **Runtime Application**: `applyTheme(themeId)` sets `data-theme` on `document.documentElement`, updates `localStorage.getItem('college_os_theme')`, and updates `<meta name="theme-color">`.
+- **Storage**: The chosen theme is persisted in the single-row Dexie table `db.settings.get('current_user')` as `settings.theme`.
+- **Light vs. Dark Mode**: Handled intrinsically within each theme via `isDark: boolean`. Light themes (e.g., `pink-lobby`, `matcha-cream`, `blush-cocoa`, `solar-coral-turquoise`) feature light cream/blush backgrounds with high-contrast dark text; dark themes (e.g., `chocolate-lime`, `midnight-plum`, `cyberpunk-grid`, `dark-walnut-emerald`) feature dark timbers or obsidian with luminous neon accents.
+- **Styling Architecture**: Tailwind CSS v4 `@import "tailwindcss";` in `src/index.css`. Tailored utility classes include `.ticket-border`, `.animate-pop`, `.font-heading` (Josefin Sans), and `.font-flourish` (Cormorant Garamond). All components reference theme color channels dynamically via Tailwind classes (e.g. `bg-[rgb(var(--c-surface))]`, `text-[rgb(var(--c-text))]`).
 
-### Aesthetic & UX Requirements (Grand Budapest Storybook Constitution)
-- **Palette & Typography**:
-  - Josefin Sans heading titles, Cormorant Garamond editorial figures, Nunito Sans metadata.
-  - Perforated ticket borders (`ticket-border`), warm parchment backgrounds, luggage-tag aesthetics.
-  - Telebirr accent: `#4FA3A5` / `#8EC5E8`, CBE Bank accent: `#BBA6E0` / `#7A2E4A`, Cash accent: `#E5C04B` / `#B6E63E`.
-- **Zero-Pill Metadata**: Account status shown with unboxed typographic indicators and subtle dot separators.
-- **Usability**: Tappable account cards with instant "Deposit / Log Income" and "Log Expense" quick actions.
+### 1.2 Goals System
+- **Current State**: Goal functionality is currently dispersed across specialized modules:
+  1. **Academic Quests & Tasks (`src/pages/QuestsPage.tsx`)**: Task tickets with due dates, priorities, effort levels, course links, context tags, and XP progression.
+  2. **Habit Goals (`src/pages/HabitsPage.tsx`)**: Daily/weekly routine targets with streak calculation, grace days / rest tokens, and matrix calendars.
+  3. **Financial Savings Goals (`src/pages/FinancePage.tsx`)**: Dedicated `savingsGoals` with target amounts, current saved balances, deposit/withdrawal transactions, and deadlines.
+  4. **Academic Long-Term Targets**: `targetCgpa` and `yearlyBookGoal` stored in `AppSettings` (`src/types/index.ts`).
+  5. **Gap / Opportunity**: While tasks, habits, and savings goals have strong trackers, there is no centralized, high-level semester/personal goal dashboard linking high-level milestones to daily habits and tasks.
+
+### 1.3 Journal System
+- **Location**: `src/pages/JournalPage.tsx` and `src/utils/journalEngine.ts`.
+- **Data Model**: `JournalEntry` stored in `db.journalEntries` with fields: `id`, `date`, `moodScore` (1–5), `energyScore` (1–5), `content`, `wordCount`, `tags`, `isPinned`, `isFavorite`, `deletedAt` (soft deletion / recovery trash), `promptQuestion`, `structuredReflection` (`happened`, `mattered`, `next`), `createdAt`, `updatedAt`.
+- **Capabilities**:
+  - Prompt deck with categorized academic and personal reflections (`CATEGORIZED_PROMPTS`).
+  - Lightweight markdown formatting tools (bold, italic, headers, quotes, checklists).
+  - Search, date filtering, month navigation, and statistics calculation (`calculateJournalStats`).
+  - Offline TXT / Markdown file export.
+  - Reader typography scaling (`compact`, `comfortable`, `large`), serif/sans toggle, and tactile paper texture.
+
+### 1.4 Navigation & Routing System
+- **Mechanism**: Lightweight, zero-dependency client-side hash routing (`window.location.hash`) synced via Zustand in `src/store/uiStore.ts` (`currentRoute`, `setCurrentRoute`).
+- **Desktop**: Collapsible `SideNavRail` (`src/components/layout/SideNavRail.tsx`).
+- **Mobile**: `BottomTabBar` (`src/components/layout/BottomTabBar.tsx`) with 4 primary destinations (Today, Timetable, Tasks, Journal) + a slide-up `MoreSheet` (`src/components/layout/MoreSheet.tsx`) organizing all 20 chambers across *Daily Flow*, *Academics & Study*, *Personal & Life*, and *System & Tools*.
+- **Global Header**: `TopBar` (`src/components/layout/TopBar.tsx`) provides quick-add, search, theme switcher, and XP level status.
+
+### 1.5 Dexie Database Schema & Migration Strategy
+- **Database**: `CollegeLifeOSDB` managed in `src/db/db.ts` across 35 tables.
+- **Current Version**: 5.
+- **Migration Strategy**: Additive only. Each schema change creates a new `this.version(N).stores({...})` with non-destructive upgrade transforms (`tx.table(...).toCollection().modify(...)`). Existing records are never dropped or wiped.
+- **Disaster Recovery**: Automatic LZString-compressed mirror in `localStorage` (`college_os_emergency_backup_v2`) created on visibility changes, window unloads, and table hooks (`attachDatabaseHooks`). If IndexedDB is ever cleared by browser eviction, `initializeDatabase()` automatically restores all records from the mirror.
+
+### 1.6 User Settings Storage
+- Stored as a single document (`id: 'current_user'`) in `db.settings`.
+- Populated on first launch with `DEFAULT_SETTINGS` in `src/db/db.ts`.
+- Includes profile details, term name, semester ID, target CGPA, notification toggles, sound/haptic preferences, active theme, and pomodoro settings.
+- Fully exported and imported as valid JSON in `src/services/backupService.ts`.
+
+### 1.7 PWA & Capacitor Compatibility
+- **PWA**: Static manifest (`public/manifest.json`) and service worker (`public/sw.js`). Relative asset paths (`base: './'`).
+- **Capacitor**: Configured in `capacitor.config.ts` with `appId: 'com.eloarf.collegelifeos'`, `appName: 'College Life OS'`, `webDir: 'dist'`. Assets are served locally via the embedded Android WebView (`androidScheme: 'https'`).
+- **Build Pipeline**: `.github/workflows/build-apk.yml` uses Java 21 and Android SDK command-line tools (platform-tools, platforms;android-36, build-tools;35.0.0) to compile the debug APK in GitHub Actions without external server dependencies.
 
 ---
 
-## 3. Independently Testable Implementation Chunks
+## 2. Structured Implementation Plan
 
-### Chunk 1: Type Definition & Safe Storage Extension
-- **Objective**: Extend `AppSettings` in `src/types/index.ts` with backward-compatible account balance configuration without altering existing table schemas.
-- **Files Affected**:
-  - `src/types/index.ts`
-  - `src/db/starterPack.ts`
-- **Details**:
-  - Add optional `accountBalances` to `AppSettings`:
+### A. What Already Exists and Can Be Improved
+1. **Unified Goals & Milestones**:
+   - *Current*: Goals are fragmented across Quests (tasks), Habits, and Savings.
+   - *Enhancement*: Introduce a unified semester goals interface or enhanced milestone view that can connect high-level goals with underlying tasks and habit consistency.
+2. **Design-Style & Theme Compatibility**:
+   - *Current*: 27 themes exist, but users may want to customize font styles, card borders, or high-contrast readability modes without breaking the 27 color palettes.
+   - *Enhancement*: Introduce style/appearance layers (e.g. typography style, density/compactness, contrast tuning) as independent orthogonal settings that work seamlessly on top of any active color theme.
+3. **Journaling & Reflection Deepening**:
+   - *Current*: Comprehensive single-entry editor with prompts and markdown.
+   - *Enhancement*: Add quick templates (e.g. "Morning Intent", "Evening Audit", "Exam Post-Mortem"), calendar heatmaps of journaling consistency, and entry tagging enhancements.
+4. **Offline Mobile Polish**:
+   - *Current*: Excellent offline support.
+   - *Enhancement*: Ensure touch targets meet 48px Android accessibility standards, ensure smooth Android system back button navigation, and ensure full safe-area insets padding on mobile screens.
+
+---
+
+### B. What is Incomplete or Broken
+1. **Legacy Account Configuration References**:
+   - `AppSettings` still contains legacy `accountBalances?: AccountBalancesConfig` (with hardcoded CBE/Telebirr initial values) even though the app has moved to dynamic `financialAccounts`. This legacy field should be kept for backward compatibility but clean dynamic accounts should be prioritized.
+2. **Goals Navigation Visibility**:
+   - There is no direct "Goals" entry in `MoreSheet` navigation; users must navigate to Tasks or Habits to find their targets.
+3. **Journal Tag Filter Interaction**:
+   - In `JournalPage.tsx`, selecting multiple tags could be made more intuitive with clear filter chips and count indicators.
+
+---
+
+### C. Which Files and Components Would Need Changes
+| File | Purpose of Enhancement |
+| :--- | :--- |
+| `src/types/index.ts` | Add clean Goal/Milestone interfaces (if unified goals are added); add appearance style settings (font scale, contrast mode) to `AppSettings`. |
+| `src/theme/themeUtils.ts` | Keep all 27 themes intact; add orthogonal typography/appearance helpers (e.g., editorial serif vs modern sans-serif, card border intensity). |
+| `src/pages/JournalPage.tsx` | Add reflection templates, enhanced mood analytics, and improved tag filtering while preserving all existing journal entries and formatting. |
+| `src/pages/QuestsPage.tsx` | Enhance goal/milestone linking and priority grouping. |
+| `src/components/layout/MoreSheet.tsx` | Ensure navigation clearly indexes goals, habits, and journals. |
+| `src/pages/SettingsPage.tsx` | Provide seamless appearance settings (font scale, contrast preference) that layer over the existing theme picker. |
+| `src/db/db.ts` | Ensure any new optional table (such as unified `goals`) uses safe additive versioning (`version(6)`) with automatic mirror persistence. |
+| `src/services/backupService.ts` | Ensure any added entity is mirrored in full JSON backup export and restore. |
+
+---
+
+### D. Whether Database Changes Are Necessary
+- **Minor & Additive Only**:
+  - The existing schema (version 5) handles all current tables smoothly.
+  - If a dedicated unified Goals entity (`Goal`, `Milestone`) is introduced, it will be added as `version(6)` using Dexie's additive store syntax:
     ```typescript
-    export interface AccountBalancesConfig {
-      initialCash: number;
-      initialBank: number; // Commercial Bank of Ethiopia (CBE)
-      initialMobileMoney: number; // Telebirr
-      lowBalanceThreshold: number; // Default: 150 ETB
-    }
+    this.version(6).stores({
+      goals: 'id, category, status, targetDate',
+    });
     ```
-  - Ensure existing profiles default gracefully to `initialCash: 500`, `initialBank: 2500`, `initialMobileMoney: 1200`, `lowBalanceThreshold: 150` if undefined.
-- **Verification**: `npm run lint` (`tsc --noEmit`).
+  - **Zero Destructive Migrations**: No existing tables (`tasks`, `habits`, `journalEntries`, `transactions`, `courses`, etc.) will be deleted, renamed, or modified destructively. Existing data will remain 100% intact.
 
 ---
 
-### Chunk 2: Core Balance Engine & Income Logging in `FinancePage.tsx`
-- **Objective**: Implement exact running balance mathematical engine and add the "Log Income / Deposit" modal.
-- **Files Affected**:
-  - `src/pages/FinancePage.tsx`
-- **Details**:
-  - Mathematical model for live running balances:
-    $$\text{Balance}_{\text{account}} = \text{Initial}_{\text{account}} + \sum \text{Income}_{\text{account}} - \sum \text{Expense}_{\text{account}} - \sum \text{SavingsDeposit}_{\text{account}}$$
-  - Add Quick Income/Deposit modal with income categories: `Monthly Allowance / Family`, `Part-time / Tutoring`, `Freelance / Tech`, `Scholarship / Stipend`, `Gift / Refund`, `Other`.
-  - Award +10 XP for logging income/deposits (source: `income`, stat: `discipline`).
-  - Update Transaction Ledger table to display Income transactions in emerald green with positive indicator (`+`), clean tags, and delete capability.
-- **Verification**: Verify logging income increases account balance live, and deleting an income transaction reverts the balance.
+### E. How Existing Appearance Settings Will Remain Compatible with New Design-Style Settings
+- **Orthogonal Customization Layers**:
+  - The 27 color themes define the **color palette** (`--c-bg`, `--c-surface`, `--c-text`, `--c-primary`, etc.).
+  - New design-style options (e.g. typography family, interface density, border radius style) will be applied as **independent CSS attributes or utility classes** on the root element (e.g. `data-font-style="sans" | "serif"`, `data-density="comfortable" | "compact"`).
+  - This guarantees that switching to any of the 27 themes retains the user's preferred font style, card styling, and density without conflict or color regression.
+  - Defaults will preserve the signature Wes Anderson Grand Budapest aesthetic (`data-font-style="serif"`, `data-theme="pink-lobby"`).
 
 ---
 
-### Chunk 3: Balance Overview Banner & Low-Balance Alert Banner
-- **Objective**: Introduce Grand Budapest-themed account cards at the top of Finance Page with starting balance adjustments and threshold warnings.
-- **Files Affected**:
-  - `src/pages/FinancePage.tsx`
-- **Details**:
-  - **Account Overview Grid**:
-    - **Total Net Worth** card summarizing sum of all accounts and savings vault.
-    - **Physical Cash** card with running balance, income/expense tally, and base.
-    - **Telebirr** card with mobile money branding and live balance.
-    - **CBE Bank** card with commercial bank tally and live balance.
-  - **Low-Balance Alert Banner**:
-    - Automatically displays an alert when any account falls below the user's `lowBalanceThreshold`.
-  - **Starting Balance Adjustment Modal**:
-    - Allows the user to calibrate their real-world starting balance for Cash, Telebirr, and CBE, and set their custom low-balance alert threshold anytime without wiping transactions.
-- **Verification**: Changing starting balance in modal immediately reflects in account balances. Setting threshold above current balance triggers warning banner.
-
----
-
-### Chunk 4: QuickAddModal Integration & Final Verification
-- **Objective**: Enable logging Income/Deposits from the universal "+" quick modal and run full build checks.
-- **Files Affected**:
-  - `src/components/common/QuickAddModal.tsx`
-- **Details**:
-  - Update the "Money" tab in `QuickAddModal.tsx` to include three segments: `Expense`, `Save`, and `Deposit / Income`.
-  - When `Deposit / Income` is selected, render account selector (`Telebirr`, `CBE Bank`, `Cash`), amount input, and category selector.
-- **Verification**:
-  - Run `compile_applet` and `npm run lint`.
-  - Verify build produces zero errors.
-  - Test offline readiness via service worker cache.
-
----
-
-## 4. Suggested Git Commit Plan
-- **Chunk 1**: `feat(finance): add backward-compatible account balance types and config`
-- **Chunk 2**: `feat(finance): implement live running balances and income deposit logging`
-- **Chunk 3**: `feat(finance): add Grand Budapest balance overview banner and low-balance alerts`
-- **Chunk 4**: `feat(quick-add): add income deposit tab to universal quick modal`
+### F. Potential Risks & Mitigation Strategy
+1. **Risk: IndexedDB schema upgrade failure or data loss.**
+   - *Mitigation*: Strictly additive Dexie versions. The pre-restore and pre-migration automatic compressed mirror (`college_os_emergency_backup_v2`) guarantees an instant rollback path.
+2. **Risk: Breaking mobile Capacitor WebView or offline bundling.**
+   - *Mitigation*: Zero external CDN calls or server routes. Everything bundled in `dist` and synced via `npx cap copy android`.
+3. **Risk: CSS variable collision across light and dark themes.**
+   - *Mitigation*: Test all changes against both light palettes (`pink-lobby`, `matcha-cream`) and dark palettes (`chocolate-lime`, `midnight-plum`, `cyberpunk-grid`).
+4. **Risk: Inconsistent backup JSON export.**
+   - *Mitigation*: Update `ALL_TABLES` in `backupService.ts` whenever any new table is added.

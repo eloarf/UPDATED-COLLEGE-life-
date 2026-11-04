@@ -37,6 +37,7 @@ import {
   FinancialAccount,
   DebtRecord,
   RecurringTransaction,
+  AcademicGoal,
   DEFAULT_ACCOUNT_BALANCES,
   DEFAULT_DEPARTMENTS,
 } from '../types';
@@ -78,6 +79,7 @@ export class CollegeLifeOSDatabase extends Dexie {
   semesters!: Table<Semester, string>;
   restDays!: Table<RestDay, string>;
   dailyReflections!: Table<DailyReflection, string>;
+  academicGoals!: Table<AcademicGoal, string>;
 
   constructor() {
     super('CollegeLifeOSDB');
@@ -180,6 +182,10 @@ export class CollegeLifeOSDatabase extends Dexie {
       budgets: 'id, category, period',
       savingsGoals: 'id, accountId',
     });
+
+    this.version(6).stores({
+      academicGoals: 'id, category, status, targetDate, semesterId',
+    });
   }
 }
 
@@ -220,6 +226,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showXpPopups: true,
   backupReminderDays: 14,
   theme: 'pink-lobby',
+  appearanceMode: 'light',
+  designStyle: 'editorial-retro',
+  fontStyle: 'serif',
+  layoutDensity: 'comfortable',
+  cardBorderGlow: false,
   pageAccents: {},
   storageProtected: false,
   gradingScale: [
@@ -290,6 +301,7 @@ export interface EmergencyBackupPayload {
     semesters?: Semester[];
     restDays?: RestDay[];
     dailyReflections?: DailyReflection[];
+    academicGoals?: AcademicGoal[];
   };
 }
 
@@ -350,6 +362,7 @@ function attachDatabaseHooks() {
     db.semesters,
     db.restDays,
     db.dailyReflections,
+    db.academicGoals,
   ];
 
   for (const table of allTables) {
@@ -543,6 +556,7 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         semesters,
         restDays,
         dailyReflections,
+        academicGoals,
       ] = await Promise.all([
         db.settings.toArray().catch(() => []),
         db.courses.toArray().catch(() => []),
@@ -580,6 +594,7 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         db.semesters.toArray().catch(() => []),
         db.restDays.toArray().catch(() => []),
         db.dailyReflections.toArray().catch(() => []),
+        db.academicGoals.toArray().catch(() => []),
       ]);
 
       const tableCounts: Record<string, number> = {
@@ -619,6 +634,7 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         semesters: semesters.length,
         restDays: restDays.length,
         dailyReflections: dailyReflections.length,
+        academicGoals: academicGoals.length,
       };
 
       const totalRecords = Object.values(tableCounts).reduce((a, b) => a + b, 0);
@@ -684,6 +700,7 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
           semesters,
           restDays,
           dailyReflections,
+          academicGoals,
         },
       };
 
@@ -804,6 +821,7 @@ export async function checkAndRestoreFromEmergencyBackup(
       { name: 'semesters', table: db.semesters, records: d.semesters },
       { name: 'restDays', table: db.restDays, records: d.restDays },
       { name: 'dailyReflections', table: db.dailyReflections, records: d.dailyReflections },
+      { name: 'academicGoals', table: db.academicGoals, records: d.academicGoals },
     ];
 
     for (const { name, table, records } of tableDefs) {

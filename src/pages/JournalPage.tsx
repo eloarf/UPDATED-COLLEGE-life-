@@ -14,6 +14,8 @@ import {
   insertFormattingSyntax,
   calculateJournalStats,
   buildStructuredReflectionContent,
+  QUICK_REFLECTION_TEMPLATES,
+  ReflectionTemplate,
 } from '../utils/journalEngine';
 import { THEMES } from '../theme/themeUtils';
 import {
@@ -219,6 +221,18 @@ export const JournalPage: React.FC = () => {
   const journalStats = useMemo(() => {
     return calculateJournalStats(allEntriesRaw, todayKey);
   }, [allEntriesRaw, todayKey]);
+
+  // Tag frequency counts for badge display
+  const tagCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    activeEntries.forEach((e) => {
+      e.tags?.forEach((t) => {
+        const cleaned = t.trim().toLowerCase();
+        if (cleaned) counts[cleaned] = (counts[cleaned] || 0) + 1;
+      });
+    });
+    return counts;
+  }, [activeEntries]);
 
   // Months available
   const availableMonths = useMemo(() => {
@@ -511,6 +525,15 @@ export const JournalPage: React.FC = () => {
       setEntryTitle(activePrompt.prompt);
     }
     showToast(`Prompt applied: "${activePrompt.categoryLabel}"`, 'info');
+  };
+
+  // Action: Apply Quick Reflection Template
+  const handleApplyQuickTemplate = (tpl: ReflectionTemplate) => {
+    setContent((prev) => (prev ? `${prev}\n\n${tpl.content}` : tpl.content));
+    if (!entryTitle.trim()) {
+      setEntryTitle(tpl.name);
+    }
+    showToast(`Template "${tpl.name}" applied!`, 'success');
   };
 
   // Action: Apply Structured Reflection
@@ -1015,6 +1038,36 @@ End of Archive for ${monthKey}
             </div>
           )}
 
+          {/* Quick Reflection Templates Strip */}
+          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-3 sm:p-4 shadow-2xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-heading font-bold text-[rgb(var(--c-muted))] uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[rgb(var(--c-primary))]" />
+                <span>Quick Reflection Templates</span>
+              </span>
+              <span className="text-[10px] text-[rgb(var(--c-muted))]">
+                Click to insert into entry
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {QUICK_REFLECTION_TEMPLATES.map((tpl) => (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  onClick={() => handleApplyQuickTemplate(tpl)}
+                  className="p-2.5 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] hover:bg-[rgb(var(--c-surface2))] hover:border-[rgb(var(--c-primary))] text-left transition active:scale-95 group"
+                >
+                  <div className="font-heading font-bold text-xs text-[rgb(var(--c-text))] group-hover:text-[rgb(var(--c-primary))]">
+                    {tpl.name}
+                  </div>
+                  <div className="text-[10px] text-[rgb(var(--c-muted))] line-clamp-1 mt-0.5">
+                    {tpl.description}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Main Writing Canvas */}
           <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-5 sm:p-8 shadow-xs space-y-4">
             {/* Title & Date Bar */}
@@ -1458,13 +1511,16 @@ End of Archive for ${monthKey}
                   <button
                     key={tag}
                     onClick={() => setSelectedTagFilter(selectedTagFilter === tag ? 'all' : tag)}
-                    className={`px-2 py-0.5 rounded-lg text-[10px] font-heading font-bold transition ${
+                    className={`px-2 py-0.5 rounded-lg text-[10px] font-heading font-bold transition inline-flex items-center gap-1 ${
                       selectedTagFilter === tag
-                        ? 'bg-[rgb(var(--c-primary))] text-white'
+                        ? 'bg-[rgb(var(--c-primary))] text-white shadow-xs'
                         : 'bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))]'
                     }`}
                   >
-                    #{tag}
+                    <span>#{tag}</span>
+                    <span className="text-[9px] opacity-75 px-1 py-0.2 rounded-full bg-black/10 dark:bg-white/10">
+                      {tagCounts[tag] || 1}
+                    </span>
                   </button>
                 ))}
               </div>

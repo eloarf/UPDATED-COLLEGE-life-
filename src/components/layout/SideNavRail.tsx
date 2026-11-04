@@ -21,6 +21,7 @@ import {
   Palette,
   Settings,
   Sparkles,
+  Target,
 } from 'lucide-react';
 
 interface NavSection {
@@ -49,6 +50,7 @@ export const SideNavRail: React.FC = () => {
     {
       title: 'Academics',
       items: [
+        { label: 'Semester Goals', route: '#/goals', icon: Target },
         { label: 'Courses & Syllabi', route: '#/courses', icon: BookOpen },
         { label: 'Exams & Deadlines', route: '#/exams', icon: ShieldAlert },
         { label: 'Grades & GPA', route: '#/grades', icon: GraduationCap },
