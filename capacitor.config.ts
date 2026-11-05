@@ -15,6 +15,12 @@ const config: CapacitorConfig = {
     // Smooth scrolling & touch handling on mobile
     backgroundColor: '#FBF1E4',
   },
+  plugins: {
+    LocalNotifications: {
+      smallIcon: 'ic_stat_name',
+      iconColor: '#7A2E4A',
+    },
+  },
 };
 
 export default config;

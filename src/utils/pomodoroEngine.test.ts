@@ -115,4 +115,96 @@ describe('pomodoroEngine', () => {
     expect(stats.courseBreakdown[0].courseCode).toBe('MATH101');
     expect(stats.courseBreakdown[0].minutes).toBe(50);
   });
+
+  it('supports custom settings with independent minutes and seconds', () => {
+    const customSettings: typeof DEFAULT_POMODORO_SETTINGS = {
+      ...DEFAULT_POMODORO_SETTINGS,
+      preset: 'custom',
+      customWorkMinutes: 25,
+      customWorkSeconds: 30,
+      customShortBreakMinutes: 5,
+      customShortBreakSeconds: 15,
+      customLongBreakMinutes: 1,
+      customLongBreakSeconds: 45,
+    };
+
+    expect(getPhaseDurationSeconds('work', customSettings)).toBe(25 * 60 + 30); // 1530s
+    expect(getPhaseDurationSeconds('short_break', customSettings)).toBe(5 * 60 + 15); // 315s
+    expect(getPhaseDurationSeconds('long_break', customSettings)).toBe(1 * 60 + 45); // 105s
+
+    // Edge case: 30 seconds only
+    const shortCustom: typeof DEFAULT_POMODORO_SETTINGS = {
+      ...DEFAULT_POMODORO_SETTINGS,
+      preset: 'custom',
+      customWorkMinutes: 0,
+      customWorkSeconds: 30,
+    };
+    expect(getPhaseDurationSeconds('work', shortCustom)).toBe(30);
+
+    // Edge case: 1 hour 15 minutes
+    const longCustom: typeof DEFAULT_POMODORO_SETTINGS = {
+      ...DEFAULT_POMODORO_SETTINGS,
+      preset: 'custom',
+      customWorkMinutes: 75,
+      customWorkSeconds: 0,
+    };
+    expect(getPhaseDurationSeconds('work', longCustom)).toBe(4500);
+  });
+
+  it('correctly credits early finished sessions with actual work time and ignores 0-min sessions', () => {
+    const now = new Date('2026-11-02T14:00:00Z');
+    const courses: Course[] = [
+      { id: 'c1', code: 'MATH101', name: 'Calculus I', creditHours: 4, credits: 4, color: '#3b82f6', targetGrade: 'A', term: 'Fall', createdAt: '2026-11-01', updatedAt: '2026-11-01' },
+    ];
+
+    const sessions: FocusSession[] = [
+      // 25m planned, finished early after 20 minutes
+      {
+        id: 's_early_1',
+        courseId: 'c1',
+        mode: 'custom',
+        minutesFocused: 20,
+        plannedMinutes: 25,
+        actualMinutes: 20,
+        plannedDurationSeconds: 1500,
+        actualDurationSeconds: 1200,
+        completionMethod: 'manual_finish',
+        startedAt: '2026-11-02T10:00:00Z',
+        completedAt: '2026-11-02T10:20:00Z',
+      },
+      // 50m planned, finished early after 37 minutes
+      {
+        id: 's_early_2',
+        courseId: 'c1',
+        mode: 'custom',
+        minutesFocused: 37,
+        plannedMinutes: 50,
+        actualMinutes: 37,
+        plannedDurationSeconds: 3000,
+        actualDurationSeconds: 2220,
+        completionMethod: 'manual_finish',
+        startedAt: '2026-11-02T11:00:00Z',
+        completedAt: '2026-11-02T11:37:00Z',
+      },
+      // Abandoned / 0 duration session -> should NOT be counted
+      {
+        id: 's_abandoned',
+        courseId: 'c1',
+        mode: 'custom',
+        minutesFocused: 0,
+        plannedMinutes: 25,
+        actualMinutes: 0,
+        plannedDurationSeconds: 1500,
+        actualDurationSeconds: 0,
+        completionMethod: 'manual_finish',
+        startedAt: '2026-11-02T12:00:00Z',
+        completedAt: '2026-11-02T12:00:00Z',
+      },
+    ];
+
+    const stats = calculateFocusStats(sessions, courses, now);
+    expect(stats.dailyMinutes).toBe(57); // 20 + 37
+    expect(stats.totalCompletedSessions).toBe(2); // Abandoned session omitted
+    expect(stats.averageSessionMinutes).toBe(29); // 57 / 2 = 28.5 -> 29
+  });
 });

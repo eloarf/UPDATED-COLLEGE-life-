@@ -3,6 +3,8 @@ import { useUiStore } from './store/uiStore';
 import { initializeDatabase, db, saveEmergencyBackup } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { applyTheme, applyAppearanceStyles, applyAppearanceMode, applyDesignStyle } from './theme/themeUtils';
+import { initializeNotificationFoundation } from './services/notificationService';
+import { reconcileAllReminders } from './services/reminderEngine';
 
 // Layout
 import { TopBar } from './components/layout/TopBar';
@@ -50,6 +52,10 @@ export default function App() {
         if (res?.recovered) {
           showToast(`🛡️ Restored ${res.recoveredCount} items from emergency local mirror!`, 'success');
         }
+        // Initialize notification foundation & reconcile active reminders on startup
+        initializeNotificationFoundation()
+          .then(() => reconcileAllReminders())
+          .catch((e) => console.warn('[CollegeLifeOS] Notification init warning:', e));
       })
       .catch((err) => {
         console.error('[CollegeLifeOS] Database init notice:', err);

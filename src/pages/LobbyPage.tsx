@@ -19,7 +19,8 @@ import {
   triggerLevelUpConfetti,
 } from '../services/rpgService';
 import { Task, DailyQuest, Semester, DailyReflection } from '../types';
-import { getClassesForDate, getNextClass, NextClassResult } from '../utils/scheduleEngine';
+import { getClassesForDate, getNextClass, NextClassResult, ScheduledClass } from '../utils/scheduleEngine';
+import { reconcileAllReminders } from '../services/reminderEngine';
 import {
   calculateDailyProgress,
   getUpNextItem,
@@ -102,6 +103,13 @@ export const LobbyPage: React.FC = () => {
   const [isShutdownOpen, setIsShutdownOpen] = useState(false);
   const [shutdownWin, setShutdownWin] = useState('');
   const [shutdownTomorrowFocus, setShutdownTomorrowFocus] = useState('');
+
+  // Class Postponement Modal state
+  const [postponeModalClass, setPostponeModalClass] = useState<ScheduledClass | null>(null);
+  const [postponeDate, setPostponeDate] = useState<string>('');
+  const [postponeStartTime, setPostponeStartTime] = useState<string>('');
+  const [postponeEndTime, setPostponeEndTime] = useState<string>('');
+  const [postponeReason, setPostponeReason] = useState<string>('');
 
   useEffect(() => {
     ensureDailyQuests();
@@ -283,6 +291,153 @@ export const LobbyPage: React.FC = () => {
 
     setQuickTaskTitle('');
     showToast('Task added for today', 'success');
+  };
+
+  // Set / toggle attendance directly on Home Page
+  const handleSetAttendance = async (
+    courseId: string,
+    status: 'present' | 'absent' | 'postponed',
+    sessionId?: string
+  ) => {
+    const existing = attendanceRecords.find(
+      (r) => r.courseId === courseId && r.date === todayKey
+    );
+
+    if (existing) {
+      if (existing.status === status) {
+        // Toggle off
+        await db.attendance.delete(existing.id);
+        showToast('Attendance mark cleared.', 'info');
+      } else {
+        await db.attendance.update(existing.id, {
+          status,
+          updatedAt: new Date().toISOString(),
+        });
+        if (status === 'present') {
+          await awardXp({
+            source: 'attendance',
+            sourceId: existing.id,
+            amount: 10,
+            stat: 'discipline',
+          });
+          triggerLevelUpConfetti();
+        }
+        showToast(`Attendance updated to ${status}.`, 'success');
+      }
+    } else {
+      const recId = generateId();
+      await db.attendance.add({
+        id: recId,
+        courseId,
+        sessionId,
+        date: todayKey,
+        status,
+        createdAt: new Date().toISOString(),
+      });
+      if (status === 'present') {
+        await awardXp({
+          source: 'attendance',
+          sourceId: recId,
+          amount: 10,
+          stat: 'discipline',
+        });
+        triggerLevelUpConfetti();
+      }
+      showToast(`Marked ${status} for today.`, 'success');
+    }
+  };
+
+  // Open Postponement Modal
+  const handleOpenPostponeModal = (c: ScheduledClass) => {
+    setPostponeModalClass(c);
+    setPostponeDate(c.postponedToDate || addDaysToKey(todayKey, 1));
+    setPostponeStartTime(c.postponedToTime || c.startTime);
+    setPostponeEndTime(c.endTime);
+    setPostponeReason(c.exception?.reason || 'Class rescheduled / postponed');
+  };
+
+  // Save Postponement
+  const handleSavePostponement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!postponeModalClass) return;
+
+    const existingEx = exceptions.find(
+      (ex) => ex.sessionId === postponeModalClass.session.id && ex.date === todayKey
+    );
+
+    if (existingEx) {
+      await db.classExceptions.update(existingEx.id, {
+        action: 'moved',
+        reason: postponeReason.trim(),
+        newDate: postponeDate,
+        newStartTime: postponeStartTime,
+        newEndTime: postponeEndTime,
+        newRoom: postponeModalClass.room,
+      });
+    } else {
+      await db.classExceptions.add({
+        id: generateId(),
+        sessionId: postponeModalClass.session.id,
+        date: todayKey,
+        action: 'moved',
+        reason: postponeReason.trim(),
+        newDate: postponeDate,
+        newStartTime: postponeStartTime,
+        newEndTime: postponeEndTime,
+        newRoom: postponeModalClass.room,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // Set attendance status to postponed for today's occurrence
+    const existingAtt = attendanceRecords.find(
+      (r) => r.courseId === postponeModalClass.course.id && r.date === todayKey
+    );
+    if (existingAtt) {
+      await db.attendance.update(existingAtt.id, {
+        status: 'postponed',
+        notes: `Postponed to ${postponeDate} at ${postponeStartTime}`,
+        updatedAt: new Date().toISOString(),
+      });
+    } else {
+      await db.attendance.add({
+        id: generateId(),
+        courseId: postponeModalClass.course.id,
+        sessionId: postponeModalClass.session.id,
+        date: todayKey,
+        status: 'postponed',
+        notes: `Postponed to ${postponeDate} at ${postponeStartTime}`,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // Reconcile reminders so notification cancels for today and schedules on new date
+    reconcileAllReminders().catch(() => {});
+
+    showToast(`Class postponed to ${postponeDate} at ${postponeStartTime}. Notifications updated.`, 'success');
+    setPostponeModalClass(null);
+  };
+
+  // Cancel Postponement (reverts back to original recurring timetable)
+  const handleCancelPostponement = async (sessionId: string, courseId: string) => {
+    const target = exceptions.find(
+      (ex) => ex.sessionId === sessionId && ex.date === todayKey
+    );
+    if (target) {
+      await db.classExceptions.delete(target.id);
+    }
+
+    // Clear 'postponed' attendance mark
+    const att = attendanceRecords.find(
+      (r) => r.courseId === courseId && r.date === todayKey && r.status === 'postponed'
+    );
+    if (att) {
+      await db.attendance.delete(att.id);
+    }
+
+    reconcileAllReminders().catch(() => {});
+    showToast('Postponement cancelled. Restored normal timetable schedule.', 'info');
+    setPostponeModalClass(null);
   };
 
   // Toggle habit
@@ -668,46 +823,152 @@ export const LobbyPage: React.FC = () => {
             {timeline.items.map((item) => {
               const isCurrent = item.status === 'current';
               const isPast = item.status === 'past';
+              const isClass = item.kind === 'class';
+              const attendance = isClass && item.courseId
+                ? attendanceRecords.find((a) => a.courseId === item.courseId && a.date === todayKey)
+                : null;
 
               return (
                 <div
                   key={item.id}
-                  onClick={() => {
-                    if (item.actionPayload?.type === 'class') setCurrentRoute('#/timetable');
-                    else if (item.actionPayload?.type === 'exam') setCurrentRoute('#/exams');
-                    else setCurrentRoute('#/tasks');
-                  }}
-                  className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between gap-3 ${
+                  className={`p-3 rounded-xl border transition ${
                     isCurrent
                       ? 'border-emerald-500 bg-emerald-500/10 shadow-xs'
                       : isPast
-                      ? 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] opacity-60'
+                      ? 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] opacity-75'
                       : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] hover:border-[rgb(var(--c-primary))]'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span
-                      className="w-2 h-8 rounded-full shrink-0"
-                      style={{ backgroundColor: item.color || '#B6E63E' }}
-                    />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-[rgb(var(--c-text))]">
-                          {item.startTime} – {item.endTime}
-                        </span>
-                        {isCurrent && (
-                          <span className="px-1.5 py-0.2 rounded bg-emerald-500 text-stone-950 font-heading font-bold text-[9px] uppercase">
-                            Now
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      <span
+                        className="w-2 h-8 rounded-full shrink-0 mt-0.5"
+                        style={{ backgroundColor: item.color || '#B6E63E' }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                          <span className="font-mono text-xs font-bold text-[rgb(var(--c-text))]">
+                            {item.startTime} – {item.endTime}
                           </span>
+                          {isCurrent && (
+                            <span className="px-1.5 py-0.2 rounded bg-emerald-500 text-stone-950 font-heading font-bold text-[9px] uppercase">
+                              Now
+                            </span>
+                          )}
+                          {item.isPostponed && (
+                            <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400 font-heading font-bold text-[9px] uppercase border border-amber-500/30">
+                              Postponed to {item.postponedToDate} {item.postponedToTime || ''}
+                            </span>
+                          )}
+                          {item.isRescheduledOccurrence && (
+                            <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-600 dark:text-purple-400 font-heading font-bold text-[9px] uppercase border border-purple-500/30">
+                              Rescheduled from {item.rescheduledFromDate}
+                            </span>
+                          )}
+                          {attendance && (
+                            <span
+                              className={`px-1.5 py-0.2 rounded font-heading font-bold text-[9px] uppercase border ${
+                                attendance.status === 'present'
+                                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/40'
+                                  : attendance.status === 'absent'
+                                  ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border-rose-500/40'
+                                  : 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/40'
+                              }`}
+                            >
+                              {attendance.status === 'present'
+                                ? '✓ Present'
+                                : attendance.status === 'absent'
+                                ? '✗ Absent'
+                                : '↷ Postponed'}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))] truncate">
+                          {item.title}
+                        </div>
+                        {item.location && (
+                          <div className="text-[11px] text-[rgb(var(--c-muted))] truncate mt-0.5">
+                            {item.location}
+                          </div>
                         )}
                       </div>
-                      <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))] truncate">
-                        {item.title} {item.location ? `· ${item.location}` : ''}
-                      </div>
                     </div>
+
+                    {!isClass && (
+                      <button
+                        onClick={() => {
+                          if (item.actionPayload?.type === 'exam') setCurrentRoute('#/exams');
+                          else setCurrentRoute('#/tasks');
+                        }}
+                        className="p-1 rounded-lg text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-primary))]"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
 
-                  <ChevronRight className="w-4 h-4 text-[rgb(var(--c-muted))] shrink-0" />
+                  {/* Interactive Class Attendance Controls directly on Home Page */}
+                  {isClass && (
+                    <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-[rgb(var(--c-border))]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (item.courseId) handleSetAttendance(item.courseId, 'present', item.sessionId);
+                        }}
+                        className={`min-h-[32px] px-3 py-1 rounded-xl text-xs font-heading font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer ${
+                          attendance?.status === 'present'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:border-emerald-500 hover:text-emerald-500'
+                        }`}
+                        title={attendance?.status === 'present' ? 'Click to clear present mark' : 'Mark Present'}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Present</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (item.courseId) handleSetAttendance(item.courseId, 'absent', item.sessionId);
+                        }}
+                        className={`min-h-[32px] px-3 py-1 rounded-xl text-xs font-heading font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer ${
+                          attendance?.status === 'absent'
+                            ? 'bg-rose-600 text-white shadow-xs'
+                            : 'bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:border-rose-500 hover:text-rose-500'
+                        }`}
+                        title={attendance?.status === 'absent' ? 'Click to clear absent mark' : 'Mark Absent'}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Absent</span>
+                      </button>
+
+                      {item.scheduledClass && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPostponeModal(item.scheduledClass!)}
+                          className={`min-h-[32px] px-3 py-1 rounded-xl text-xs font-heading font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer ${
+                            item.isPostponed || attendance?.status === 'postponed'
+                              ? 'bg-amber-600 text-white shadow-xs'
+                              : 'bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:border-amber-500 hover:text-amber-500'
+                          }`}
+                          title="Postpone / Reschedule occurrence to another date & time"
+                        >
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{item.isPostponed ? 'Postponed' : 'Postpone'}</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setCurrentRoute('#/timetable')}
+                        className="ml-auto p-1.5 rounded-lg text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-primary))]"
+                        title="View Full Timetable"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -897,6 +1158,161 @@ export const LobbyPage: React.FC = () => {
                 <span>Save Shutdown (+25 XP)</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CLASS POSTPONEMENT MODAL */}
+      {postponeModalClass && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-[rgb(var(--c-surface))] ticket-border rounded-3xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-amber-500" />
+                <div>
+                  <h3 className="font-heading font-bold text-base text-[rgb(var(--c-text))]">
+                    Postpone Class Occurrence
+                  </h3>
+                  <div className="text-[11px] text-[rgb(var(--c-muted))]">
+                    {postponeModalClass.course.code} — {postponeModalClass.course.name}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPostponeModalClass(null)}
+                className="p-1.5 rounded-xl hover:bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-900 dark:text-amber-200">
+              Postponement applies <strong>only to today’s ({todayKey}) occurrence</strong>. Your standard recurring weekly timetable remains untouched.
+            </div>
+
+            <form onSubmit={handleSavePostponement} className="space-y-3.5">
+              {/* Quick Date Presets */}
+              <div>
+                <label className="block text-[11px] font-heading uppercase font-bold text-[rgb(var(--c-text))] mb-1.5">
+                  Reschedule To:
+                </label>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setPostponeDate(todayKey)}
+                    className={`p-2 rounded-xl border text-xs font-heading font-bold transition text-center ${
+                      postponeDate === todayKey
+                        ? 'border-amber-500 bg-amber-500/15 text-[rgb(var(--c-text))]'
+                        : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))] hover:border-[rgb(var(--c-text))]'
+                    }`}
+                  >
+                    Later Today
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPostponeDate(addDaysToKey(todayKey, 1))}
+                    className={`p-2 rounded-xl border text-xs font-heading font-bold transition text-center ${
+                      postponeDate === addDaysToKey(todayKey, 1)
+                        ? 'border-amber-500 bg-amber-500/15 text-[rgb(var(--c-text))]'
+                        : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))] hover:border-[rgb(var(--c-text))]'
+                    }`}
+                  >
+                    Tomorrow
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPostponeDate(addDaysToKey(todayKey, 7))}
+                    className={`p-2 rounded-xl border text-xs font-heading font-bold transition text-center ${
+                      postponeDate === addDaysToKey(todayKey, 7)
+                        ? 'border-amber-500 bg-amber-500/15 text-[rgb(var(--c-text))]'
+                        : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))] hover:border-[rgb(var(--c-text))]'
+                    }`}
+                  >
+                    Next Week
+                  </button>
+                </div>
+
+                <input
+                  type="date"
+                  required
+                  min={todayKey}
+                  value={postponeDate}
+                  onChange={(e) => setPostponeDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] text-xs font-bold"
+                />
+              </div>
+
+              {/* Time Pickers */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
+                    New Start Time
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={postponeStartTime}
+                    onChange={(e) => setPostponeStartTime(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] text-xs font-bold font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
+                    New End Time
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={postponeEndTime}
+                    onChange={(e) => setPostponeEndTime(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] text-xs font-bold font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Reason */}
+              <div>
+                <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
+                  Reason / Notes (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={postponeReason}
+                  onChange={(e) => setPostponeReason(e.target.value)}
+                  placeholder="e.g. Instructor lab session reschedule, departmental shift"
+                  className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] text-xs"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-[rgb(var(--c-border))]">
+                {exceptions.some((ex) => ex.sessionId === postponeModalClass.session.id && ex.date === todayKey) ? (
+                  <button
+                    type="button"
+                    onClick={() => handleCancelPostponement(postponeModalClass.session.id, postponeModalClass.course.id)}
+                    className="px-3 py-2 rounded-xl border border-rose-500/40 text-rose-600 dark:text-rose-400 text-xs font-heading font-bold hover:bg-rose-500/10 transition cursor-pointer"
+                  >
+                    Revert to Schedule
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setPostponeModalClass(null)}
+                    className="px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))] transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                )}
+
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-heading font-bold text-xs shadow-md active:scale-95 transition cursor-pointer"
+                >
+                  Save Postponement
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -45,9 +45,52 @@ export const POMODORO_PRESETS: Record<string, { name: string; focus: number; sho
 };
 
 /**
- * Get duration in seconds for a given phase and settings
+ * Formats a duration in seconds into human-readable string (e.g. "25m 30s", "1h 15m", "45s")
+ */
+export function formatDurationHuman(seconds: number): string {
+  if (seconds <= 0) return '0s';
+  const hrs = Math.floor(seconds / 3600);
+  const remSec = seconds % 3600;
+  const mins = Math.floor(remSec / 60);
+  const secs = remSec % 60;
+
+  const parts: string[] = [];
+  if (hrs > 0) parts.push(`${hrs}h`);
+  if (mins > 0) parts.push(`${mins}m`);
+  if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+
+  return parts.join(' ');
+}
+
+/**
+ * Get duration in seconds for a given phase and settings.
+ * Supports presets and independent minutes + seconds in custom mode.
  */
 export function getPhaseDurationSeconds(phase: PomodoroPhase, settings: PomodoroSettings): number {
+  if (settings.preset === 'custom') {
+    switch (phase) {
+      case 'work': {
+        const m = Math.max(0, settings.customWorkMinutes ?? settings.focusDurationMinutes ?? settings.focusDurationMins ?? 25);
+        const s = Math.max(0, Math.min(59, settings.customWorkSeconds ?? 0));
+        const total = m * 60 + s;
+        return Math.max(5, total); // Minimum 5 seconds
+      }
+      case 'short_break': {
+        const m = Math.max(0, settings.customShortBreakMinutes ?? settings.shortBreakMinutes ?? settings.shortBreakMins ?? 5);
+        const s = Math.max(0, Math.min(59, settings.customShortBreakSeconds ?? 0));
+        const total = m * 60 + s;
+        return Math.max(5, total);
+      }
+      case 'long_break': {
+        const m = Math.max(0, settings.customLongBreakMinutes ?? settings.longBreakMinutes ?? settings.longBreakMins ?? 15);
+        const s = Math.max(0, Math.min(59, settings.customLongBreakSeconds ?? 0));
+        const total = m * 60 + s;
+        return Math.max(5, total);
+      }
+    }
+  }
+
+  // Standard presets
   const focus = settings.focusDurationMinutes ?? settings.focusDurationMins ?? 25;
   const shortBreak = settings.shortBreakMinutes ?? settings.shortBreakMins ?? 5;
   const longBreak = settings.longBreakMinutes ?? settings.longBreakMins ?? 15;
@@ -178,9 +221,13 @@ export function calculateFocusStats(
   let totalFocusedMinutes = 0;
 
   const courseMap: Record<string, { minutes: number; count: number }> = {};
+  const validSessions = sessions.filter((s) => {
+    const mins = s.actualMinutes ?? s.minutesFocused ?? 0;
+    return mins > 0;
+  });
 
-  sessions.forEach((s) => {
-    const mins = s.minutesFocused || 0;
+  validSessions.forEach((s) => {
+    const mins = s.actualMinutes ?? s.minutesFocused ?? 0;
     totalFocusedMinutes += mins;
 
     const sDate = s.completedAt ? new Date(s.completedAt) : new Date(s.startedAt);
@@ -203,14 +250,14 @@ export function calculateFocusStats(
     courseMap[cId].count += 1;
   });
 
-  const totalCompletedSessions = sessions.length;
+  const totalCompletedSessions = validSessions.length;
   const averageSessionMinutes = totalCompletedSessions > 0
     ? Math.round(totalFocusedMinutes / totalCompletedSessions)
     : 0;
 
   // Streak calculation (consecutive active days backwards from today)
   const activeDaysSet = new Set<string>();
-  sessions.forEach((s) => {
+  validSessions.forEach((s) => {
     if (s.completedAt) {
       activeDaysSet.add(s.completedAt.substring(0, 10));
     }

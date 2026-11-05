@@ -13,6 +13,11 @@ export interface ScheduledClass {
   instructor?: string;
   isCancelled: boolean;
   isMoved: boolean;
+  isPostponed?: boolean;
+  postponedToDate?: string;
+  postponedToTime?: string;
+  isRescheduledOccurrence?: boolean;
+  rescheduledFromDate?: string;
   exception?: ClassException;
 }
 
@@ -142,17 +147,18 @@ export function getClassesForDate(
     // 5. Apply exception if present
     const ex = exceptionMap.get(session.id);
     const isCancelled = ex?.action === 'cancelled';
+    const isPostponed = ex?.action === 'moved' && !!ex.newDate && ex.newDate !== dateKey;
     const isMoved = ex?.action === 'moved';
 
-    const effectiveStartTime = isMoved && ex.newStartTime && isValidTime(ex.newStartTime)
+    const effectiveStartTime = isMoved && ex?.newStartTime && isValidTime(ex.newStartTime)
       ? ex.newStartTime
       : session.startTime;
 
-    const effectiveEndTime = isMoved && ex.newEndTime && isValidTime(ex.newEndTime)
+    const effectiveEndTime = isMoved && ex?.newEndTime && isValidTime(ex.newEndTime)
       ? ex.newEndTime
       : session.endTime;
 
-    const effectiveRoom = isMoved && ex.newRoom
+    const effectiveRoom = isMoved && ex?.newRoom
       ? ex.newRoom
       : session.room;
 
@@ -168,8 +174,47 @@ export function getClassesForDate(
       instructor: session.instructor || course.instructor,
       isCancelled,
       isMoved,
+      isPostponed,
+      postponedToDate: isPostponed ? ex?.newDate : undefined,
+      postponedToTime: isPostponed ? ex?.newStartTime : undefined,
       exception: ex,
     });
+  }
+
+  // 6. Include occurrences postponed TO this date from another date
+  for (const ex of exceptions) {
+    if (ex.action === 'moved' && ex.newDate === dateKey && ex.date !== dateKey) {
+      const session = sessions.find((s) => s.id === ex.sessionId);
+      if (!session) continue;
+      const course = courseMap.get(session.courseId);
+      if (!course) continue;
+
+      const effectiveStartTime = ex.newStartTime && isValidTime(ex.newStartTime)
+        ? ex.newStartTime
+        : session.startTime;
+      const effectiveEndTime = ex.newEndTime && isValidTime(ex.newEndTime)
+        ? ex.newEndTime
+        : session.endTime;
+      const effectiveRoom = ex.newRoom || session.room;
+
+      results.push({
+        session,
+        course,
+        date: dateKey,
+        startTime: effectiveStartTime,
+        endTime: effectiveEndTime,
+        type: session.type,
+        room: effectiveRoom,
+        building: session.building,
+        instructor: session.instructor || course.instructor,
+        isCancelled: false,
+        isMoved: true,
+        isPostponed: false,
+        isRescheduledOccurrence: true,
+        rescheduledFromDate: ex.date,
+        exception: ex,
+      });
+    }
   }
 
   // Sort by startTime

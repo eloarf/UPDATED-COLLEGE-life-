@@ -17,6 +17,7 @@ import {
   getNextPomodoroPhase,
   calculateRemainingSeconds,
   calculateFocusStats,
+  formatDurationHuman,
 } from '../utils/pomodoroEngine';
 import {
   playPomodoroChime,
@@ -79,6 +80,8 @@ export const FocusPage: React.FC = () => {
   // References for timestamp resilient timing
   const targetEndTimestampRef = useRef<number | null>(null);
   const wakeLockRef = useRef<any>(null);
+  const pauseCountRef = useRef<number>(0);
+  const isSavingRef = useRef<boolean>(false);
 
   // Sync activeFocusTask course
   useEffect(() => {
@@ -216,6 +219,7 @@ export const FocusPage: React.FC = () => {
   const handlePauseTimer = () => {
     setIsRunning(false);
     targetEndTimestampRef.current = null;
+    pauseCountRef.current += 1;
     releaseWakeLock();
   };
 
@@ -223,6 +227,7 @@ export const FocusPage: React.FC = () => {
   const handleRestartPhase = () => {
     setIsRunning(false);
     targetEndTimestampRef.current = null;
+    pauseCountRef.current = 0;
     releaseWakeLock();
     const dur = getPhaseDurationSeconds(currentPhase, settings);
     setRemainingSeconds(dur);
@@ -232,6 +237,7 @@ export const FocusPage: React.FC = () => {
   const handleSkipPhase = () => {
     setIsRunning(false);
     targetEndTimestampRef.current = null;
+    pauseCountRef.current = 0;
     releaseWakeLock();
 
     const next = getNextPomodoroPhase(currentPhase, currentSessionIndex, currentCycleIndex, settings);
@@ -243,8 +249,100 @@ export const FocusPage: React.FC = () => {
     showToast(`Skipped to ${formatPhaseTitle(next.nextPhase)}`, 'info');
   };
 
-  // Handle phase completion
+  // Early Completion of Deep Work / Focus Session
+  const handleFinishSessionEarly = async () => {
+    if (isSavingRef.current || currentPhase !== 'work') return;
+    isSavingRef.current = true;
+
+    setIsRunning(false);
+    targetEndTimestampRef.current = null;
+    releaseWakeLock();
+
+    const totalPlannedSeconds = totalPhaseSeconds;
+    const actualElapsedSeconds = Math.max(0, totalPlannedSeconds - remainingSeconds);
+
+    // Filter out accidental clicks or zero-duration sessions
+    if (actualElapsedSeconds < 15) {
+      showToast('Session cancelled (less than 15s elapsed, not recorded)', 'info');
+      isSavingRef.current = false;
+      handleRestartPhase();
+      return;
+    }
+
+    const actualMinutes = Math.max(1, Math.round(actualElapsedSeconds / 60));
+    const plannedMinutes = Math.max(1, Math.round(totalPlannedSeconds / 60));
+    const sessionId = generateId();
+    const now = new Date().toISOString();
+
+    // Feedback
+    if (settings.soundEnabled) {
+      playPomodoroChime('work_complete');
+    }
+    if (settings.vibrationEnabled) {
+      triggerHaptic([200, 100, 200, 100, 300]);
+    }
+
+    await db.focusSessions.add({
+      id: sessionId,
+      courseId: selectedCourseId || undefined,
+      taskId: activeFocusTask?.taskId || undefined,
+      mode: settings.preset === 'custom' ? 'custom' : `${plannedMinutes}min`,
+      minutesFocused: actualMinutes,
+      plannedMinutes,
+      actualMinutes,
+      plannedDurationSeconds: totalPlannedSeconds,
+      actualDurationSeconds: actualElapsedSeconds,
+      pauseCount: pauseCountRef.current,
+      completionMethod: 'manual_finish',
+      sessionType: 'work',
+      startedAt: new Date(Date.now() - actualElapsedSeconds * 1000).toISOString(),
+      completedAt: now,
+      notes: activeFocusTask?.taskTitle ? `Focus on: ${activeFocusTask.taskTitle}` : undefined,
+    });
+
+    const xpToAward = actualMinutes + 5;
+    await awardXp({
+      source: 'focus_session',
+      sourceId: sessionId,
+      amount: xpToAward,
+      stat: 'knowledge',
+    });
+
+    triggerLevelUpConfetti();
+
+    showToast(
+      `🎉 Finished early! Recorded ${actualMinutes}m actual focus (planned ${plannedMinutes}m) • +${xpToAward} XP!`,
+      'success'
+    );
+
+    // Reset pause count
+    pauseCountRef.current = 0;
+
+    // Transition to break
+    const next = getNextPomodoroPhase(currentPhase, currentSessionIndex, currentCycleIndex, settings);
+    setCurrentPhase(next.nextPhase);
+    setCurrentSessionIndex(next.nextSession);
+    setCurrentCycleIndex(next.nextCycle);
+
+    const nextDuration = getPhaseDurationSeconds(next.nextPhase, settings);
+    setRemainingSeconds(nextDuration);
+
+    isSavingRef.current = false;
+
+    if (next.isAllCyclesCompleted) {
+      showToast('🏆 Master Study Session Complete! All cycles finished.', 'success');
+    } else if (settings.autoTransition) {
+      targetEndTimestampRef.current = Date.now() + nextDuration * 1000;
+      setIsRunning(true);
+      showToast(`Auto-transitioning to ${formatPhaseTitle(next.nextPhase)}...`, 'info');
+    }
+  };
+
+  // Handle phase full countdown completion
   const handlePhaseComplete = async () => {
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
+
     setIsRunning(false);
     targetEndTimestampRef.current = null;
     releaseWakeLock();
@@ -258,20 +356,32 @@ export const FocusPage: React.FC = () => {
     }
 
     if (currentPhase === 'work') {
-      const minutesFocused = settings.focusDurationMins ?? settings.focusDurationMinutes ?? 25;
+      const plannedSeconds = totalPhaseSeconds;
+      const actualMinutes = Math.max(1, Math.round(plannedSeconds / 60));
       const now = new Date().toISOString();
       const sessionId = generateId();
 
       await db.focusSessions.add({
         id: sessionId,
         courseId: selectedCourseId || undefined,
-        mode: `${minutesFocused}min` as any,
-        minutesFocused,
-        startedAt: new Date(Date.now() - minutesFocused * 60000).toISOString(),
+        taskId: activeFocusTask?.taskId || undefined,
+        mode: settings.preset === 'custom' ? 'custom' : `${actualMinutes}min`,
+        minutesFocused: actualMinutes,
+        plannedMinutes: actualMinutes,
+        actualMinutes,
+        plannedDurationSeconds: plannedSeconds,
+        actualDurationSeconds: plannedSeconds,
+        pauseCount: pauseCountRef.current,
+        completionMethod: 'completed',
+        sessionType: 'work',
+        startedAt: new Date(Date.now() - plannedSeconds * 1000).toISOString(),
         completedAt: now,
+        notes: activeFocusTask?.taskTitle ? `Focus on: ${activeFocusTask.taskTitle}` : undefined,
       });
 
-      const xpToAward = minutesFocused + 10;
+      pauseCountRef.current = 0;
+
+      const xpToAward = actualMinutes + 10;
       await awardXp({
         source: 'focus_session',
         sourceId: sessionId,
@@ -284,7 +394,7 @@ export const FocusPage: React.FC = () => {
       if (settings.notificationsEnabled) {
         sendLocalNotification(
           '🎯 Focus Session Completed!',
-          `Great work! You finished ${minutesFocused} minutes of focus (+${xpToAward} XP). Time for a well-deserved break!`
+          `Great work! You finished ${actualMinutes} minutes of focus (+${xpToAward} XP). Time for a well-deserved break!`
         );
       }
 
@@ -307,6 +417,8 @@ export const FocusPage: React.FC = () => {
 
     const nextDuration = getPhaseDurationSeconds(next.nextPhase, settings);
     setRemainingSeconds(nextDuration);
+
+    isSavingRef.current = false;
 
     if (next.isAllCyclesCompleted) {
       showToast('🏆 Master Study Session Complete! All cycles finished.', 'success');
@@ -512,7 +624,7 @@ export const FocusPage: React.FC = () => {
           {isRunning ? (
             <button
               onClick={handlePauseTimer}
-              className="px-8 py-3.5 rounded-2xl bg-amber-500 text-stone-950 font-heading text-sm font-bold shadow-lg hover:opacity-95 active:scale-95 transition flex items-center gap-2"
+              className="px-8 py-3.5 rounded-2xl bg-amber-500 text-stone-950 font-heading text-sm font-bold shadow-lg hover:opacity-95 active:scale-95 transition flex items-center gap-2 cursor-pointer"
             >
               <Pause className="w-5 h-5 fill-current" />
               <span>Pause Block</span>
@@ -520,7 +632,7 @@ export const FocusPage: React.FC = () => {
           ) : (
             <button
               onClick={handleStartTimer}
-              className="px-8 py-3.5 rounded-2xl bg-[#B6E63E] text-stone-950 font-heading text-sm font-bold shadow-lg hover:opacity-95 active:scale-95 transition flex items-center gap-2"
+              className="px-8 py-3.5 rounded-2xl bg-[#B6E63E] text-stone-950 font-heading text-sm font-bold shadow-lg hover:opacity-95 active:scale-95 transition flex items-center gap-2 cursor-pointer"
             >
               <Play className="w-5 h-5 fill-current" />
               <span>{remainingSeconds === totalPhaseSeconds ? 'Start Flow' : 'Resume Flow'}</span>
@@ -535,6 +647,22 @@ export const FocusPage: React.FC = () => {
             <SkipForward className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Early Finish Action (Critical Bug Fix: records actual elapsed work time) */}
+        {currentPhase === 'work' && remainingSeconds < totalPhaseSeconds && (
+          <div className="w-full flex justify-center mt-3">
+            <button
+              onClick={handleFinishSessionEarly}
+              className="px-5 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-heading text-xs font-bold shadow-md active:scale-95 transition flex items-center gap-2 cursor-pointer"
+              title="Finish work early and record actual elapsed minutes"
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+              <span>
+                Finish Session Early ({Math.max(1, Math.round((totalPhaseSeconds - remainingSeconds) / 60))}m worked)
+              </span>
+            </button>
+          </div>
+        )}
 
         {/* Quick Presets Strip */}
         <div className="grid grid-cols-3 gap-2 w-full max-w-md mt-6 pt-5 border-t border-[rgb(var(--c-border))]">
@@ -639,62 +767,213 @@ export const FocusPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Durations */}
-            <div className="space-y-3 pt-2 border-t border-[rgb(var(--c-border))]">
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    Focus (min)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="180"
-                    value={settings.focusDurationMinutes}
-                    onChange={(e) => {
-                      const v = Math.max(1, parseInt(e.target.value) || 25);
-                      setSettings((prev) => ({ ...prev, preset: 'custom', focusDurationMinutes: v }));
-                      if (!isRunning && currentPhase === 'work') setRemainingSeconds(v * 60);
-                    }}
-                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] text-sm font-bold"
-                  />
+            {/* Durations Configuration */}
+            <div className="space-y-4 pt-2 border-t border-[rgb(var(--c-border))]">
+              {/* Work / Focus Session */}
+              <div className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                    🎯 Focus / Work Duration
+                  </span>
+                  <span className="text-xs font-mono font-bold text-[#B6E63E] bg-[#B6E63E]/10 px-2 py-0.5 rounded-md">
+                    {formatDurationHuman(
+                      (settings.preset === 'custom'
+                        ? (settings.customWorkMinutes ?? 25)
+                        : (settings.focusDurationMinutes ?? 25)) * 60 +
+                      (settings.preset === 'custom' ? (settings.customWorkSeconds ?? 0) : 0)
+                    )}
+                  </span>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    Short Break (min)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="60"
-                    value={settings.shortBreakMinutes}
-                    onChange={(e) => {
-                      const v = Math.max(1, parseInt(e.target.value) || 5);
-                      setSettings((prev) => ({ ...prev, preset: 'custom', shortBreakMinutes: v }));
-                      if (!isRunning && currentPhase === 'short_break') setRemainingSeconds(v * 60);
-                    }}
-                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] text-sm font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    Long Break (min)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="90"
-                    value={settings.longBreakMinutes}
-                    onChange={(e) => {
-                      const v = Math.max(1, parseInt(e.target.value) || 15);
-                      setSettings((prev) => ({ ...prev, preset: 'custom', longBreakMinutes: v }));
-                      if (!isRunning && currentPhase === 'long_break') setRemainingSeconds(v * 60);
-                    }}
-                    className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] text-sm font-bold"
-                  />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] uppercase font-heading text-[rgb(var(--c-muted))] mb-1">
+                      Minutes
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="180"
+                      value={settings.preset === 'custom' ? (settings.customWorkMinutes ?? 25) : (settings.focusDurationMinutes ?? 25)}
+                      onChange={(e) => {
+                        const m = Math.max(0, Math.min(180, parseInt(e.target.value) || 0));
+                        const s = settings.customWorkSeconds ?? 0;
+                        const total = Math.max(5, m * 60 + s);
+                        setSettings((prev) => ({
+                          ...prev,
+                          preset: 'custom',
+                          customWorkMinutes: m,
+                          customWorkSeconds: s,
+                          focusDurationMinutes: m,
+                        }));
+                        if (!isRunning && currentPhase === 'work') setRemainingSeconds(total);
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface))] text-[rgb(var(--c-text))] text-sm font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-heading text-[rgb(var(--c-muted))] mb-1">
+                      Seconds
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="59"
+                      value={settings.preset === 'custom' ? (settings.customWorkSeconds ?? 0) : 0}
+                      onChange={(e) => {
+                        const s = Math.max(0, Math.min(59, parseInt(e.target.value) || 0));
+                        const m = settings.customWorkMinutes ?? settings.focusDurationMinutes ?? 25;
+                        const total = Math.max(5, m * 60 + s);
+                        setSettings((prev) => ({
+                          ...prev,
+                          preset: 'custom',
+                          customWorkMinutes: m,
+                          customWorkSeconds: s,
+                        }));
+                        if (!isRunning && currentPhase === 'work') setRemainingSeconds(total);
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface))] text-[rgb(var(--c-text))] text-sm font-bold"
+                    />
+                  </div>
                 </div>
               </div>
 
+              {/* Short Break */}
+              <div className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                    ☕ Short Break Duration
+                  </span>
+                  <span className="text-xs font-mono font-bold text-sky-400 bg-sky-400/10 px-2 py-0.5 rounded-md">
+                    {formatDurationHuman(
+                      (settings.preset === 'custom'
+                        ? (settings.customShortBreakMinutes ?? 5)
+                        : (settings.shortBreakMinutes ?? 5)) * 60 +
+                      (settings.preset === 'custom' ? (settings.customShortBreakSeconds ?? 0) : 0)
+                    )}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] uppercase font-heading text-[rgb(var(--c-muted))] mb-1">
+                      Minutes
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="60"
+                      value={settings.preset === 'custom' ? (settings.customShortBreakMinutes ?? 5) : (settings.shortBreakMinutes ?? 5)}
+                      onChange={(e) => {
+                        const m = Math.max(0, Math.min(60, parseInt(e.target.value) || 0));
+                        const s = settings.customShortBreakSeconds ?? 0;
+                        const total = Math.max(5, m * 60 + s);
+                        setSettings((prev) => ({
+                          ...prev,
+                          preset: 'custom',
+                          customShortBreakMinutes: m,
+                          customShortBreakSeconds: s,
+                          shortBreakMinutes: m,
+                        }));
+                        if (!isRunning && currentPhase === 'short_break') setRemainingSeconds(total);
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface))] text-[rgb(var(--c-text))] text-sm font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-heading text-[rgb(var(--c-muted))] mb-1">
+                      Seconds
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="59"
+                      value={settings.preset === 'custom' ? (settings.customShortBreakSeconds ?? 0) : 0}
+                      onChange={(e) => {
+                        const s = Math.max(0, Math.min(59, parseInt(e.target.value) || 0));
+                        const m = settings.customShortBreakMinutes ?? settings.shortBreakMinutes ?? 5;
+                        const total = Math.max(5, m * 60 + s);
+                        setSettings((prev) => ({
+                          ...prev,
+                          preset: 'custom',
+                          customShortBreakMinutes: m,
+                          customShortBreakSeconds: s,
+                        }));
+                        if (!isRunning && currentPhase === 'short_break') setRemainingSeconds(total);
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface))] text-[rgb(var(--c-text))] text-sm font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Long Break */}
+              <div className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                    🌿 Long Break Duration
+                  </span>
+                  <span className="text-xs font-mono font-bold text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded-md">
+                    {formatDurationHuman(
+                      (settings.preset === 'custom'
+                        ? (settings.customLongBreakMinutes ?? 15)
+                        : (settings.longBreakMinutes ?? 15)) * 60 +
+                      (settings.preset === 'custom' ? (settings.customLongBreakSeconds ?? 0) : 0)
+                    )}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] uppercase font-heading text-[rgb(var(--c-muted))] mb-1">
+                      Minutes
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="90"
+                      value={settings.preset === 'custom' ? (settings.customLongBreakMinutes ?? 15) : (settings.longBreakMinutes ?? 15)}
+                      onChange={(e) => {
+                        const m = Math.max(0, Math.min(90, parseInt(e.target.value) || 0));
+                        const s = settings.customLongBreakSeconds ?? 0;
+                        const total = Math.max(5, m * 60 + s);
+                        setSettings((prev) => ({
+                          ...prev,
+                          preset: 'custom',
+                          customLongBreakMinutes: m,
+                          customLongBreakSeconds: s,
+                          longBreakMinutes: m,
+                        }));
+                        if (!isRunning && currentPhase === 'long_break') setRemainingSeconds(total);
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface))] text-[rgb(var(--c-text))] text-sm font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-heading text-[rgb(var(--c-muted))] mb-1">
+                      Seconds
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="59"
+                      value={settings.preset === 'custom' ? (settings.customLongBreakSeconds ?? 0) : 0}
+                      onChange={(e) => {
+                        const s = Math.max(0, Math.min(59, parseInt(e.target.value) || 0));
+                        const m = settings.customLongBreakMinutes ?? settings.longBreakMinutes ?? 15;
+                        const total = Math.max(5, m * 60 + s);
+                        setSettings((prev) => ({
+                          ...prev,
+                          preset: 'custom',
+                          customLongBreakMinutes: m,
+                          customLongBreakSeconds: s,
+                        }));
+                        if (!isRunning && currentPhase === 'long_break') setRemainingSeconds(total);
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface))] text-[rgb(var(--c-text))] text-sm font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Sessions Before Long Break & Cycles */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
@@ -957,9 +1236,76 @@ export const FocusPage: React.FC = () => {
               )}
             </div>
 
+            {/* Recent Focus History */}
+            <div>
+              <div className="text-xs font-heading font-bold uppercase text-[rgb(var(--c-text))] mb-2 flex items-center justify-between">
+                <span>Recent Focus Sessions</span>
+                <span className="text-[10px] text-[rgb(var(--c-muted))] font-normal">
+                  Last 8 entries
+                </span>
+              </div>
+              {focusSessions.length === 0 ? (
+                <div className="p-3 text-center text-xs text-[rgb(var(--c-muted))] bg-[rgb(var(--c-bg))] rounded-xl border border-[rgb(var(--c-border))]">
+                  No session logs recorded yet.
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                  {focusSessions
+                    .slice()
+                    .reverse()
+                    .slice(0, 8)
+                    .map((sess) => {
+                      const course = courses.find((c) => c.id === sess.courseId);
+                      const actualM = sess.actualMinutes ?? sess.minutesFocused ?? 0;
+                      const plannedM = sess.plannedMinutes;
+                      const isEarly = sess.completionMethod === 'manual_finish';
+
+                      return (
+                        <div
+                          key={sess.id}
+                          className="p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] flex items-center justify-between gap-2 text-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="font-heading font-bold text-[rgb(var(--c-text))] truncate">
+                              {course ? `${course.code} — ${course.name}` : 'General University Focus'}
+                            </div>
+                            <div className="text-[10px] text-[rgb(var(--c-muted))] flex items-center gap-2 mt-0.5">
+                              <span>
+                                {sess.completedAt ? new Date(sess.completedAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Recent'}
+                              </span>
+                              {sess.pauseCount ? (
+                                <span>• {sess.pauseCount} pause{sess.pauseCount === 1 ? '' : 's'}</span>
+                              ) : null}
+                              {sess.notes && (
+                                <span className="truncate max-w-[120px]">• {sess.notes}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <div className="font-heading font-bold text-[#B6E63E]">
+                              {actualM}m active
+                            </div>
+                            <span
+                              className={`inline-block text-[9px] px-1.5 py-0.2 rounded font-bold uppercase mt-0.5 ${
+                                isEarly
+                                  ? 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
+                                  : 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
+                              }`}
+                            >
+                              {isEarly ? (plannedM ? `Early (${actualM}/${plannedM}m)` : 'Early Finish') : 'Full Session'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => setIsStatsOpen(false)}
-              className="w-full py-2.5 rounded-2xl bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading font-bold text-xs hover:bg-[rgb(var(--c-border))] transition"
+              className="w-full py-2.5 rounded-2xl bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading font-bold text-xs hover:bg-[rgb(var(--c-border))] transition cursor-pointer"
             >
               Close Analytics
             </button>

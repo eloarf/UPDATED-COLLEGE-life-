@@ -38,6 +38,8 @@ import {
   DebtRecord,
   RecurringTransaction,
   AcademicGoal,
+  ScheduledReminderRecord,
+  DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_ACCOUNT_BALANCES,
   DEFAULT_DEPARTMENTS,
 } from '../types';
@@ -80,6 +82,7 @@ export class CollegeLifeOSDatabase extends Dexie {
   restDays!: Table<RestDay, string>;
   dailyReflections!: Table<DailyReflection, string>;
   academicGoals!: Table<AcademicGoal, string>;
+  scheduledReminders!: Table<ScheduledReminderRecord, string>;
 
   constructor() {
     super('CollegeLifeOSDB');
@@ -186,6 +189,10 @@ export class CollegeLifeOSDatabase extends Dexie {
     this.version(6).stores({
       academicGoals: 'id, category, status, targetDate, semesterId',
     });
+
+    this.version(7).stores({
+      scheduledReminders: 'id, numericId, category, targetTime, entityId',
+    });
   }
 }
 
@@ -250,6 +257,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   attendanceThresholdPercent: 80,
   accountBalances: DEFAULT_ACCOUNT_BALANCES,
   departmentOptions: DEFAULT_DEPARTMENTS,
+  notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
 };
 
 // Storage Keys
@@ -302,6 +310,7 @@ export interface EmergencyBackupPayload {
     restDays?: RestDay[];
     dailyReflections?: DailyReflection[];
     academicGoals?: AcademicGoal[];
+    scheduledReminders?: ScheduledReminderRecord[];
   };
 }
 

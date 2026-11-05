@@ -6,6 +6,7 @@ import { Exam, ExamTopic, Course } from '../types';
 import { getTodayKey, formatDisplayDate } from '../utils/dateUtils';
 import { awardXp, triggerLevelUpConfetti } from '../services/rpgService';
 import { generateId } from '../utils/idGenerator';
+import { cancelExamReminders, reconcileAllReminders } from '../services/reminderEngine';
 import {
   ShieldAlert,
   Plus,
@@ -152,6 +153,7 @@ export const ExamsPage: React.FC = () => {
       }
 
       showToast('University Boss Battle summoned!', 'success');
+      reconcileAllReminders().catch(console.warn);
     }
 
     setIsModalOpen(false);
@@ -191,10 +193,12 @@ export const ExamsPage: React.FC = () => {
         stat: 'knowledge',
       });
       showToast('🏆 BOSS DEFEATED! 100% syllabus revised! +150 XP awarded!', 'success');
+      cancelExamReminders(exam.id).catch(console.warn);
     }
   };
 
   const handleDeleteExam = async (id: string) => {
+    cancelExamReminders(id).catch(console.warn);
     await db.exams.delete(id);
     await db.examTopics.where('examId').equals(id).delete();
     showToast('Exam removed.', 'info');

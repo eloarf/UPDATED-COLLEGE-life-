@@ -118,8 +118,8 @@ export function calculateDailyProgress(params: {
   const habitsPercent =
     habitsTotal > 0 ? Math.round((habitsCompletedCount / habitsTotal) * 100) : 100;
 
-  // 3. Classes: non-cancelled classes scheduled for today
-  const nonCancelledClasses = scheduledClasses.filter((c) => !c.isCancelled);
+  // 3. Classes: non-cancelled, non-postponed classes scheduled for today
+  const nonCancelledClasses = scheduledClasses.filter((c) => !c.isCancelled && !c.isPostponed);
   const attendedClassesCount = nonCancelledClasses.filter((c) => {
     const rec = attendanceRecords.find(
       (a) => a.courseId === c.course.id && a.date === todayKey
@@ -561,6 +561,14 @@ export interface TimelineItem {
   status: 'past' | 'current' | 'upcoming';
   isClash?: boolean;
   isCancelled?: boolean;
+  isPostponed?: boolean;
+  postponedToDate?: string;
+  postponedToTime?: string;
+  isRescheduledOccurrence?: boolean;
+  rescheduledFromDate?: string;
+  courseId?: string;
+  sessionId?: string;
+  scheduledClass?: ScheduledClass;
   actionPayload?: {
     type: string;
     id: string;
@@ -600,6 +608,14 @@ export function buildTodayTimeline(params: {
       status:
         currentTime < c.startTime ? 'upcoming' : currentTime > c.endTime ? 'past' : 'current',
       isCancelled: c.isCancelled,
+      isPostponed: c.isPostponed,
+      postponedToDate: c.postponedToDate,
+      postponedToTime: c.postponedToTime,
+      isRescheduledOccurrence: c.isRescheduledOccurrence,
+      rescheduledFromDate: c.rescheduledFromDate,
+      courseId: c.course.id,
+      sessionId: c.session.id,
+      scheduledClass: c,
       actionPayload: {
         type: 'class',
         id: c.session.id,

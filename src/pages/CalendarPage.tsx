@@ -7,9 +7,11 @@ import {
   formatDisplayDate,
   parseDayKey,
   getEthiopicDateString,
+  addDaysToKey,
   DAY_NAMES,
   FULL_DAY_NAMES,
 } from '../utils/dateUtils';
+import { reconcileAllReminders } from '../services/reminderEngine';
 import {
   getClassesForDate,
   getSemesterWeekNumber,
@@ -52,6 +54,7 @@ export const CalendarPage: React.FC = () => {
   const [exceptionModalClass, setExceptionModalClass] = useState<ScheduledClass | null>(null);
   const [exceptionAction, setExceptionAction] = useState<'cancelled' | 'moved'>('cancelled');
   const [exceptionReason, setExceptionReason] = useState('Instructor postponed class');
+  const [exceptionNewDate, setExceptionNewDate] = useState('');
   const [exceptionNewStartTime, setExceptionNewStartTime] = useState('');
   const [exceptionNewEndTime, setExceptionNewEndTime] = useState('');
   const [exceptionNewRoom, setExceptionNewRoom] = useState('');
@@ -168,9 +171,10 @@ export const CalendarPage: React.FC = () => {
     setExceptionReason(
       action === 'cancelled'
         ? 'Instructor cancelled / postponed class'
-        : 'One-off hall or time change'
+        : 'Class postponed / rescheduled'
     );
-    setExceptionNewStartTime(c.startTime);
+    setExceptionNewDate(c.postponedToDate || selectedDayKey);
+    setExceptionNewStartTime(c.postponedToTime || c.startTime);
     setExceptionNewEndTime(c.endTime);
     setExceptionNewRoom(c.room || '');
   };
@@ -190,6 +194,7 @@ export const CalendarPage: React.FC = () => {
       await db.classExceptions.update(existingEx.id, {
         action: exceptionAction,
         reason: exceptionReason.trim(),
+        newDate: exceptionAction === 'moved' ? exceptionNewDate : undefined,
         newStartTime:
           exceptionAction === 'moved' ? exceptionNewStartTime : undefined,
         newEndTime:
@@ -203,18 +208,45 @@ export const CalendarPage: React.FC = () => {
         date: selectedDayKey,
         action: exceptionAction,
         reason: exceptionReason.trim(),
+        newDate: exceptionAction === 'moved' ? exceptionNewDate : undefined,
         newStartTime:
           exceptionAction === 'moved' ? exceptionNewStartTime : undefined,
         newEndTime:
           exceptionAction === 'moved' ? exceptionNewEndTime : undefined,
         newRoom: exceptionAction === 'moved' ? exceptionNewRoom.trim() : undefined,
+        createdAt: new Date().toISOString(),
       });
     }
+
+    if (exceptionAction === 'moved') {
+      const existingAtt = attendanceRecords.find(
+        (r) => r.courseId === exceptionModalClass.course.id && r.date === selectedDayKey
+      );
+      if (existingAtt) {
+        await db.attendance.update(existingAtt.id, {
+          status: 'postponed',
+          notes: `Postponed to ${exceptionNewDate} at ${exceptionNewStartTime}`,
+          updatedAt: new Date().toISOString(),
+        });
+      } else {
+        await db.attendance.add({
+          id: generateId(),
+          courseId: exceptionModalClass.course.id,
+          sessionId: exceptionModalClass.session.id,
+          date: selectedDayKey,
+          status: 'postponed',
+          notes: `Postponed to ${exceptionNewDate} at ${exceptionNewStartTime}`,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    reconcileAllReminders().catch(() => {});
 
     showToast(
       exceptionAction === 'cancelled'
         ? `Class cancelled for ${selectedDayKey}. Does not penalize streak.`
-        : `Class rescheduled for ${selectedDayKey}.`,
+        : `Class postponed to ${exceptionNewDate} at ${exceptionNewStartTime}. Reminders rescheduled.`,
       'success'
     );
     setExceptionModalClass(null);
@@ -227,6 +259,18 @@ export const CalendarPage: React.FC = () => {
     );
     if (target) {
       await db.classExceptions.delete(target.id);
+
+      const targetClass = dayClasses.find((c) => c.session.id === sessionId);
+      if (targetClass) {
+        const att = attendanceRecords.find(
+          (r) => r.courseId === targetClass.course.id && r.date === selectedDayKey && r.status === 'postponed'
+        );
+        if (att) {
+          await db.attendance.delete(att.id);
+        }
+      }
+
+      reconcileAllReminders().catch(() => {});
       showToast(`Restored regular class schedule for ${selectedDayKey}.`, 'info');
     }
   };
@@ -418,7 +462,19 @@ export const CalendarPage: React.FC = () => {
                             </span>
                           )}
 
-                          {item.isMoved && (
+                          {item.isPostponed && (
+                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-bold">
+                              Postponed to {item.postponedToDate} {item.postponedToTime || ''}
+                            </span>
+                          )}
+
+                          {item.isRescheduledOccurrence && (
+                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 font-bold">
+                              Rescheduled from {item.rescheduledFromDate}
+                            </span>
+                          )}
+
+                          {!item.isPostponed && !item.isRescheduledOccurrence && item.isMoved && (
                             <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-bold">
                               Rescheduled / Moved
                             </span>
@@ -685,6 +741,55 @@ export const CalendarPage: React.FC = () => {
 
               {exceptionAction === 'moved' && (
                 <>
+                  <div>
+                    <label className="block text-[11px] font-heading uppercase font-bold text-[rgb(var(--c-text))] mb-1.5">
+                      Reschedule To Date
+                    </label>
+                    <div className="grid grid-cols-3 gap-2 mb-2">
+                      <button
+                        type="button"
+                        onClick={() => setExceptionNewDate(selectedDayKey)}
+                        className={`p-1.5 rounded-xl border text-[11px] font-heading font-bold transition text-center ${
+                          exceptionNewDate === selectedDayKey
+                            ? 'border-amber-500 bg-amber-500/15 text-[rgb(var(--c-text))]'
+                            : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))]'
+                        }`}
+                      >
+                        Same Day
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExceptionNewDate(addDaysToKey(selectedDayKey, 1))}
+                        className={`p-1.5 rounded-xl border text-[11px] font-heading font-bold transition text-center ${
+                          exceptionNewDate === addDaysToKey(selectedDayKey, 1)
+                            ? 'border-amber-500 bg-amber-500/15 text-[rgb(var(--c-text))]'
+                            : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))]'
+                        }`}
+                      >
+                        Tomorrow
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExceptionNewDate(addDaysToKey(selectedDayKey, 7))}
+                        className={`p-1.5 rounded-xl border text-[11px] font-heading font-bold transition text-center ${
+                          exceptionNewDate === addDaysToKey(selectedDayKey, 7)
+                            ? 'border-amber-500 bg-amber-500/15 text-[rgb(var(--c-text))]'
+                            : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))]'
+                        }`}
+                      >
+                        Next Week
+                      </button>
+                    </div>
+
+                    <input
+                      type="date"
+                      required
+                      value={exceptionNewDate}
+                      onChange={(e) => setExceptionNewDate(e.target.value)}
+                      className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] font-bold"
+                    />
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">

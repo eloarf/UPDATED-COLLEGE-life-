@@ -183,5 +183,46 @@ describe('scheduleEngine', () => {
     expect(movedResults[0].startTime).toBe('11:00');
     expect(movedResults[0].endTime).toBe('12:50');
     expect(movedResults[0].room).toBe('B59-1-008');
+
+    // Multi-day postponement: Postponed from Monday 2026-10-12 to Thursday 2026-10-15
+    const multiDayPostponeException: ClassException = {
+      id: 'ex3',
+      sessionId: 's1',
+      date: '2026-10-12',
+      action: 'moved',
+      newDate: '2026-10-15',
+      newStartTime: '14:00',
+      newEndTime: '15:50',
+      newRoom: 'Auditorium-2',
+      reason: 'Department symposium clash',
+    };
+
+    // On original date (2026-10-12), class appears marked as postponed
+    const origDateResults = getClassesForDate(
+      '2026-10-12',
+      sessions,
+      [multiDayPostponeException],
+      semester,
+      [course]
+    );
+    expect(origDateResults.length).toBe(1);
+    expect(origDateResults[0].isPostponed).toBe(true);
+    expect(origDateResults[0].postponedToDate).toBe('2026-10-15');
+    expect(origDateResults[0].postponedToTime).toBe('14:00');
+
+    // On rescheduled destination date (2026-10-15), class appears as rescheduled occurrence
+    const targetDateResults = getClassesForDate(
+      '2026-10-15',
+      sessions,
+      [multiDayPostponeException],
+      semester,
+      [course]
+    );
+    expect(targetDateResults.length).toBe(1);
+    expect(targetDateResults[0].isRescheduledOccurrence).toBe(true);
+    expect(targetDateResults[0].rescheduledFromDate).toBe('2026-10-12');
+    expect(targetDateResults[0].startTime).toBe('14:00');
+    expect(targetDateResults[0].endTime).toBe('15:50');
+    expect(targetDateResults[0].room).toBe('Auditorium-2');
   });
 });

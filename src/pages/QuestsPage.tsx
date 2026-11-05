@@ -12,6 +12,7 @@ import {
   triggerLevelUpConfetti,
 } from '../services/rpgService';
 import { generateId } from '../utils/idGenerator';
+import { cancelTaskReminder, reconcileAllReminders } from '../services/reminderEngine';
 import {
   Plus,
   Circle,
@@ -155,6 +156,7 @@ export const QuestsPage: React.FC = () => {
 
     setQuickInput('');
     showToast(`Task added for ${formatDisplayDate(targetDate)}`, 'success');
+    reconcileAllReminders().catch(console.warn);
   };
 
   // Full Task Form Submission
@@ -185,6 +187,7 @@ export const QuestsPage: React.FC = () => {
 
     setIsAddModalOpen(false);
     showToast(`Task created for ${formatDisplayDate(formDate || todayKey)}`, 'success');
+    reconcileAllReminders().catch(console.warn);
   };
 
   // Save Task Edits
@@ -206,6 +209,7 @@ export const QuestsPage: React.FC = () => {
 
     setTaskToEdit(null);
     showToast('Task updated successfully', 'success');
+    reconcileAllReminders().catch(console.warn);
   };
 
   // Instant 1-Click Toggle: Direct, non-blocking with instant feedback
@@ -223,13 +227,16 @@ export const QuestsPage: React.FC = () => {
       });
       await reverseXp('task', task.id);
       showToast(`Task reopened (-${xpAmount} XP)`, 'info');
+      reconcileAllReminders().catch(console.warn);
     } else {
-      // Complete task
+      // Complete task - immediately cancel pending alarm
       await db.tasks.update(task.id, {
         status: 'done',
         completedAt: now,
         updatedAt: now,
       });
+      cancelTaskReminder(task.id).catch(console.warn);
+
       const awarded = await awardXp({
         source: 'task',
         sourceId: task.id,
@@ -252,6 +259,7 @@ export const QuestsPage: React.FC = () => {
     if (taskToDelete.status === 'done') {
       await reverseXp('task', taskToDelete.id);
     }
+    cancelTaskReminder(taskToDelete.id).catch(console.warn);
     await db.tasks.delete(taskToDelete.id);
     setTaskToDelete(null);
     showToast('Task deleted', 'info');

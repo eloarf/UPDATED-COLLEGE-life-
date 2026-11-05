@@ -25,6 +25,7 @@ import {
 import { Semester } from '../types';
 import { generateId } from '../utils/idGenerator';
 import { PWAInstallButton } from '../components/common/PWAInstallButton';
+import { NotificationSettingsSection } from '../components/settings/NotificationSettingsSection';
 import {
   Settings,
   HardDrive,
@@ -873,6 +874,9 @@ export const SettingsPage: React.FC = () => {
           Save Identity Settings
         </button>
       </form>
+
+      {/* Stage 1 & 2: Native Android Local Notifications & Intelligent Reminders */}
+      <NotificationSettingsSection />
 
       {/* Storage Durability & Emergency Mirror Vault */}
       <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 space-y-4">

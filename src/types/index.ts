@@ -53,16 +53,19 @@ export interface ClassException {
   date: string; // YYYY-MM-DD
   action: 'cancelled' | 'moved';
   reason?: string;
+  newDate?: string; // YYYY-MM-DD for multi-day postponement
   newStartTime?: string;
   newEndTime?: string;
   newRoom?: string;
+  createdAt?: string;
 }
 
 export interface AttendanceRecord {
   id: string;
   courseId: string;
+  sessionId?: string;
   date: string; // YYYY-MM-DD
-  status: 'present' | 'absent' | 'late' | 'excused';
+  status: 'present' | 'absent' | 'late' | 'excused' | 'postponed';
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -186,6 +189,13 @@ export interface FocusSession {
   taskId?: string;
   mode: '25/5' | '45/10' | '15/3' | 'custom' | '2min' | 'pomodoro' | string;
   minutesFocused: number;
+  plannedMinutes?: number;
+  actualMinutes?: number;
+  plannedDurationSeconds?: number;
+  actualDurationSeconds?: number;
+  pauseCount?: number;
+  completionMethod?: 'completed' | 'manual_finish';
+  sessionType?: 'work' | 'short_break' | 'long_break';
   startedAt: string;
   completedAt: string;
   notes?: string;
@@ -377,6 +387,13 @@ export interface PomodoroSettings {
   shortBreakMinutes?: number;
   longBreakMins: number;
   longBreakMinutes?: number;
+  // Flexible custom settings with independent minutes and seconds
+  customWorkMinutes?: number;
+  customWorkSeconds?: number;
+  customShortBreakMinutes?: number;
+  customShortBreakSeconds?: number;
+  customLongBreakMinutes?: number;
+  customLongBreakSeconds?: number;
   sessionsBeforeLongBreak: number;
   totalCycles: number;
   cyclesPerSession?: number;
@@ -396,6 +413,12 @@ export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
   shortBreakMinutes: 5,
   longBreakMins: 15,
   longBreakMinutes: 15,
+  customWorkMinutes: 25,
+  customWorkSeconds: 0,
+  customShortBreakMinutes: 5,
+  customShortBreakSeconds: 0,
+  customLongBreakMinutes: 15,
+  customLongBreakSeconds: 0,
   sessionsBeforeLongBreak: 4,
   totalCycles: 2,
   cyclesPerSession: 2,
@@ -554,6 +577,110 @@ export interface AppSettings {
   departmentOptions?: DepartmentOption[];
   hasCompletedOnboarding?: boolean;
   pomodoroSettings?: PomodoroSettings;
+  notificationSettings?: NotificationSettings;
+}
+
+export interface NotificationSettings {
+  enabled: boolean;
+  permissionRequested?: boolean;
+  quietHours: {
+    enabled: boolean;
+    start: string; // "22:00"
+    end: string;   // "07:00"
+    allowUrgentExams: boolean;
+  };
+  categories: {
+    classes: {
+      enabled: boolean;
+      leadTimeMinutes: number; // default: 30
+    };
+    tasks: {
+      enabled: boolean;
+      defaultLeadTime: 'due' | '1h' | '1d'; // default: '1d'
+      defaultTime: string; // "09:00"
+    };
+    exams: {
+      enabled: boolean;
+      leadDays: number[]; // default: [3, 1]
+      notifyOnExamMorning: boolean; // default: true (at 07:00)
+    };
+    habits: {
+      enabled: boolean;
+      defaultTime: string; // default: "20:00"
+    };
+    finance: {
+      enabled: boolean;
+      leadDays: number; // default: 1
+    };
+    dailyBriefing: {
+      enabled: boolean;
+      time: string; // default: "07:30"
+    };
+    weeklyReview: {
+      enabled: boolean;
+      dayOfWeek: number; // 0 = Sunday
+      time: string; // default: "19:00"
+    };
+  };
+  snoozeDurationMinutes: number; // default: 10
+  lastReconciledAt?: string;
+}
+
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  enabled: false,
+  quietHours: {
+    enabled: true,
+    start: '22:00',
+    end: '07:00',
+    allowUrgentExams: true,
+  },
+  categories: {
+    classes: {
+      enabled: true,
+      leadTimeMinutes: 30,
+    },
+    tasks: {
+      enabled: true,
+      defaultLeadTime: '1d',
+      defaultTime: '09:00',
+    },
+    exams: {
+      enabled: true,
+      leadDays: [3, 1],
+      notifyOnExamMorning: true,
+    },
+    habits: {
+      enabled: false,
+      defaultTime: '20:00',
+    },
+    finance: {
+      enabled: true,
+      leadDays: 1,
+    },
+    dailyBriefing: {
+      enabled: true,
+      time: '07:30',
+    },
+    weeklyReview: {
+      enabled: true,
+      dayOfWeek: 0, // Sunday
+      time: '19:00',
+    },
+  },
+  snoozeDurationMinutes: 10,
+};
+
+export interface ScheduledReminderRecord {
+  id: string; // unique stable key string (e.g. 'class-session-1-mon', 'task-123')
+  numericId: number; // 31-bit positive int passed to Capacitor LocalNotifications
+  title: string;
+  body: string;
+  targetTime: string; // ISO string
+  category: 'classes' | 'tasks' | 'exams' | 'habits' | 'finance' | 'briefings';
+  route: string; // deep link route: '#/timetable', '#/tasks', etc.
+  entityId?: string;
+  extra?: Record<string, any>;
+  createdAt: string;
 }
 
 export interface AccountBalancesConfig {
