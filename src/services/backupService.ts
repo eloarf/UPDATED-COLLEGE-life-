@@ -1,3 +1,6 @@
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 import { db, saveEmergencyBackup } from '../db/db';
 import { getTodayKey } from '../utils/dateUtils';
 import {
@@ -174,7 +177,7 @@ export async function exportDatabaseToJson(): Promise<string> {
   return JSON.stringify(backup, null, 2);
 }
 
-export function downloadFile(content: string, filename: string, type: string = 'application/json') {
+export function downloadBlobInBrowser(content: string, filename: string, type: string) {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -186,14 +189,90 @@ export function downloadFile(content: string, filename: string, type: string = '
   URL.revokeObjectURL(url);
 }
 
-export async function triggerBackupDownload() {
-  const json = await exportDatabaseToJson();
-  const filename = `college-life-os-backup-${getTodayKey()}.json`;
-  downloadFile(json, filename, 'application/json');
+/**
+ * Universal file save and export utility.
+ * In standalone Android Capacitor APK, writes file to Cache/Documents and opens the native
+ * Android file picker/share sheet so the user can save to local storage, Downloads, or Drive.
+ * In desktop/mobile browser or PWA, triggers normal HTML5 blob download.
+ */
+export async function saveOrShareFile(
+  content: string,
+  filename: string,
+  mimeType: string = 'application/json'
+): Promise<{ success: boolean; message: string; uri?: string }> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      // 1. Write to Cache folder (guarantees valid URI for Android ContentProvider / Share Intent)
+      const writeResult = await Filesystem.writeFile({
+        path: filename,
+        data: content,
+        directory: Directory.Cache,
+        encoding: Encoding.UTF8,
+      });
 
-  await db.settings.update('current_user', {
-    lastBackupDate: new Date().toISOString(),
+      // 2. Also try writing to Documents directory if accessible
+      try {
+        await Filesystem.writeFile({
+          path: filename,
+          data: content,
+          directory: Directory.Documents,
+          encoding: Encoding.UTF8,
+        });
+      } catch (docErr) {
+        console.warn('Could not write directly to Documents directory:', docErr);
+      }
+
+      // 3. Open native Android system share/save dialog
+      await Share.share({
+        title: filename,
+        text: `College Life OS export: ${filename}`,
+        url: writeResult.uri,
+        dialogTitle: 'Save / Export Backup File',
+      });
+
+      return {
+        success: true,
+        message: `Backup exported successfully: ${filename}`,
+        uri: writeResult.uri,
+      };
+    } catch (err: any) {
+      console.error('Native file save error:', err);
+      try {
+        downloadBlobInBrowser(content, filename, mimeType);
+        return { success: true, message: `Saved via browser download: ${filename}` };
+      } catch (fallbackErr: any) {
+        return { success: false, message: `Failed to save file: ${err?.message || fallbackErr?.message}` };
+      }
+    }
+  } else {
+    downloadBlobInBrowser(content, filename, mimeType);
+    return { success: true, message: `Downloaded ${filename}` };
+  }
+}
+
+export function downloadFile(content: string, filename: string, type: string = 'application/json') {
+  saveOrShareFile(content, filename, type).catch((err) => {
+    console.error('Error in downloadFile:', err);
+    downloadBlobInBrowser(content, filename, type);
   });
+}
+
+export async function triggerBackupDownload(): Promise<{ success: boolean; message: string; uri?: string }> {
+  try {
+    const json = await exportDatabaseToJson();
+    const filename = `college-life-os-backup-${getTodayKey()}.json`;
+    const res = await saveOrShareFile(json, filename, 'application/json');
+
+    if (res.success) {
+      await db.settings.update('current_user', {
+        lastBackupDate: new Date().toISOString(),
+      });
+    }
+
+    return res;
+  } catch (err: any) {
+    return { success: false, message: `Backup export failed: ${err?.message || 'Unknown error'}` };
+  }
 }
 
 export interface ValidationSuccess {
@@ -423,7 +502,7 @@ export async function restoreDatabaseFromJson(
   return restoreDatabase(validation.backup, mode);
 }
 
-export async function exportTasksToCsv() {
+export async function exportTasksToCsv(): Promise<{ success: boolean; message: string }> {
   const tasks = await db.tasks.toArray();
   const headers = ['ID', 'Title', 'CourseID', 'Priority', 'Effort', 'DueDate', 'DueTime', 'Status', 'Notes'];
   const rows = tasks.map((t) => [
@@ -438,5 +517,5 @@ export async function exportTasksToCsv() {
     `"${(t.notes || '').replace(/"/g, '""')}"`,
   ]);
   const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-  downloadFile(csv, `college-tasks-${getTodayKey()}.csv`, 'text/csv');
+  return saveOrShareFile(csv, `college-tasks-${getTodayKey()}.csv`, 'text/csv');
 }

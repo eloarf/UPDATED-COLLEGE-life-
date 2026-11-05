@@ -413,6 +413,37 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
+
+  const handleDownloadBackup = async () => {
+    setIsExportingBackup(true);
+    try {
+      const res = await triggerBackupDownload();
+      if (res.success) {
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'danger');
+      }
+    } catch (err: any) {
+      showToast(`Export failed: ${err?.message || 'Unknown error'}`, 'danger');
+    } finally {
+      setIsExportingBackup(false);
+    }
+  };
+
+  const handleExportTasks = async () => {
+    try {
+      const res = await exportTasksToCsv();
+      if (res.success) {
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'danger');
+      }
+    } catch (err: any) {
+      showToast(`CSV export failed: ${err?.message || 'Unknown error'}`, 'danger');
+    }
+  };
+
   const handleWipeAllData = async () => {
     try {
       // Auto-download safety snapshot prior to clearing so data is never permanently lost
@@ -995,16 +1026,22 @@ export const SettingsPage: React.FC = () => {
 
         {/* Portability Actions */}
         <div className="pt-2 border-t border-[rgb(var(--c-border))]">
-          <div className="text-[11px] font-heading font-bold text-[rgb(var(--c-text))] mb-2">
-            Data Portability &amp; External JSON Backups
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2.5">
+            <div className="text-[11px] font-heading font-bold text-[rgb(var(--c-text))]">
+              Data Portability &amp; External JSON Backups
+            </div>
+            <div className="text-[10px] text-[rgb(var(--c-muted))] font-mono">
+              Last backup: {settings?.lastBackupDate ? new Date(settings.lastBackupDate).toLocaleString() : 'Never exported'}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
             <button
-              onClick={triggerBackupDownload}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-xs"
+              onClick={handleDownloadBackup}
+              disabled={isExportingBackup}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-xs disabled:opacity-50"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Download JSON Backup</span>
+              <span>{isExportingBackup ? 'Exporting...' : 'Export & Save JSON Backup'}</span>
             </button>
 
             <label className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition cursor-pointer">
@@ -1014,7 +1051,7 @@ export const SettingsPage: React.FC = () => {
             </label>
 
             <button
-              onClick={exportTasksToCsv}
+              onClick={handleExportTasks}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />

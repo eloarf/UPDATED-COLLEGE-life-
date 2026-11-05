@@ -290,12 +290,22 @@ export interface FinancialAccount {
   updatedAt?: string;
 }
 
+export interface FinanceCategory {
+  id: string;
+  name: string;
+  type: 'expense' | 'income';
+  icon?: string;
+  subcategories: string[];
+  isCustom?: boolean;
+}
+
 export interface Transaction {
   id: string;
   type: 'expense' | 'income' | 'transfer' | 'saving';
   amount: number;
   currency?: string;
   category: string;
+  subcategory?: string;
   account?: 'cash' | 'bank' | 'mobile_money'; // legacy support
   accountId?: string; // ID of the account
   financialAccountId?: string;
@@ -311,6 +321,8 @@ export interface Transaction {
   savingsGoalId?: string;
   debtId?: string;
   recurringId?: string;
+  isDebtRepayment?: boolean;
+  isSavingsContribution?: boolean;
   createdAt?: string;
 }
 
@@ -369,6 +381,7 @@ export interface RecurringTransaction {
   accountId?: string;
   financialAccountId?: string;
   category: string;
+  subcategory?: string;
   frequency: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
   intervalDays?: number;
   startDate?: string;
@@ -578,6 +591,9 @@ export interface AppSettings {
   hasCompletedOnboarding?: boolean;
   pomodoroSettings?: PomodoroSettings;
   notificationSettings?: NotificationSettings;
+  primaryCurrency?: string;
+  currencyExchangeRates?: Record<string, number>;
+  customFinanceCategories?: FinanceCategory[];
 }
 
 export interface NotificationSettings {
