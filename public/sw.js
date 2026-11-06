@@ -1,7 +1,7 @@
 // Service Worker for College Life OS
 // Engineered for 100% offline-first PWA operation on GitHub Pages and custom subpaths
 
-const CACHE_NAME = 'college-life-os-v5';
+const CACHE_NAME = 'college-life-os-v6';
 
 // Core shell assets to pre-cache on install
 const PRECACHE_CORE = [

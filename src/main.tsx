@@ -1,11 +1,37 @@
 import { createRoot } from 'react-dom/client';
+import { Capacitor } from '@capacitor/core';
 import App from './App.tsx';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(<App />);
 
-// Register Service Worker for genuine 100% offline-first PWA operation
-if ('serviceWorker' in navigator) {
+// Service Worker Management:
+// In the native Android Capacitor APK, assets are bundled locally in the APK assets.
+// A Service Worker inside the WebView can serve stale bundles after app updates.
+if (Capacitor.isNativePlatform()) {
+  // If running natively, ensure no active service workers or stale caches intercept local assets
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => {
+        for (const registration of registrations) {
+          registration.unregister().catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }
+  if ('caches' in window) {
+    caches
+      .keys()
+      .then((keys) => {
+        for (const key of keys) {
+          caches.delete(key).catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }
+} else if ('serviceWorker' in navigator) {
+  // Web / PWA mode: Register Service Worker for genuine 100% offline-first PWA operation
   window.addEventListener('load', () => {
     // Resolve relative to current base path to support GitHub Pages subpaths
     const swUrl = new URL('./sw.js', window.location.href).href;
