@@ -80,16 +80,31 @@ jobs:
           cache: gradle
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: |
-            platform-tools
-            platforms;android-36
-            platforms;android-35
-            build-tools;35.0.0
+        run: |
+          # Use GitHub-hosted Ubuntu runner pre-installed Android SDK
+          ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
 
-      - name: Accept Android SDK Licenses
-        run: yes | sdkmanager --licenses || true
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(which sdkmanager || echo "")"
+          fi
+          echo "Using sdkmanager at: $SDKMANAGER"
+
+          echo "Accepting Android SDK licenses..."
+          mkdir -p "$ANDROID_HOME/licenses"
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
+
+          echo "Installing/verifying required Android SDK packages..."
+          # Install API 36 if available via canary/preview channel 3 or stable channel
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --channel=3 "platforms;android-36" || \
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-36" || true
+
+          # Ensure platform 35 and platform-tools are verified
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-35" "platform-tools" || true
 
       - name: Sync Latest Frontend with Capacitor
         run: npx cap sync android
