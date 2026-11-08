@@ -93,3 +93,10 @@ export function formatMinutes(totalMins: number): string {
   const m = totalMins % 60;
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
+
+export function getCurrentTimeString(date: Date = new Date()): string {
+  const h = String(date.getHours()).padStart(2, '0');
+  const m = String(date.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+}
+

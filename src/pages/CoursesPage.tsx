@@ -109,7 +109,7 @@ export const CoursesPage: React.FC = () => {
             return (
               <div
                 key={course.id}
-                onClick={() => setSelectedCourseId(course.id)}
+                onClick={() => setCurrentRoute(`#/courses/${course.id}`)}
                 className={`luggage-tag ticket-border rounded-2xl p-4 cursor-pointer transition relative group bg-[rgb(var(--c-surface))] ${
                   isSelected ? 'ring-2 ring-[#8B5A3C] shadow-md' : 'hover:border-[#8B5A3C]'
                 }`}
@@ -203,6 +203,12 @@ export const CoursesPage: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentRoute(`#/courses/${selectedCourse.id}`)}
+                className="px-3 py-1 rounded-full bg-[#8B5A3C] text-white text-xs font-heading font-bold hover:opacity-90 flex items-center gap-1 shadow-2xs"
+              >
+                <span>Open Course Hub →</span>
+              </button>
               <button
                 onClick={() => handleOpenEditModal(selectedCourse)}
                 className="px-3 py-1 rounded-full border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))] flex items-center gap-1"

@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 
 export const GradesPage: React.FC = () => {
-  const { showToast } = useUiStore();
+  const { showToast, setCurrentRoute } = useUiStore();
   const settings = useLiveQuery(() => db.settings.get('current_user'));
   const courses = useLiveQuery(() => db.courses.toArray()) || [];
   const components = useLiveQuery(() => db.gradeComponents.toArray()) || [];
@@ -492,8 +492,22 @@ export const GradesPage: React.FC = () => {
                             style={{ backgroundColor: course.color }}
                           />
                           <div>
-                            <div className="text-xs sm:text-sm font-heading font-bold text-[rgb(var(--c-text))]">
-                              {course.code} — {course.name}
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setCurrentRoute(`#/courses/${course.id}`)}
+                                className="text-xs sm:text-sm font-heading font-bold text-[rgb(var(--c-text))] hover:text-[rgb(var(--c-primary))] text-left cursor-pointer"
+                                title="Open Course Hub"
+                              >
+                                {course.code} — {course.name}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCurrentRoute(`#/courses/${course.id}`)}
+                                className="text-[10px] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-primary))] font-heading font-bold"
+                              >
+                                Hub →
+                              </button>
                             </div>
                             <div className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
                               {course.creditHours} Credits • {cComps.length} graded assessments ({totalWeightCompleted}% accounted for)

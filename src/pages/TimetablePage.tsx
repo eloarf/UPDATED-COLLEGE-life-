@@ -455,16 +455,32 @@ export const TimetablePage: React.FC = () => {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         {course && (
-                          <span
-                            className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shadow-2xs"
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCurrentRoute(`#/courses/${course.id}`);
+                            }}
+                            className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shadow-2xs hover:opacity-85 cursor-pointer"
                             style={{ backgroundColor: courseColor, color: contrastColor }}
+                            title="Open Course Hub"
                           >
                             {course.code}
-                          </span>
+                          </button>
                         )}
-                        <span className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            if (course) {
+                              e.stopPropagation();
+                              setCurrentRoute(`#/courses/${course.id}`);
+                            }
+                          }}
+                          className="text-xs font-heading font-bold text-[rgb(var(--c-text))] hover:text-[rgb(var(--c-primary))] cursor-pointer text-left"
+                          title="Open Course Hub"
+                        >
                           {course ? course.name : 'Unassigned Course'}
-                        </span>
+                        </button>
                         <span className="text-[9px] uppercase px-2 py-0.2 rounded-full border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] font-medium">
                           {session.type}
                         </span>

@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 
 export const ExamsPage: React.FC = () => {
-  const { showToast } = useUiStore();
+  const { showToast, setCurrentRoute } = useUiStore();
   const todayKey = getTodayKey();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -263,6 +263,17 @@ export const ExamsPage: React.FC = () => {
                     />
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
+                        {course && (
+                          <button
+                            type="button"
+                            onClick={() => setCurrentRoute(`#/courses/${course.id}`)}
+                            className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md hover:opacity-85 cursor-pointer text-stone-900 shadow-2xs"
+                            style={{ backgroundColor: course.color }}
+                            title="Open Course Hub"
+                          >
+                            {course.code}
+                          </button>
+                        )}
                         <span className="text-[10px] font-heading font-bold uppercase px-2 py-0.5 rounded-full bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-primary))]">
                           {exam.examType} ({exam.weight}% of grade)
                         </span>

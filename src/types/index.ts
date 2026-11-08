@@ -29,6 +29,7 @@ export interface Course {
   semesterId?: string;
   links?: { title: string; url: string }[];
   targetGrade?: string;
+  notes?: string; // Additive field for quick course notes
   createdAt: string;
   updatedAt: string;
 }
@@ -595,6 +596,55 @@ export interface AppSettings {
   primaryCurrency?: string;
   currencyExchangeRates?: Record<string, number>;
   customFinanceCategories?: FinanceCategory[];
+  sleepStartTime?: string; // default "23:00"
+  sleepEndTime?: string; // default "07:00"
+}
+
+export interface StudyBlock {
+  id: string;
+  courseId: string;
+  title: string;
+  date: string; // YYYY-MM-DD
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
+  durationMinutes: number;
+  status: 'planned' | 'completed' | 'cancelled';
+  topicId?: string;
+  topicTitle?: string;
+  examId?: string;
+  examTitle?: string;
+  isSpacedRevision?: boolean;
+  revisionDayNumber?: number; // 1, 3, or 7
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface DismissedStudySuggestion {
+  id: string;
+  suggestionKey: string;
+  dateKey: string; // YYYY-MM-DD
+  dismissedAt: string;
+}
+
+export interface StudyPlannerSuggestion {
+  key: string;
+  courseId: string;
+  courseName: string;
+  courseCode: string;
+  courseColor: string;
+  date: string; // YYYY-MM-DD
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
+  durationMinutes: number;
+  title: string;
+  reason: string;
+  topicId?: string;
+  topicTitle?: string;
+  examId?: string;
+  examTitle?: string;
+  isSpacedRevision?: boolean;
+  revisionDayNumber?: number;
 }
 
 export interface NotificationSettings {

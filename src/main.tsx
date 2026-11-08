@@ -7,9 +7,10 @@ createRoot(document.getElementById('root')!).render(<App />);
 
 // Service Worker Management:
 // In the native Android Capacitor APK, assets are bundled locally in the APK assets.
-// A Service Worker inside the WebView can serve stale bundles after app updates.
-if (Capacitor.isNativePlatform()) {
-  // If running natively, ensure no active service workers or stale caches intercept local assets
+// In Vite development mode, service workers must be disabled and unregistered to prevent
+// stale caching of pre-bundled dependencies and mismatched React instances.
+if (Capacitor.isNativePlatform() || import.meta.env.DEV) {
+  // If running natively or in dev mode, ensure no active service workers or stale caches intercept assets
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker
       .getRegistrations()
@@ -31,7 +32,7 @@ if (Capacitor.isNativePlatform()) {
       .catch(() => {});
   }
 } else if ('serviceWorker' in navigator) {
-  // Web / PWA mode: Register Service Worker for genuine 100% offline-first PWA operation
+  // Web / PWA production mode: Register Service Worker for genuine 100% offline-first PWA operation
   window.addEventListener('load', () => {
     // Resolve relative to current base path to support GitHub Pages subpaths
     const swUrl = new URL('./sw.js', window.location.href).href;

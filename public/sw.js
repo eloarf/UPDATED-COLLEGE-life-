@@ -1,7 +1,7 @@
 // Service Worker for College Life OS
 // Engineered for 100% offline-first PWA operation on GitHub Pages and custom subpaths
 
-const CACHE_NAME = 'college-life-os-v6';
+const CACHE_NAME = 'college-life-os-v8';
 
 // Core shell assets to pre-cache on install
 const PRECACHE_CORE = [
@@ -131,6 +131,20 @@ self.addEventListener('fetch', (event) => {
   if (!request.url.startsWith('http')) return;
 
   const url = new URL(request.url);
+
+  // Never intercept dev server requests, node_modules, hot updates, or Vite pre-bundles
+  if (
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.includes('/@vite/') ||
+    url.pathname.includes('/@fs/') ||
+    url.pathname.includes('__vite') ||
+    url.searchParams.has('v') ||
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1'
+  ) {
+    return;
+  }
 
   // A. Navigation Requests (HTML Page loads, Home-screen App launch, Refresh)
   if (request.mode === 'navigate') {

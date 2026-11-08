@@ -70,7 +70,7 @@ export const GlobalSearchModal: React.FC = () => {
                   <button
                     key={c.id}
                     onClick={() => {
-                      setCurrentRoute('#/courses');
+                      setCurrentRoute(`#/courses/${c.id}`);
                       setSearchOpen(false);
                     }}
                     className="w-full flex items-center justify-between p-2 rounded-xl border border-[rgb(var(--c-border))] hover:bg-[rgb(var(--c-surface2))] text-left text-xs"

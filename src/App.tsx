@@ -26,6 +26,7 @@ import { LobbyPage } from './pages/LobbyPage';
 // Lazy-loaded pages for mobile performance and fast initial load
 const TimetablePage = React.lazy(() => import('./pages/TimetablePage').then((m) => ({ default: m.TimetablePage })));
 const CoursesPage = React.lazy(() => import('./pages/CoursesPage').then((m) => ({ default: m.CoursesPage })));
+const CourseHubPage = React.lazy(() => import('./pages/CourseHubPage').then((m) => ({ default: m.CourseHubPage })));
 const QuestsPage = React.lazy(() => import('./pages/QuestsPage').then((m) => ({ default: m.QuestsPage })));
 const ExamsPage = React.lazy(() => import('./pages/ExamsPage').then((m) => ({ default: m.ExamsPage })));
 const ProjectsPage = React.lazy(() => import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })));
@@ -131,6 +132,11 @@ export default function App() {
 
   // Render active page
   const renderPage = () => {
+    if (currentRoute.startsWith('#/courses/')) {
+      const courseId = currentRoute.slice('#/courses/'.length);
+      return <CourseHubPage courseId={courseId} />;
+    }
+
     switch (currentRoute) {
       case '#/timetable':
         return <TimetablePage />;

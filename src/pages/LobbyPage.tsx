@@ -24,6 +24,7 @@ import {
   DailyProgressResult,
   UpNextResult,
 } from '../utils/todayEngine';
+import { saveAttendanceQuickMark } from '../utils/attendanceEngine';
 import { getRemainingRestTokens, calculateHabitStreak } from '../utils/streakEngine';
 import { generateId } from '../utils/idGenerator';
 import {
@@ -253,52 +254,68 @@ export const LobbyPage: React.FC = () => {
   // Set / toggle attendance directly on Home Page
   const handleSetAttendance = async (
     courseId: string,
-    status: 'present' | 'absent' | 'postponed',
-    sessionId?: string
+    status: 'present' | 'late' | 'absent' | 'postponed',
+    sessionId?: string,
+    startTime?: string,
+    isCancelled?: boolean
   ) => {
-    const existing = attendanceRecords.find(
-      (r) => r.courseId === courseId && r.date === todayKey
-    );
-
-    if (existing) {
-      if (existing.status === status) {
-        // Toggle off
-        await db.attendance.delete(existing.id);
-        showToast('Attendance mark cleared.', 'info');
-      } else {
+    if (status === 'postponed') {
+      const existing = attendanceRecords.find(
+        (r) => r.courseId === courseId && r.date === todayKey
+      );
+      if (existing) {
         await db.attendance.update(existing.id, {
-          status,
+          status: 'postponed',
           updatedAt: new Date().toISOString(),
         });
-        if (status === 'present') {
-          await awardXp({
-            source: 'attendance',
-            sourceId: existing.id,
-            amount: 10,
-            stat: 'discipline',
-          });
-          triggerLevelUpConfetti();
-        }
-        showToast(`Attendance updated to ${status}.`, 'success');
+        showToast('Marked postponed.', 'info');
+      } else {
+        await db.attendance.add({
+          id: generateId(),
+          courseId,
+          sessionId,
+          date: todayKey,
+          status: 'postponed',
+          createdAt: new Date().toISOString(),
+        });
+        showToast('Marked postponed.', 'info');
       }
+      return;
+    }
+
+    const res = await saveAttendanceQuickMark({
+      courseId,
+      date: todayKey,
+      status: status as 'present' | 'late' | 'absent',
+      sessionId,
+      startTime,
+      isCancelled,
+      allowToggle: true,
+    });
+
+    if (!res.success) {
+      showToast(res.error || 'Cannot mark attendance.', 'danger');
+      return;
+    }
+
+    if (res.action === 'toggled_off') {
+      showToast('Attendance mark cleared.', 'info');
     } else {
-      const recId = generateId();
-      await db.attendance.add({
-        id: recId,
-        courseId,
-        sessionId,
-        date: todayKey,
-        status,
-        createdAt: new Date().toISOString(),
-      });
       if (status === 'present') {
         await awardXp({
           source: 'attendance',
-          sourceId: recId,
+          sourceId: res.record?.id || courseId,
           amount: 10,
           stat: 'discipline',
         });
         triggerLevelUpConfetti();
+      } else if (status === 'late') {
+        await awardXp({
+          source: 'attendance',
+          sourceId: res.record?.id || courseId,
+          amount: 5,
+          stat: 'discipline',
+        });
       }
       showToast(`Marked ${status} for today.`, 'success');
     }

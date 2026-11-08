@@ -33,7 +33,7 @@ import {
 import { SemesterGoalsSection } from '../components/goals/SemesterGoalsSection';
 
 export const QuestsPage: React.FC = () => {
-  const { showToast, currentRoute } = useUiStore();
+  const { showToast, currentRoute, setCurrentRoute } = useUiStore();
   const todayKey = getTodayKey();
 
   const [activeTab, setActiveTab] = useState<'today' | 'upcoming' | 'by_day' | 'overdue' | 'done' | 'goals'>(() => {
@@ -489,12 +489,18 @@ export const QuestsPage: React.FC = () => {
                     <div className="min-w-0 flex-1 pt-0.5">
                       <div className="flex items-center gap-2 flex-wrap">
                         {course && (
-                          <span
-                            className="text-[10px] font-heading font-bold px-2 py-0.5 rounded text-stone-900"
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCurrentRoute(`#/courses/${course.id}`);
+                            }}
+                            className="text-[10px] font-heading font-bold px-2 py-0.5 rounded text-stone-900 hover:opacity-85 cursor-pointer shadow-2xs"
                             style={{ backgroundColor: course.color }}
+                            title="Open Course Hub"
                           >
                             {course.code}
-                          </span>
+                          </button>
                         )}
                         <span
                           className={`text-xs font-bold font-heading ${

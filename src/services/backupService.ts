@@ -41,6 +41,8 @@ import {
   DebtRecord,
   RecurringTransaction,
   AcademicGoal,
+  StudyBlock,
+  DismissedStudySuggestion,
 } from '../types';
 
 export const CURRENT_BACKUP_VERSION = 2;
@@ -86,6 +88,8 @@ export interface BackupData {
     restDays?: RestDay[];
     dailyReflections?: DailyReflection[];
     academicGoals?: AcademicGoal[];
+    studyBlocks?: StudyBlock[];
+    dismissedStudySuggestions?: DismissedStudySuggestion[];
   };
 }
 
@@ -127,6 +131,8 @@ const ALL_TABLES = [
   db.restDays,
   db.dailyReflections,
   db.academicGoals,
+  db.studyBlocks,
+  db.dismissedStudySuggestions,
 ];
 
 export async function exportDatabaseToJson(): Promise<string> {
@@ -171,6 +177,8 @@ export async function exportDatabaseToJson(): Promise<string> {
       restDays: await db.restDays.toArray(),
       dailyReflections: await db.dailyReflections.toArray(),
       academicGoals: await db.academicGoals.toArray(),
+      studyBlocks: await db.studyBlocks.toArray(),
+      dismissedStudySuggestions: await db.dismissedStudySuggestions.toArray(),
     },
   };
 
@@ -178,6 +186,7 @@ export async function exportDatabaseToJson(): Promise<string> {
 }
 
 export function downloadBlobInBrowser(content: string, filename: string, type: string) {
+  if (typeof document === 'undefined') return;
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -433,6 +442,8 @@ export async function restoreDatabase(
         if (d.restDays?.length) await db.restDays.bulkPut(d.restDays);
         if (d.dailyReflections?.length) await db.dailyReflections.bulkPut(d.dailyReflections);
         if (d.academicGoals?.length) await db.academicGoals.bulkPut(d.academicGoals);
+        if (d.studyBlocks?.length) await db.studyBlocks.bulkPut(d.studyBlocks);
+        if (d.dismissedStudySuggestions?.length) await db.dismissedStudySuggestions.bulkPut(d.dismissedStudySuggestions);
       });
     } else {
       // Merge mode
@@ -475,6 +486,8 @@ export async function restoreDatabase(
         if (d.restDays?.length) await db.restDays.bulkPut(d.restDays);
         if (d.dailyReflections?.length) await db.dailyReflections.bulkPut(d.dailyReflections);
         if (d.academicGoals?.length) await db.academicGoals.bulkPut(d.academicGoals);
+        if (d.studyBlocks?.length) await db.studyBlocks.bulkPut(d.studyBlocks);
+        if (d.dismissedStudySuggestions?.length) await db.dismissedStudySuggestions.bulkPut(d.dismissedStudySuggestions);
       });
     }
 
