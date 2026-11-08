@@ -2,7 +2,6 @@ import { db } from '../db/db';
 import { generateId } from '../utils/idGenerator';
 import { getTodayKey } from '../utils/dateUtils';
 import { Achievement, DailyQuest, StatKey, XpEvent } from '../types';
-import confetti from 'canvas-confetti';
 
 export interface LevelThreshold {
   level: number;
@@ -305,17 +304,26 @@ export async function reconcileXpLedger(): Promise<{
   };
 }
 
-export function triggerLevelUpConfetti() {
+export async function triggerLevelUpConfetti() {
   if (typeof window === 'undefined') return;
   const isReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (isReduced) return;
 
-  confetti({
-    particleCount: 80,
-    spread: 60,
-    origin: { y: 0.65 },
-    colors: ['#F6A8BE', '#B6E63E', '#8B5A3C', '#7A2E4A', '#E8C9A0'],
-  });
+  try {
+    const settings = await db.settings.get('current_user');
+    if (settings?.reduceAnimations) return;
+
+    const confettiModule = await import('canvas-confetti');
+    const confetti = confettiModule.default || confettiModule;
+    confetti({
+      particleCount: 80,
+      spread: 60,
+      origin: { y: 0.65 },
+      colors: ['#F6A8BE', '#B6E63E', '#8B5A3C', '#7A2E4A', '#E8C9A0'],
+    });
+  } catch {
+    // Graceful fallback
+  }
 }
 
 export async function checkAchievementsTrigger() {

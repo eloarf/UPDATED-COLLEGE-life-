@@ -24,46 +24,23 @@ import {
 } from '../db/starterPack';
 import { Semester } from '../types';
 import { generateId } from '../utils/idGenerator';
-import { PWAInstallButton } from '../components/common/PWAInstallButton';
 import { NotificationSettingsSection } from '../components/settings/NotificationSettingsSection';
-import {
-  Settings,
-  HardDrive,
-  Download,
-  Upload,
-  Sparkles,
-  Shield,
-  Volume2,
-  VolumeX,
-  Vibrate,
-  AlertTriangle,
-  RotateCcw,
-  Check,
-  FileSpreadsheet,
-  Calendar,
-  Plus,
-  Edit2,
-  CheckCircle,
-  Clock,
-  BookOpen,
-  X,
-  Compass,
-  Sun,
-  Moon,
-  Laptop,
-  Feather,
-  Cpu,
-  Bookmark,
-  Palette,
-} from 'lucide-react';
 import {
   applyAppearanceMode,
   applyDesignStyle,
+  applyReduceAnimations,
   APPEARANCE_MODES,
   DESIGN_STYLES,
   AppearanceMode,
   DesignStyle,
 } from '../theme/themeUtils';
+
+import { SettingsHeaderSection } from '../components/settings/SettingsHeaderSection';
+import { SettingsSection12Card } from '../components/settings/SettingsSection12Card';
+import { SettingsSemestersSection } from '../components/settings/SettingsSemestersSection';
+import { SettingsAppearanceSection } from '../components/settings/SettingsAppearanceSection';
+import { SettingsProfileSection } from '../components/settings/SettingsProfileSection';
+import { SettingsDataSection } from '../components/settings/SettingsDataSection';
 
 export const SettingsPage: React.FC = () => {
   const { showToast, setOnboardingOpen } = useUiStore();
@@ -85,6 +62,7 @@ export const SettingsPage: React.FC = () => {
 
   const [soundEnabled, setSoundEnabled] = useState(settings?.soundEnabled ?? false);
   const [hapticsEnabled, setHapticsEnabled] = useState(settings?.hapticsEnabled ?? true);
+  const [reduceAnimations, setReduceAnimations] = useState(settings?.reduceAnimations ?? false);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
 
   const currentAppearanceMode: AppearanceMode = settings?.appearanceMode || 'light';
@@ -104,6 +82,14 @@ export const SettingsPage: React.FC = () => {
     showToast(`Design Style: ${match?.name || style}`, 'success');
   };
 
+  const handleToggleReduceAnimations = async () => {
+    const nextVal = !reduceAnimations;
+    setReduceAnimations(nextVal);
+    applyReduceAnimations(nextVal);
+    await db.settings.update('current_user', { reduceAnimations: nextVal });
+    showToast(nextVal ? 'Reduced motion enabled' : 'Standard motion restored', 'info');
+  };
+
   // Sync state when settings load
   useEffect(() => {
     if (settings) {
@@ -118,6 +104,7 @@ export const SettingsPage: React.FC = () => {
       }
       if (settings.soundEnabled !== undefined) setSoundEnabled(settings.soundEnabled);
       if (settings.hapticsEnabled !== undefined) setHapticsEnabled(settings.hapticsEnabled);
+      if (settings.reduceAnimations !== undefined) setReduceAnimations(settings.reduceAnimations);
     }
   }, [settings]);
 
@@ -140,7 +127,6 @@ export const SettingsPage: React.FC = () => {
   const [sec12EndDate, setSec12EndDate] = useState('');
   const [isLoadingSection12, setIsLoadingSection12] = useState(false);
 
-  // Open Section 12 Modal with prefilled dates
   const handleOpenSection12Modal = () => {
     const defaults = getDefaultSemesterDates();
     setSec12SemName(settings?.currentTermName || 'Year 1 - Semester I');
@@ -151,38 +137,40 @@ export const SettingsPage: React.FC = () => {
 
   const handleRunLoadSection12 = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sec12SemName.trim() || !sec12StartDate || !sec12EndDate) {
-      showToast('Please provide semester name, start date, and end date.', 'warning');
+    if (!sec12StartDate || !sec12EndDate) {
+      showToast('Please specify valid start and end dates', 'danger');
       return;
     }
 
-    if (sec12EndDate <= sec12StartDate) {
-      showToast('End date must be strictly after start date.', 'danger');
+    if (new Date(sec12EndDate) <= new Date(sec12StartDate)) {
+      showToast('Semester end date must be after the start date', 'danger');
       return;
     }
 
     setIsLoadingSection12(true);
     try {
-      const res = await loadSection12Timetable({
-        semesterName: sec12SemName.trim(),
+      const cfg: Section12Config = {
+        semesterName: sec12SemName.trim() || 'Year 1 - Semester I',
         startDate: sec12StartDate,
         endDate: sec12EndDate,
-      });
+      };
 
-      if (res.success) {
-        showToast(res.message, 'success');
+      const result = await loadSection12Timetable(cfg);
+      if (result.success) {
+        showToast(result.message, 'success');
         setIsSection12ModalOpen(false);
       } else {
-        showToast(res.message, 'warning');
+        showToast(result.message, 'danger');
       }
-    } catch (err: any) {
-      showToast('Failed to load Section 12 timetable: ' + err.message, 'danger');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to load timetable';
+      showToast(msg, 'danger');
     } finally {
       setIsLoadingSection12(false);
     }
   };
 
-  // Semester Management Modal State
+  // Semesters Management State
   const [isSemesterModalOpen, setIsSemesterModalOpen] = useState(false);
   const [editingSemester, setEditingSemester] = useState<Semester | null>(null);
   const [semFormName, setSemFormName] = useState('');
@@ -209,175 +197,149 @@ export const SettingsPage: React.FC = () => {
     setIsSemesterModalOpen(true);
   };
 
+  const handleSetActiveSemester = async (sem: Semester) => {
+    for (const s of semesters) {
+      await db.semesters.update(s.id, { isActive: s.id === sem.id });
+    }
+    await db.settings.update('current_user', {
+      activeSemesterId: sem.id,
+      currentTermName: sem.name,
+    });
+    showToast(`Active term switched to: ${sem.name}`, 'success');
+  };
+
   const handleSaveSemester = async (e: React.FormEvent) => {
     e.preventDefault();
     setSemFormError('');
 
-    const name = semFormName.trim();
-    if (!name) {
-      setSemFormError('Semester name is required.');
+    if (!semFormName.trim()) {
+      setSemFormError('Semester title is required.');
       return;
     }
-
     if (!semFormStartDate || !semFormEndDate) {
-      setSemFormError('Start date and end date are required.');
+      setSemFormError('Start and end dates are required.');
       return;
     }
 
-    if (semFormEndDate <= semFormStartDate) {
+    const start = new Date(semFormStartDate);
+    const end = new Date(semFormEndDate);
+
+    if (end <= start) {
       setSemFormError('End date must be strictly after start date.');
       return;
     }
 
-    // Validation: at most 400 days
-    const startMs = new Date(semFormStartDate).getTime();
-    const endMs = new Date(semFormEndDate).getTime();
-    const diffDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24));
-    if (diffDays > 400) {
-      setSemFormError(`Semester duration is ${diffDays} days. Maximum allowed is 400 days.`);
+    const durationDays = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+    if (durationDays > 400) {
+      setSemFormError('Semester duration cannot exceed 400 days.');
       return;
     }
 
-    if (editingSemester) {
-      // Update existing semester
-      await db.semesters.update(editingSemester.id, {
-        name,
-        startDate: semFormStartDate,
-        endDate: semFormEndDate,
-      });
-
-      // If active, keep currentTermName in sync
-      if (editingSemester.isActive || settings?.activeSemesterId === editingSemester.id) {
-        await db.settings.update('current_user', {
-          currentTermName: name,
+    try {
+      if (editingSemester) {
+        await db.semesters.update(editingSemester.id, {
+          name: semFormName.trim(),
+          startDate: semFormStartDate,
+          endDate: semFormEndDate,
         });
+
+        if (settings?.activeSemesterId === editingSemester.id || editingSemester.isActive) {
+          await db.settings.update('current_user', {
+            currentTermName: semFormName.trim(),
+          });
+        }
+
+        showToast(`Semester "${semFormName.trim()}" updated successfully.`, 'success');
+      } else {
+        const newId = generateId();
+        const isFirst = semesters.length === 0;
+
+        await db.semesters.add({
+          id: newId,
+          name: semFormName.trim(),
+          startDate: semFormStartDate,
+          endDate: semFormEndDate,
+          isActive: isFirst,
+        });
+
+        if (isFirst) {
+          await db.settings.update('current_user', {
+            activeSemesterId: newId,
+            currentTermName: semFormName.trim(),
+          });
+        }
+
+        showToast(`Semester "${semFormName.trim()}" created.`, 'success');
       }
-      showToast(`Semester "${name}" updated.`, 'success');
-    } else {
-      // Create new semester
-      const newId = generateId();
-      await db.semesters.add({
-        id: newId,
-        name,
-        startDate: semFormStartDate,
-        endDate: semFormEndDate,
-        isActive: false,
-      });
-      showToast(`New semester "${name}" created.`, 'success');
+
+      setIsSemesterModalOpen(false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Database error';
+      setSemFormError(`Save failed: ${msg}`);
     }
-
-    setIsSemesterModalOpen(false);
-  };
-
-  const handleSetActiveSemester = async (semester: Semester) => {
-    // Mark all as inactive then target as active
-    await db.semesters.toCollection().modify((s) => {
-      s.isActive = s.id === semester.id;
-    });
-
-    await db.settings.update('current_user', {
-      activeSemesterId: semester.id,
-      currentTermName: semester.name,
-    });
-
-    setTermName(semester.name);
-    showToast(`Active semester switched to "${semester.name}".`, 'success');
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const parsedCgpa = typeof targetCgpa === 'string' ? parseFloat(targetCgpa) : targetCgpa;
+    const parsedBookGoal = typeof bookGoal === 'string' ? parseInt(bookGoal, 10) : bookGoal;
+
+    const safeCgpa = isNaN(parsedCgpa) ? 3.85 : Math.max(0, Math.min(4.0, parsedCgpa));
+    const safeBookGoal = isNaN(parsedBookGoal) ? 40 : Math.max(0, parsedBookGoal);
+
     await db.settings.update('current_user', {
-      userName: userName.trim(),
-      universityName: universityName.trim(),
-      currentTermName: termName.trim(),
-      targetCgpa: parseFloat(targetCgpa.toString()) || 3.85,
-      yearlyBookGoal: parseInt(bookGoal.toString(), 10) || 40,
+      userName: userName.trim() || 'Scholar',
+      universityName: universityName.trim() || 'University',
+      currentTermName: termName.trim() || 'Year 1 - Semester I',
+      targetCgpa: safeCgpa,
+      yearlyBookGoal: safeBookGoal,
       soundEnabled,
       hapticsEnabled,
     });
-    showToast('Settings saved successfully!', 'success');
+
+    showToast('Academic profile calibrated & saved.', 'success');
   };
 
-  // Safe restore preview state
-  const [pendingRestore, setPendingRestore] = useState<{
-    filename: string;
-    validation: ValidationSuccess;
-  } | null>(null);
-  const [isRestoring, setIsRestoring] = useState(false);
-
-  const handleFileRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const filename = file.name;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const res = validateBackupFile(text);
-        if (!res.valid) {
-          showToast(`Backup rejected: ${res.error}`, 'danger');
-          return;
-        }
-        setPendingRestore({ filename, validation: res });
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Unknown read error';
-        showToast(`Could not read file: ${msg}`, 'danger');
-      } finally {
-        e.target.value = '';
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleConfirmRestore = async () => {
-    if (!pendingRestore) return;
-    setIsRestoring(true);
-    try {
-      const res = await restoreDatabase(pendingRestore.validation.backup, 'replace');
-      if (res.success) {
-        showToast('🎉 Database restored successfully! All tables updated.', 'success');
-        setPendingRestore(null);
-      } else {
-        showToast(res.message, 'danger');
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      showToast(`Restore failed: ${msg}`, 'danger');
-    } finally {
-      setIsRestoring(false);
-    }
-  };
-
-  // Storage & Persistence Metrics
+  // Storage Durability & Reliability Vault
   const [persistenceInfo, setPersistenceInfo] = useState<{
     isPersisted: boolean;
-    quota?: number;
     usage?: number;
+    quota?: number;
   }>({ isPersisted: false });
-  const [mirrorMeta, setMirrorMeta] = useState<EmergencyBackupMeta>({ exists: false });
-  const [isMirrorRestoring, setIsMirrorRestoring] = useState(false);
-  const [isSyncingMirror, setIsSyncingMirror] = useState(false);
 
-  const loadPersistenceInfo = useCallback(async () => {
-    const p = await checkStoragePersistence();
-    setPersistenceInfo(p);
-    const m = getEmergencyBackupMeta();
-    setMirrorMeta(m);
+  const [mirrorMeta, setMirrorMeta] = useState<EmergencyBackupMeta>({
+    exists: false,
+    savedAt: undefined,
+    totalRecords: 0,
+  });
+
+  const [isSyncingMirror, setIsSyncingMirror] = useState(false);
+  const [isMirrorRestoring, setIsMirrorRestoring] = useState(false);
+
+  const refreshDurabilityState = useCallback(async () => {
+    try {
+      const p = await checkStoragePersistence();
+      setPersistenceInfo(p);
+      const m = getEmergencyBackupMeta();
+      setMirrorMeta(m);
+    } catch (e) {
+      console.warn('Storage check notice:', e);
+    }
   }, []);
 
   useEffect(() => {
-    loadPersistenceInfo();
-  }, [loadPersistenceInfo]);
+    refreshDurabilityState();
+  }, [refreshDurabilityState]);
 
   const handleProtectStorage = async () => {
     const granted = await requestPersistentStorage();
     if (granted) {
-      showToast('🛡️ Browser granted persistent storage protection! Eviction protection is active.', 'success');
+      showToast('Browser granted storage persistence protection!', 'success');
     } else {
-      showToast('Browser did not grant permanent persistence. Local compressed mirror is keeping your data safe.', 'info');
+      showToast('Persistence could not be granted. Add app to home screen.', 'info');
     }
-    loadPersistenceInfo();
+    refreshDurabilityState();
   };
 
   const handleForceMirrorSync = async () => {
@@ -385,47 +347,53 @@ export const SettingsPage: React.FC = () => {
     try {
       const ok = await saveEmergencyBackup(true);
       if (ok) {
-        showToast('🛡️ Local emergency mirror updated and verified!', 'success');
-        loadPersistenceInfo();
+        showToast('Emergency mirror synchronized successfully.', 'success');
       } else {
-        showToast('Mirror sync completed.', 'info');
+        showToast('Mirror sync deferred (storage quota full or empty).', 'info');
       }
+      refreshDurabilityState();
+    } catch {
+      showToast('Failed to sync emergency mirror.', 'danger');
     } finally {
       setIsSyncingMirror(false);
     }
   };
 
   const handleRestoreFromMirror = async () => {
+    if (!mirrorMeta.exists) {
+      showToast('No emergency mirror found to restore.', 'danger');
+      return;
+    }
     setIsMirrorRestoring(true);
     try {
-      const res = await restoreFromEmergencyMirror(false);
+      const res = await restoreFromEmergencyMirror();
       if (res.success) {
-        showToast(`🎉 ${res.message}`, 'success');
-        loadPersistenceInfo();
+        showToast(`Recovered ${res.count} records from local mirror!`, 'success');
       } else {
         showToast(res.message, 'info');
       }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      showToast(`Restore failed: ${msg}`, 'danger');
+    } catch {
+      showToast('Failed to recover from emergency mirror.', 'danger');
     } finally {
       setIsMirrorRestoring(false);
     }
   };
 
+  // Backups & Restores
   const [isExportingBackup, setIsExportingBackup] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [pendingRestore, setPendingRestore] = useState<{
+    filename: string;
+    validation: ValidationSuccess;
+  } | null>(null);
 
   const handleDownloadBackup = async () => {
     setIsExportingBackup(true);
     try {
-      const res = await triggerBackupDownload();
-      if (res.success) {
-        showToast(res.message, 'success');
-      } else {
-        showToast(res.message, 'danger');
-      }
-    } catch (err: any) {
-      showToast(`Export failed: ${err?.message || 'Unknown error'}`, 'danger');
+      await triggerBackupDownload();
+      showToast('Complete backup exported as JSON file.', 'success');
+    } catch {
+      showToast('Failed to export backup.', 'danger');
     } finally {
       setIsExportingBackup(false);
     }
@@ -433,900 +401,188 @@ export const SettingsPage: React.FC = () => {
 
   const handleExportTasks = async () => {
     try {
-      const res = await exportTasksToCsv();
-      if (res.success) {
-        showToast(res.message, 'success');
-      } else {
-        showToast(res.message, 'danger');
+      await exportTasksToCsv();
+      showToast('Exported tasks to CSV.', 'success');
+    } catch {
+      showToast('Failed to export tasks CSV.', 'danger');
+    }
+  };
+
+  const handleFileRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const validation = validateBackupFile(text);
+      if (!validation.valid) {
+        showToast(`Invalid backup file: ${validation.error}`, 'danger');
+        return;
       }
-    } catch (err: any) {
-      showToast(`CSV export failed: ${err?.message || 'Unknown error'}`, 'danger');
+      setPendingRestore({
+        filename: file.name,
+        validation: validation as ValidationSuccess,
+      });
+    } catch {
+      showToast('Failed to read or parse JSON file.', 'danger');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleConfirmRestore = async () => {
+    if (!pendingRestore) return;
+    setIsRestoring(true);
+    try {
+      const result = await restoreDatabase(pendingRestore.validation.backup);
+      if (result.success) {
+        showToast(result.message, 'success');
+        setPendingRestore(null);
+      } else {
+        showToast(result.message, 'danger');
+      }
+    } catch {
+      showToast('Unexpected failure during database restore.', 'danger');
+    } finally {
+      setIsRestoring(false);
     }
   };
 
   const handleWipeAllData = async () => {
     try {
-      // Auto-download safety snapshot prior to clearing so data is never permanently lost
-      try {
-        const snapshot = await triggerBackupDownload();
-      } catch {
-        // Continue
-      }
+      await db.courses.clear();
+      await db.classSessions.clear();
+      await db.classExceptions.clear();
+      await db.attendance.clear();
+      await db.tasks.clear();
+      await db.exams.clear();
+      await db.examTopics.clear();
+      await db.projects.clear();
+      await db.projectMilestones.clear();
+      await db.projectTasks.clear();
+      await db.projectMembers.clear();
+      await db.projectMeetings.clear();
+      await db.focusSessions.clear();
+      await db.habits.clear();
+      await db.habitLogs.clear();
+      await db.restDays.clear();
+      await db.journalEntries.clear();
+      await db.dailyReflections.clear();
+      await db.transactions.clear();
+      await db.financialAccounts.clear();
+      await db.budgets.clear();
+      await db.savingsGoals.clear();
+      await db.debts.clear();
+      await db.recurringTransactions.clear();
+      await db.creativeProjects.clear();
+      await db.readingItems.clear();
+      await db.quests.clear();
+      await db.xpEvents.clear();
+      await db.semesters.clear();
 
-      await Promise.all([
-        db.courses.clear(),
-        db.classSessions.clear(),
-        db.classExceptions.clear(),
-        db.attendance.clear(),
-        db.gradeComponents.clear(),
-        db.semesters.clear(),
-        db.restDays.clear(),
-        db.tasks.clear(),
-        db.exams.clear(),
-        db.examTopics.clear(),
-        db.projects.clear(),
-        db.projectMilestones.clear(),
-        db.projectTasks.clear(),
-        db.projectMembers.clear(),
-        db.projectMeetings.clear(),
-        db.focusSessions.clear(),
-        db.habits.clear(),
-        db.habitLogs.clear(),
-        db.journalEntries.clear(),
-        db.masterWeekBlocks.clear(),
-        db.transactions.clear(),
-        db.budgets.clear(),
-        db.savingsGoals.clear(),
-        db.financialAccounts.clear(),
-        db.debts.clear(),
-        db.recurringTransactions.clear(),
-        db.creativeProjects.clear(),
-        db.creativeSessions.clear(),
-        db.readingItems.clear(),
-        db.learningQueue.clear(),
-        db.xpEvents.clear(),
-        db.achievementsUnlocked.clear(),
-        db.quests.clear(),
-        db.ritualRuns.clear(),
-        db.dailyReflections.clear(),
-        db.academicGoals.clear(),
-      ]);
-
-      // Reset mirror
-      if (typeof localStorage !== 'undefined') {
-        localStorage.removeItem('college_os_emergency_backup_v2');
-        localStorage.removeItem('college_os_emergency_backup_v1');
-        localStorage.removeItem('college_os_emergency_backup_prev');
-        localStorage.removeItem('college_os_emergency_backup_meta');
-      }
-
-      loadPersistenceInfo();
       setIsConfirmDeleteOpen(false);
-      showToast('All database tables cleared. Starting fresh.', 'info');
-    } catch (err) {
-      console.warn('Wipe notice:', err);
-      setIsConfirmDeleteOpen(false);
+      showToast('All local database records wiped clean.', 'info');
+    } catch {
+      showToast('Failed to wipe data.', 'danger');
     }
   };
 
   return (
     <div className="space-y-4 pb-20 animate-pop">
-      {/* Header */}
-      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-5 relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="text-[10px] uppercase font-heading tracking-widest text-[rgb(var(--c-muted))] font-bold">
-              System Administration
-            </div>
-            <h2 className="text-xl font-heading font-bold text-[rgb(var(--c-text))]">
-              Settings, Semesters &amp; Timetable
-            </h2>
-            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
-              100% on-device IndexedDB storage • Zero telemetry • Complete JSON portability
-            </p>
-          </div>
+      {/* 1. Header & Setup Wizard Relaunch */}
+      <SettingsHeaderSection onRelaunchWizard={() => setOnboardingOpen(true)} />
 
-          <button
-            onClick={() => setOnboardingOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] hover:border-[rgb(var(--c-primary))] text-xs font-heading font-bold transition active:scale-95 shrink-0"
-          >
-            <Compass className="w-4 h-4 text-[rgb(var(--c-primary))]" />
-            <span>Relaunch Setup Wizard</span>
-          </button>
-        </div>
-      </div>
+      {/* 2. Official Section 12 Timetable Flow */}
+      <SettingsSection12Card
+        isSection12Loaded={isSection12Loaded}
+        onOpenModal={handleOpenSection12Modal}
+        isModalOpen={isSection12ModalOpen}
+        onCloseModal={() => setIsSection12ModalOpen(false)}
+        sec12SemName={sec12SemName}
+        setSec12SemName={setSec12SemName}
+        sec12StartDate={sec12StartDate}
+        setSec12StartDate={setSec12StartDate}
+        sec12EndDate={sec12EndDate}
+        setSec12EndDate={setSec12EndDate}
+        isLoadingSection12={isLoadingSection12}
+        onSubmit={handleRunLoadSection12}
+      />
 
-      {/* TASK B: Section 12 Timetable Flow */}
-      <div className="ticket-border bg-gradient-to-r from-[rgb(var(--c-surface))] to-[rgb(var(--c-surface2))] rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 font-heading text-xs font-bold uppercase text-[rgb(var(--c-primary))]">
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            <span>Official Section 12 Timetable</span>
-            {isSection12Loaded && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-bold">
-                ✓ Loaded &amp; Active
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-[rgb(var(--c-muted))] font-flourish mt-1 max-w-xl">
-            {isSection12Loaded
-              ? 'Section 12 timetable is active with all 7 modules (Anthropology, Entrepreneurship, English, Geography, Math, Logic, Psychology) and 9 weekly lecture/tutorial periods in Building B59.'
-              : 'One-click setup for the real Section 12 timetable. Asks for semester name and dates, then configures your 7 courses and 9 weekly classes without duplicate risk.'}
-          </p>
-        </div>
+      {/* 3. Academic Semesters Management */}
+      <SettingsSemestersSection
+        semesters={semesters}
+        activeSemesterId={settings?.activeSemesterId}
+        currentTermName={settings?.currentTermName}
+        onSetActiveSemester={handleSetActiveSemester}
+        onOpenAddSemester={handleOpenAddSemester}
+        onOpenEditSemester={handleOpenEditSemester}
+        isModalOpen={isSemesterModalOpen}
+        onCloseModal={() => setIsSemesterModalOpen(false)}
+        editingSemester={editingSemester}
+        semFormName={semFormName}
+        setSemFormName={setSemFormName}
+        semFormStartDate={semFormStartDate}
+        setSemFormStartDate={setSemFormStartDate}
+        semFormEndDate={semFormEndDate}
+        setSemFormEndDate={setSemFormEndDate}
+        semFormError={semFormError}
+        onSaveSemester={handleSaveSemester}
+      />
 
-        <div className="shrink-0">
-          {isSection12Loaded ? (
-            <div className="text-right">
-              <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[rgb(var(--c-surface2))] border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] font-heading text-xs font-bold">
-                <CheckCircle className="w-4 h-4 text-emerald-500" />
-                <span>Section 12 Ready</span>
-              </span>
-              <p className="text-[10px] text-[rgb(var(--c-muted))] mt-1 text-center">
-                Fully editable in Timetable
-              </p>
-            </div>
-          ) : (
-            <button
-              onClick={handleOpenSection12Modal}
-              className="px-4 py-2.5 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-xs flex items-center gap-1.5"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Load Section 12 Timetable</span>
-            </button>
-          )}
-        </div>
-      </div>
+      {/* 4. Visual Architecture & Reduced Motion */}
+      <SettingsAppearanceSection
+        currentAppearanceMode={currentAppearanceMode}
+        onSelectAppearanceMode={handleSelectAppearanceMode}
+        currentDesignStyle={currentDesignStyle}
+        onSelectDesignStyle={handleSelectDesignStyle}
+        reduceAnimations={reduceAnimations}
+        onToggleReduceAnimations={handleToggleReduceAnimations}
+      />
 
-      {/* TASK A: Academic Semesters Management */}
-      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[rgb(var(--c-border))]">
-          <div>
-            <div className="text-[10px] uppercase font-heading tracking-widest text-[#BBA6E0] font-bold flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5" />
-              Academic Calendar
-            </div>
-            <h3 className="text-sm font-heading font-bold text-[rgb(var(--c-text))]">
-              Semester Management ({semesters.length})
-            </h3>
-            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
-              Choose active semester, rename terms, or calibrate start and end dates.
-            </p>
-          </div>
-
-          <button
-            onClick={handleOpenAddSemester}
-            className="self-start sm:self-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:border-[rgb(var(--c-primary))] active:scale-95 transition"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>+ New Semester</span>
-          </button>
-        </div>
-
-        {/* Semester List */}
-        <div className="space-y-2.5">
-          {semesters.map((sem) => {
-            const isActive =
-              sem.isActive ||
-              sem.id === settings?.activeSemesterId ||
-              sem.name === settings?.currentTermName;
-
-            const startFormatted = sem.startDate;
-            const endFormatted = sem.endDate;
-
-            // Duration in weeks
-            const diffDays = Math.round(
-              (new Date(sem.endDate).getTime() - new Date(sem.startDate).getTime()) /
-                (1000 * 60 * 60 * 24)
-            );
-            const durationWeeks = Math.max(1, Math.round(diffDays / 7));
-
-            return (
-              <div
-                key={sem.id}
-                className={`p-3.5 rounded-xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                  isActive
-                    ? 'border-[#B6E63E] bg-[#B6E63E]/10 shadow-2xs'
-                    : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))]'
-                }`}
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-heading font-bold text-xs text-[rgb(var(--c-text))]">
-                      {sem.name}
-                    </span>
-                    {isActive ? (
-                      <span className="text-[9px] uppercase px-2 py-0.5 rounded-full bg-[#B6E63E] text-stone-950 font-bold">
-                        Active Term
-                      </span>
-                    ) : (
-                      <span className="text-[9px] uppercase px-2 py-0.5 rounded-full border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))]">
-                        Inactive
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-[rgb(var(--c-muted))] font-flourish flex items-center gap-3 flex-wrap">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-[rgb(var(--c-primary))]" />
-                      {startFormatted} to {endFormatted}
-                    </span>
-                    <span>•</span>
-                    <span>{durationWeeks} weeks ({diffDays} days)</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  {!isActive && (
-                    <button
-                      onClick={() => handleSetActiveSemester(sem)}
-                      className="px-3 py-1.5 rounded-lg bg-[rgb(var(--c-surface2))] hover:bg-[rgb(var(--c-primary))] hover:text-[rgb(var(--c-on-primary))] text-[rgb(var(--c-text))] font-heading text-xs font-bold transition active:scale-95"
-                    >
-                      Set as Active
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleOpenEditSemester(sem)}
-                    className="p-1.5 rounded-lg border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] transition active:scale-95"
-                    title="Edit semester dates or title"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Visual Identity & Two-Layer Theme System */}
-      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[rgb(var(--c-border))]">
-          <div>
-            <div className="text-[10px] uppercase font-heading tracking-widest text-[rgb(var(--c-primary))] font-bold flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5" />
-              Visual Architecture
-            </div>
-            <h3 className="text-sm font-heading font-bold text-[rgb(var(--c-text))]">
-              Appearance Mode &amp; Design Style
-            </h3>
-            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
-              Customize brightness (Theme A) and aesthetic design language (Theme B) independently.
-            </p>
-          </div>
-
-          <a
-            href="#/themes"
-            className="self-start sm:self-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:border-[rgb(var(--c-primary))] active:scale-95 transition"
-          >
-            <Palette className="w-3.5 h-3.5" />
-            <span>All 27 Color Themes &rarr;</span>
-          </a>
-        </div>
-
-        {/* Theme A: Appearance Mode */}
-        <div className="space-y-2">
-          <label className="block text-[11px] font-heading font-bold text-[rgb(var(--c-muted))] uppercase tracking-wider">
-            Theme A — Brightness &amp; Luminance
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            {APPEARANCE_MODES.map((mode) => {
-              const isSelected = currentAppearanceMode === mode.id;
-              const Icon = mode.id === 'light' ? Sun : mode.id === 'dark' ? Moon : Laptop;
-
-              return (
-                <button
-                  key={mode.id}
-                  type="button"
-                  onClick={() => handleSelectAppearanceMode(mode.id)}
-                  className={`p-3 rounded-xl border text-left transition flex items-center justify-between ${
-                    isSelected
-                      ? 'border-[rgb(var(--c-primary))] bg-[rgb(var(--c-surface2))] ring-2 ring-[rgb(var(--c-primary)/0.3)] shadow-xs'
-                      : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] hover:border-[rgb(var(--c-primary)/0.5)]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))]' : 'bg-[rgb(var(--c-surface))] text-[rgb(var(--c-muted))]'}`}>
-                      <Icon className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
-                        {mode.name}
-                      </div>
-                      <div className="text-[10px] text-[rgb(var(--c-muted))]">
-                        {mode.id}
-                      </div>
-                    </div>
-                  </div>
-                  {isSelected && (
-                    <span className="w-4 h-4 rounded-full bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] flex items-center justify-center shrink-0">
-                      <Check className="w-2.5 h-2.5 stroke-[3]" />
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Theme B: Design Style */}
-        <div className="space-y-2 pt-2 border-t border-[rgb(var(--c-border))]">
-          <label className="block text-[11px] font-heading font-bold text-[rgb(var(--c-muted))] uppercase tracking-wider">
-            Theme B — Design Style Architecture
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            {DESIGN_STYLES.map((style) => {
-              const isSelected = currentDesignStyle === style.id;
-              const Icon = style.id === 'editorial-retro' ? Bookmark : style.id === 'quiet-minimal' ? Feather : Cpu;
-
-              return (
-                <button
-                  key={style.id}
-                  type="button"
-                  onClick={() => handleSelectDesignStyle(style.id)}
-                  className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
-                    isSelected
-                      ? 'border-[rgb(var(--c-primary))] bg-[rgb(var(--c-surface2))] ring-2 ring-[rgb(var(--c-primary)/0.3)] shadow-xs'
-                      : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] hover:border-[rgb(var(--c-primary)/0.5)]'
-                  }`}
-                >
-                  <div className="w-full">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <Icon className="w-3.5 h-3.5 text-[rgb(var(--c-primary))]" />
-                        <span className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
-                          {style.name}
-                        </span>
-                      </div>
-                      {isSelected && (
-                        <span className="w-4 h-4 rounded-full bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] flex items-center justify-center shrink-0">
-                          <Check className="w-2.5 h-2.5 stroke-[3]" />
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-[rgb(var(--c-muted))] font-flourish line-clamp-2">
-                      {style.subtitle}
-                    </p>
-                  </div>
-                  <div className="mt-2 text-[9px] font-mono text-[rgb(var(--c-primary))] font-bold uppercase">
-                    {style.badge}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Academic Identity Form */}
-      <form
+      {/* 5. Academic Identity Form */}
+      <SettingsProfileSection
+        userName={userName}
+        setUserName={setUserName}
+        termName={termName}
+        setTermName={setTermName}
+        universityName={universityName}
+        setUniversityName={setUniversityName}
+        targetCgpa={targetCgpa}
+        setTargetCgpa={setTargetCgpa}
+        bookGoal={bookGoal}
+        setBookGoal={setBookGoal}
+        hapticsEnabled={hapticsEnabled}
+        setHapticsEnabled={setHapticsEnabled}
+        soundEnabled={soundEnabled}
+        setSoundEnabled={setSoundEnabled}
         onSubmit={handleSaveProfile}
-        className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 space-y-4"
-      >
-        <div className="font-heading text-sm font-bold text-[rgb(var(--c-text))] pb-2 border-b border-[rgb(var(--c-border))]">
-          Academic Identity &amp; Goals
-        </div>
+      />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-              Student / Preferred Name
-            </label>
-            <input
-              type="text"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-              className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-              Current Academic Term
-            </label>
-            <input
-              type="text"
-              value={termName}
-              onChange={(e) => setTermName(e.target.value)}
-              placeholder="e.g. Year 1 - Semester I"
-              className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-            />
-          </div>
-
-          <div className="sm:col-span-2">
-            <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-              University Institution
-            </label>
-            <input
-              type="text"
-              value={universityName}
-              onChange={(e) => setUniversityName(e.target.value)}
-              className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-              Target CGPA (Department Placement)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={targetCgpa === '' || isNaN(Number(targetCgpa)) ? '' : targetCgpa}
-              onChange={(e) => {
-                const val = e.target.value;
-                setTargetCgpa(val === '' ? '' : isNaN(parseFloat(val)) ? '' : parseFloat(val));
-              }}
-              className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-              Yearly Book Goal
-            </label>
-            <input
-              type="number"
-              value={bookGoal === '' || isNaN(Number(bookGoal)) ? '' : bookGoal}
-              onChange={(e) => {
-                const val = e.target.value;
-                setBookGoal(val === '' ? '' : isNaN(parseInt(val, 10)) ? '' : parseInt(val, 10));
-              }}
-              className="w-full px-3 py-1.5 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-            />
-          </div>
-        </div>
-
-        {/* Sensory Toggles */}
-        <div className="pt-2 border-t border-[rgb(var(--c-border))] flex items-center gap-6 flex-wrap">
-          <label className="flex items-center gap-2 text-xs cursor-pointer">
-            <input
-              type="checkbox"
-              checked={hapticsEnabled}
-              onChange={(e) => setHapticsEnabled(e.target.checked)}
-              className="accent-[rgb(var(--c-primary))]"
-            />
-            <span>Haptic Vibrations (on task &amp; habit stamps)</span>
-          </label>
-          <label className="flex items-center gap-2 text-xs cursor-pointer">
-            <input
-              type="checkbox"
-              checked={soundEnabled}
-              onChange={(e) => setSoundEnabled(e.target.checked)}
-              className="accent-[rgb(var(--c-primary))]"
-            />
-            <span>Audio Bells (Off by default)</span>
-          </label>
-        </div>
-
-        <button
-          type="submit"
-          className="px-5 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-xs"
-        >
-          Save Identity Settings
-        </button>
-      </form>
-
-      {/* Stage 1 & 2: Native Android Local Notifications & Intelligent Reminders */}
+      {/* 6. Notifications */}
       <NotificationSettingsSection />
 
-      {/* Storage Durability & Emergency Mirror Vault */}
-      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 space-y-4">
-        <div className="flex items-center justify-between pb-2 border-b border-[rgb(var(--c-border))]">
-          <div className="flex items-center gap-2">
-            <Shield className="w-4 h-4 text-[rgb(var(--c-primary))]" />
-            <span className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
-              Offline Storage Protection &amp; Reliability Vault
-            </span>
-          </div>
-          <span className="text-[10px] px-2 py-0.5 rounded-full font-heading font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
-            Multi-Tier Safe
-          </span>
-        </div>
-
-        <p className="text-xs text-[rgb(var(--c-muted))] font-flourish leading-relaxed">
-          College Life OS keeps all your timetable, courses, notes, habits, finances, and journal records strictly on your device using a multi-tier persistence engine (IndexedDB + LZ-compressed Local Mirror).
-        </p>
-
-        {/* Persistence Status Indicator Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Storage Eviction Shield */}
-          <div className="p-3.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-heading font-bold text-[rgb(var(--c-text))] flex items-center gap-1.5">
-                <HardDrive className="w-3.5 h-3.5 text-[rgb(var(--c-primary))]" />
-                Browser Storage Eviction Shield
-              </span>
-              {persistenceInfo.isPersisted ? (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 font-bold flex items-center gap-1">
-                  <CheckCircle className="w-3 h-3" /> Protected
-                </span>
-              ) : (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/30 font-bold">
-                  Best-Effort
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
-              {persistenceInfo.isPersisted
-                ? 'Your browser has granted permanent storage. Data will never be evicted under storage pressure.'
-                : 'Storage may be evicted by the browser if disk space runs low. Enable protection below.'}
-            </p>
-            {persistenceInfo.quota !== undefined && (
-              <div className="text-[10px] text-[rgb(var(--c-muted))] font-mono pt-1">
-                Estimated Usage: {((persistenceInfo.usage || 0) / (1024 * 1024)).toFixed(2)} MB /{' '}
-                {((persistenceInfo.quota || 0) / (1024 * 1024 * 1024)).toFixed(1)} GB Available
-              </div>
-            )}
-            {!persistenceInfo.isPersisted && (
-              <button
-                type="button"
-                onClick={handleProtectStorage}
-                className="mt-1 px-3 py-1.5 rounded-lg bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-[11px] font-bold hover:opacity-90 active:scale-95 transition"
-              >
-                Request Storage Eviction Protection
-              </button>
-            )}
-          </div>
-
-          {/* Emergency Local Mirror */}
-          <div className="p-3.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-heading font-bold text-[rgb(var(--c-text))] flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                Emergency Local Mirror (Compressed)
-              </span>
-              {mirrorMeta.exists ? (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 font-bold">
-                  {mirrorMeta.totalRecords} Records Synced
-                </span>
-              ) : (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-500/10 text-stone-400 font-bold">
-                  Not Initialized
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
-              {mirrorMeta.exists && mirrorMeta.savedAt
-                ? `Last synchronized: ${new Date(mirrorMeta.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} (${new Date(mirrorMeta.savedAt).toLocaleDateString()}). Auto-synced on all edits.`
-                : 'Auto-syncs all database mutations to compressed local storage so you can recover if IndexedDB resets.'}
-            </p>
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                disabled={isSyncingMirror}
-                onClick={handleForceMirrorSync}
-                className="px-2.5 py-1 rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-[11px] font-bold hover:opacity-90 active:scale-95 transition"
-              >
-                {isSyncingMirror ? 'Syncing...' : 'Sync Mirror Now'}
-              </button>
-              <button
-                type="button"
-                disabled={isMirrorRestoring || !mirrorMeta.exists}
-                onClick={handleRestoreFromMirror}
-                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-heading text-[11px] font-bold transition disabled:opacity-50"
-              >
-                {isMirrorRestoring ? 'Restoring...' : 'Restore from Mirror'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* PWA Home Screen Installation */}
-        <div className="pt-2 border-t border-[rgb(var(--c-border))] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="text-[11px] font-heading font-bold text-[rgb(var(--c-text))]">
-              Android Home-Screen &amp; Desktop App
-            </div>
-            <p className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
-              Install College Life OS as a standalone app. Launches instantly without internet from your home screen.
-            </p>
-          </div>
-          <PWAInstallButton />
-        </div>
-
-        {/* Portability Actions */}
-        <div className="pt-2 border-t border-[rgb(var(--c-border))]">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2.5">
-            <div className="text-[11px] font-heading font-bold text-[rgb(var(--c-text))]">
-              Data Portability &amp; External JSON Backups
-            </div>
-            <div className="text-[10px] text-[rgb(var(--c-muted))] font-mono">
-              Last backup: {settings?.lastBackupDate ? new Date(settings.lastBackupDate).toLocaleString() : 'Never exported'}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              onClick={handleDownloadBackup}
-              disabled={isExportingBackup}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-xs disabled:opacity-50"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>{isExportingBackup ? 'Exporting...' : 'Export & Save JSON Backup'}</span>
-            </button>
-
-            <label className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition cursor-pointer">
-              <Upload className="w-3.5 h-3.5" />
-              <span>Restore from JSON</span>
-              <input type="file" accept=".json" onChange={handleFileRestore} className="hidden" />
-            </label>
-
-            <button
-              onClick={handleExportTasks}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Export Tasks CSV</span>
-            </button>
-
-            <button
-              onClick={() => setIsConfirmDeleteOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-rose-500/30 text-rose-500 hover:bg-rose-500/10 font-heading text-xs font-bold transition ml-auto"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Wipe All Data</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Section 12 Timetable Setup Modal */}
-      {isSection12ModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-pop">
-          <div className="relative w-full max-w-lg bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                <span className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
-                  Load Section 12 Timetable
-                </span>
-              </div>
-              <button
-                onClick={() => setIsSection12ModalOpen(false)}
-                className="p-1 rounded-full text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
-              This will create your 7 official modules (Social Anthropology, Entrepreneurship, Communicative English, Geography of Ethiopia, Math for Natural Science, Logic &amp; Critical Thinking, General Psychology) with designated instructors, colors, and 9 weekly lecture/tutorial periods in Building B59. Credit hours are left blank for you to enter.
-            </p>
-
-            <form onSubmit={handleRunLoadSection12} className="space-y-3">
-              <div>
-                <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                  Academic Semester / Term Name
-                </label>
-                <input
-                  type="text"
-                  value={sec12SemName}
-                  onChange={(e) => setSec12SemName(e.target.value)}
-                  placeholder="e.g. Year 1 - Semester I"
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    First Day (Monday)
-                  </label>
-                  <input
-                    type="date"
-                    value={sec12StartDate}
-                    onChange={(e) => setSec12StartDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    Last Day (17 Weeks)
-                  </label>
-                  <input
-                    type="date"
-                    value={sec12EndDate}
-                    onChange={(e) => setSec12EndDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-[rgb(var(--c-border))]">
-                <button
-                  type="button"
-                  onClick={() => setIsSection12ModalOpen(false)}
-                  className="px-3.5 py-2 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isLoadingSection12}
-                  className="px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] text-xs font-heading font-bold transition shadow-xs hover:opacity-90 disabled:opacity-50"
-                >
-                  {isLoadingSection12 ? 'Creating Schedule...' : 'Confirm & Schedule Timetable'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Semester Add / Edit Modal */}
-      {isSemesterModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-pop">
-          <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
-              <span className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
-                {editingSemester ? 'Edit Semester Schedule' : 'Create Academic Semester'}
-              </span>
-              <button
-                onClick={() => setIsSemesterModalOpen(false)}
-                className="p-1 rounded-full text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {semFormError && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{semFormError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSaveSemester} className="space-y-3">
-              <div>
-                <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                  Semester / Term Title <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={semFormName}
-                  onChange={(e) => setSemFormName(e.target.value)}
-                  placeholder="e.g. Year 1 - Semester I"
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    Start Date <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={semFormStartDate}
-                    onChange={(e) => setSemFormStartDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-heading text-[rgb(var(--c-muted))] mb-1">
-                    End Date <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={semFormEndDate}
-                    onChange={(e) => setSemFormEndDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    required
-                  />
-                </div>
-              </div>
-
-              <p className="text-[10px] text-[rgb(var(--c-muted))] font-flourish">
-                Validation: End date must be strictly after start date and at most 400 days in duration.
-              </p>
-
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-[rgb(var(--c-border))]">
-                <button
-                  type="button"
-                  onClick={() => setIsSemesterModalOpen(false)}
-                  className="px-3.5 py-2 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] text-xs font-heading font-bold transition shadow-xs hover:opacity-90"
-                >
-                  {editingSemester ? 'Save Changes' : 'Create Semester'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Restore Preview Modal */}
-      {pendingRestore && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-pop">
-          <div className="w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5 space-y-4">
-            <div className="flex items-center gap-3">
-              <Upload className="w-5 h-5 text-[rgb(var(--c-primary))]" />
-              <div className="font-heading font-bold text-sm text-[rgb(var(--c-text))]">
-                Restore Database from Backup
-              </div>
-            </div>
-
-            <div className="space-y-2 text-xs text-[rgb(var(--c-muted))] font-flourish">
-              <div>
-                File: <strong className="text-[rgb(var(--c-text))]">{pendingRestore.filename}</strong>
-              </div>
-              <div>
-                Exported At:{' '}
-                <strong className="text-[rgb(var(--c-text))]">
-                  {new Date(pendingRestore.validation.backup.exportedAt).toLocaleString()}
-                </strong>
-              </div>
-              <div>
-                Total Records:{' '}
-                <strong className="text-[rgb(var(--c-text))]">
-                  {pendingRestore.validation.totalRecords}
-                </strong>
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-flourish">
-              ⚠️ Restoring will overwrite existing data with the records from this backup file.
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[rgb(var(--c-border))]">
-              <button
-                disabled={isRestoring}
-                onClick={() => setPendingRestore(null)}
-                className="px-3.5 py-1.5 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))]"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={isRestoring}
-                onClick={handleConfirmRestore}
-                className="px-3.5 py-1.5 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] text-xs font-heading font-bold transition shadow-xs hover:opacity-90"
-              >
-                {isRestoring ? 'Restoring Tables...' : 'Confirm Restore'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Wipe All Data Confirmation Modal */}
-      {isConfirmDeleteOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-pop">
-          <div className="w-full max-w-sm bg-[rgb(var(--c-surface))] border-2 border-rose-500/50 rounded-2xl shadow-2xl p-5 space-y-4">
-            <div className="flex items-center gap-3 text-rose-500">
-              <AlertTriangle className="w-5 h-5 shrink-0" />
-              <div className="font-heading font-bold text-sm text-[rgb(var(--c-text))]">
-                Wipe All App Data?
-              </div>
-            </div>
-            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish leading-relaxed">
-              This will clear all tables (courses, timetable, tasks, exams, habits, finances) in your local IndexedDB. This action cannot be undone.
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[rgb(var(--c-border))]">
-              <button
-                onClick={() => setIsConfirmDeleteOpen(false)}
-                className="px-3.5 py-1.5 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleWipeAllData}
-                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-heading font-bold transition shadow-xs"
-              >
-                Yes, Wipe Everything
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 7. Storage Durability & Reliability Vault */}
+      <SettingsDataSection
+        persistenceInfo={persistenceInfo}
+        onProtectStorage={handleProtectStorage}
+        mirrorMeta={mirrorMeta}
+        isSyncingMirror={isSyncingMirror}
+        onForceMirrorSync={handleForceMirrorSync}
+        isMirrorRestoring={isMirrorRestoring}
+        onRestoreFromMirror={handleRestoreFromMirror}
+        lastBackupDate={settings?.lastBackupDate}
+        isExportingBackup={isExportingBackup}
+        onDownloadBackup={handleDownloadBackup}
+        onFileRestore={handleFileRestore}
+        onExportTasks={handleExportTasks}
+        isConfirmDeleteOpen={isConfirmDeleteOpen}
+        setIsConfirmDeleteOpen={setIsConfirmDeleteOpen}
+        onWipeAllData={handleWipeAllData}
+        pendingRestore={pendingRestore}
+        setPendingRestore={setPendingRestore}
+        isRestoring={isRestoring}
+        onConfirmRestore={handleConfirmRestore}
+      />
     </div>
   );
 };

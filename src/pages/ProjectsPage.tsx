@@ -2,36 +2,32 @@ import React, { useState } from 'react';
 import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../store/uiStore';
-import { Project, ProjectMilestone, ProjectTask, ProjectMember, Course } from '../types';
+import { Project, ProjectMilestone, ProjectTask, Course } from '../types';
 import { getTodayKey, formatDisplayDate, addDaysToKey } from '../utils/dateUtils';
 import { awardXp, reverseXp, triggerLevelUpConfetti } from '../services/rpgService';
 import { generateId } from '../utils/idGenerator';
 import {
   Layers,
   Plus,
-  Share2,
-  Users,
-  CheckCircle2,
-  Circle,
   Clock,
-  Sparkles,
-  Copy,
-  ChevronRight,
-  ChevronLeft,
-  X,
-  MessageSquare,
-  Compass,
   Calendar,
-  Award,
   AlertCircle,
-  Trash2,
-  Edit3,
-  Flag,
-  ArrowRight,
-  TrendingUp,
   FolderGit2,
-  CheckSquare,
 } from 'lucide-react';
+
+import { ProjectCard } from '../components/projects/ProjectCard';
+import { ProjectDetailHero } from '../components/projects/ProjectDetailHero';
+import { ProjectMilestonesSection } from '../components/projects/ProjectMilestonesSection';
+import { ProjectKanbanBoard } from '../components/projects/ProjectKanbanBoard';
+import { ProjectTeamSection } from '../components/projects/ProjectTeamSection';
+import {
+  CreateProjectModal,
+  EditProjectModal,
+  AddMilestoneModal,
+  AddTaskModal,
+  AddMemberModal,
+  DeleteProjectModal,
+} from '../components/projects/ProjectModals';
 
 export const ProjectsPage: React.FC = () => {
   const { showToast } = useUiStore();
@@ -67,7 +63,6 @@ export const ProjectsPage: React.FC = () => {
   const [editStatus, setEditStatus] = useState<Project['status']>('active');
   const [editDescription, setEditDescription] = useState('');
   const [editDeadline, setEditDeadline] = useState('');
-  const [editWeight, setEditWeight] = useState<number | ''>('');
 
   // Task & Milestone inputs
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -185,7 +180,6 @@ export const ProjectsPage: React.FC = () => {
     }
   };
 
-  // Open Create Modal
   const openCreateModal = () => {
     setTitle('');
     setCourseId('');
@@ -197,214 +191,53 @@ export const ProjectsPage: React.FC = () => {
     setIsNewProjectModalOpen(true);
   };
 
-  // Handle Create Project
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
-    const projId = generateId();
-    const now = new Date().toISOString();
-
+    const newId = generateId();
     await db.projects.add({
-      id: projId,
+      id: newId,
       title: title.trim(),
       courseId: courseId || undefined,
       type: projectType,
-      description: description.trim(),
       status: projectStatus,
-      startDate: todayKey,
+      description: description.trim(),
       deadline: deadline || undefined,
-      weight: typeof weight === 'number' ? weight : undefined,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // Create 3 structured starter milestones
-    await db.projectMilestones.bulkPut([
-      { id: generateId(), projectId: projId, title: 'Floor 1: Specifications & Architecture Design', isDone: false, order: 1 },
-      { id: generateId(), projectId: projId, title: 'Floor 2: Core Engineering & Implementation', isDone: false, order: 2 },
-      { id: generateId(), projectId: projId, title: 'Floor 3: Final Testing & Presentation', isDone: false, order: 3 },
-    ]);
-
-    setIsNewProjectModalOpen(false);
-    setSelectedProjectId(projId);
-    showToast('New project established! Navigated to detail view.', 'success');
-  };
-
-  // Handle Update Status for Active Project
-  const handleUpdateStatus = async (newStatus: Project['status']) => {
-    if (!activeProject) return;
-    const now = new Date().toISOString();
-    await db.projects.update(activeProject.id, {
-      status: newStatus,
-      updatedAt: now,
-    });
-
-    if (isCompleted(newStatus) && !isCompleted(activeProject.status)) {
-      await awardXp({
-        source: 'project_completion',
-        sourceId: activeProject.id,
-        amount: 150,
-        stat: 'teamwork',
-      });
-      triggerLevelUpConfetti();
-      showToast('Project completed! +150 Teamwork XP awarded!', 'success');
-    } else {
-      showToast(`Project moved to ${newStatus.toUpperCase()}`, 'info');
-    }
-  };
-
-  // Toggle Milestone Completion
-  const handleToggleMilestone = async (milestone: ProjectMilestone) => {
-    const isNowDone = !milestone.isDone;
-    await db.projectMilestones.update(milestone.id, { isDone: isNowDone });
-
-    if (isNowDone) {
-      await awardXp({
-        source: 'project_milestone',
-        sourceId: milestone.id,
-        amount: 75,
-        stat: 'teamwork',
-      });
-      triggerLevelUpConfetti();
-      showToast('Dungeon floor cleared! +75 Teamwork XP', 'success');
-    } else {
-      await reverseXp('project_milestone', milestone.id);
-      showToast('Milestone returned to pending. -75 XP reversed.', 'info');
-    }
-  };
-
-  // Add Milestone
-  const handleCreateMilestone = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMilestoneTitle.trim() || !activeProject) return;
-
-    const nextOrder = activeMilestones.length + 1;
-    await db.projectMilestones.add({
-      id: generateId(),
-      projectId: activeProject.id,
-      title: newMilestoneTitle.trim(),
-      isDone: false,
-      order: nextOrder,
-    });
-
-    setNewMilestoneTitle('');
-    setIsNewMilestoneModalOpen(false);
-    showToast('New dungeon floor milestone added!', 'success');
-  };
-
-  // Delete Milestone
-  const handleDeleteMilestone = async (milestone: ProjectMilestone) => {
-    if (milestone.isDone) {
-      await reverseXp('project_milestone', milestone.id);
-    }
-    await db.projectMilestones.delete(milestone.id);
-    showToast('Milestone removed.', 'info');
-  };
-
-  // Move Task in Pipeline
-  const handleMoveTask = async (taskId: string, targetCol: 'backlog' | 'todo' | 'doing' | 'review' | 'done') => {
-    await db.projectTasks.update(taskId, { column: targetCol });
-    showToast(`Task moved to ${targetCol.toUpperCase()}`, 'info');
-  };
-
-  // Create Task
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTaskTitle.trim() || !activeProject) return;
-
-    await db.projectTasks.add({
-      id: generateId(),
-      projectId: activeProject.id,
-      title: newTaskTitle.trim(),
-      column: newTaskColumn,
-      priority: 'medium',
+      weight: weight === '' ? undefined : Number(weight),
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
 
-    setNewTaskTitle('');
-    setIsNewTaskModalOpen(false);
-    showToast('Task added to project pipeline.', 'success');
-  };
+    const defaultMilestones = [
+      'Problem Formulation & Architecture Design',
+      'Sprint 1: Core Implementation & Prototype',
+      'Testing, Benchmarking & Peer Review',
+      'Final Artifact Packaging & Submission',
+    ];
 
-  // Delete Task
-  const handleDeleteTask = async (taskId: string) => {
-    await db.projectTasks.delete(taskId);
-    showToast('Task removed from pipeline.', 'info');
-  };
+    for (let i = 0; i < defaultMilestones.length; i++) {
+      await db.projectMilestones.add({
+        id: generateId(),
+        projectId: newId,
+        title: defaultMilestones[i],
+        isDone: false,
+        order: i,
+      });
+    }
 
-  // Add Member
-  const handleCreateMember = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMemberName.trim() || !activeProject) return;
-
-    await db.projectMembers.add({
-      id: generateId(),
-      projectId: activeProject.id,
-      name: newMemberName.trim(),
-      role: newMemberRole.trim() || 'Contributor',
-      contact: newMemberContact.trim() || undefined,
-      color: '#4FA3A5',
+    await awardXp({
+      source: 'project_creation',
+      sourceId: newId,
+      amount: 40,
+      stat: 'teamwork',
     });
 
-    setNewMemberName('');
-    setNewMemberRole('');
-    setNewMemberContact('');
-    setIsNewMemberModalOpen(false);
-    showToast('Team guild member enlisted!', 'success');
+    showToast('Project commissioned! Default milestones generated.', 'success');
+    setIsNewProjectModalOpen(false);
+    setSelectedProjectId(newId);
   };
 
-  // Delete Project
-  const handleConfirmDeleteProject = async () => {
-    if (!projectToDelete) return;
-    const projId = projectToDelete.id;
-
-    // Delete related items
-    const relMilestones = await db.projectMilestones.where('projectId').equals(projId).toArray();
-    for (const m of relMilestones) {
-      if (m.isDone) await reverseXp('project_milestone', m.id);
-    }
-    if (isCompleted(projectToDelete.status)) {
-      await reverseXp('project_completion', projId);
-    }
-
-    await db.projectMilestones.where('projectId').equals(projId).delete();
-    await db.projectTasks.where('projectId').equals(projId).delete();
-    await db.projectMembers.where('projectId').equals(projId).delete();
-    await db.projects.delete(projId);
-
-    setProjectToDelete(null);
-    if (selectedProjectId === projId) {
-      setSelectedProjectId(null);
-    }
-    showToast('Project deleted.', 'info');
-  };
-
-  // Copy Telegram Summary
-  const handleCopyTelegramSummary = () => {
-    if (!activeProject) return;
-    const doneTasks = activeTasks.filter((t) => t.column === 'done').map((t) => `• ${t.title}`).join('\n');
-    const inProgress = activeTasks.filter((t) => t.column === 'doing').map((t) => `• ${t.title}`).join('\n');
-    const nextSteps = activeTasks.filter((t) => t.column === 'todo').map((t) => `• ${t.title}`).join('\n');
-    const clearedFloors = activeMilestones.filter((m) => m.isDone).map((m) => `✓ ${m.title}`).join('\n');
-    const remainingFloors = activeMilestones.filter((m) => !m.isDone).map((m) => `⏳ ${m.title}`).join('\n');
-
-    const text =
-      `📢 *${activeProject.title} — Status Update*\n` +
-      `📌 Status: ${activeProject.status.toUpperCase()} | Progress: ${getProjectProgress(activeProject.id)}%\n` +
-      `📅 Deadline: ${activeProject.deadline || 'TBA'}\n\n` +
-      (clearedFloors ? `🏆 *Cleared Milestones:*\n${clearedFloors}\n\n` : '') +
-      (remainingFloors ? `🎯 *Pending Milestones:*\n${remainingFloors}\n\n` : '') +
-      `⚡ *Currently Doing:*\n${inProgress || 'None in active work'}\n\n` +
-      `✅ *Completed Tasks:*\n${doneTasks || 'None yet'}\n\n` +
-      `📋 *Next Queue:*\n${nextSteps || 'None'}\n\n` +
-      `Generated via College Life OS`;
-
-    navigator.clipboard.writeText(text);
-    showToast('Telegram / WhatsApp update copied to clipboard!', 'success');
-  };
-
-  // Open Edit Modal for Active Project
   const openEditModal = () => {
     if (!activeProject) return;
     setEditTitle(activeProject.title);
@@ -413,7 +246,6 @@ export const ProjectsPage: React.FC = () => {
     setEditStatus(activeProject.status);
     setEditDescription(activeProject.description || '');
     setEditDeadline(activeProject.deadline || '');
-    setEditWeight(activeProject.weight ?? '');
     setIsEditProjectModalOpen(true);
   };
 
@@ -428,109 +260,177 @@ export const ProjectsPage: React.FC = () => {
       status: editStatus,
       description: editDescription.trim(),
       deadline: editDeadline || undefined,
-      weight: typeof editWeight === 'number' ? editWeight : undefined,
       updatedAt: new Date().toISOString(),
     });
 
+    showToast('Project updated successfully.', 'success');
     setIsEditProjectModalOpen(false);
-    showToast('Project details updated.', 'success');
   };
 
-  // Render Project Card for Overview
-  const renderProjectCard = (p: Project) => {
-    const course = p.courseId ? courseMap.get(p.courseId) : undefined;
-    const progress = getProjectProgress(p.id);
-    const pMilestones = milestones.filter((m) => m.projectId === p.id);
-    const pTasks = projectTasks.filter((t) => t.projectId === p.id);
-    const doneMilestones = pMilestones.filter((m) => m.isDone).length;
-    const doneTasks = pTasks.filter((t) => t.column === 'done').length;
+  const handleConfirmDeleteProject = async () => {
+    if (!projectToDelete) return;
+    const pId = projectToDelete.id;
 
-    return (
-      <div
-        key={p.id}
-        onClick={() => setSelectedProjectId(p.id)}
-        className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-4 sm:p-5 cursor-pointer hover:border-[#4FA3A5] transition-all hover:shadow-xs group space-y-3 relative"
-      >
-        {/* Top Badges */}
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2 flex-wrap">
-            {course ? (
-              <span
-                className="px-2 py-0.5 rounded-full text-[10px] font-heading font-bold text-white shadow-2xs"
-                style={{ backgroundColor: course.color || '#4FA3A5' }}
-              >
-                {course.code}
-              </span>
-            ) : (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-heading font-bold bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))]">
-                General
-              </span>
-            )}
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-heading font-bold uppercase tracking-wider bg-[#4FA3A5]/10 text-[#4FA3A5]">
-              {p.type}
-            </span>
-            {renderStatusBadge(p.status)}
-          </div>
-          {getDeadlineBadge(p.deadline)}
-        </div>
+    await db.projectMilestones.where('projectId').equals(pId).delete();
+    await db.projectTasks.where('projectId').equals(pId).delete();
+    await db.projectMembers.where('projectId').equals(pId).delete();
+    await db.projects.delete(pId);
 
-        {/* Title & Description */}
-        <div>
-          <h3 className="text-base font-heading font-bold text-[rgb(var(--c-text))] group-hover:text-[#4FA3A5] transition-colors">
-            {p.title}
-          </h3>
-          {p.description && (
-            <p className="text-xs text-[rgb(var(--c-muted))] line-clamp-2 mt-1 font-flourish">
-              {p.description}
-            </p>
-          )}
-        </div>
-
-        {/* Progress Bar & Stats */}
-        <div className="space-y-1.5 pt-1">
-          <div className="flex items-center justify-between text-[11px] font-heading">
-            <span className="text-[rgb(var(--c-muted))]">Dungeon Completion</span>
-            <span className="font-bold text-[rgb(var(--c-text))]">{progress}%</span>
-          </div>
-          <div className="w-full h-2 bg-[rgb(var(--c-bg))] rounded-full overflow-hidden border border-[rgb(var(--c-border))] p-0.2">
-            <div
-              className={`h-full rounded-full transition-all duration-300 ${
-                progress === 100 ? 'bg-emerald-500' : 'bg-[#4FA3A5]'
-              }`}
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Bottom Metadata & Navigation CTA */}
-        <div className="flex items-center justify-between pt-2 border-t border-[rgb(var(--c-border))]/60 text-xs text-[rgb(var(--c-muted))]">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1 font-heading text-[11px]">
-              <Layers className="w-3.5 h-3.5 text-[#4FA3A5]" />
-              <span>{doneMilestones}/{pMilestones.length} Floors</span>
-            </span>
-            <span className="flex items-center gap-1 font-heading text-[11px]">
-              <CheckSquare className="w-3.5 h-3.5 text-emerald-500" />
-              <span>{doneTasks}/{pTasks.length} Tasks</span>
-            </span>
-            {p.weight && (
-              <span className="text-[11px] font-heading text-[rgb(var(--c-muted))]">
-                Weight: {p.weight}%
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1 font-heading font-bold text-xs text-[#4FA3A5] group-hover:translate-x-1 transition-transform">
-            <span>Open Detail</span>
-            <ChevronRight className="w-4 h-4" />
-          </div>
-        </div>
-      </div>
-    );
+    showToast(`Project "${projectToDelete.title}" and assets deleted.`, 'info');
+    setProjectToDelete(null);
+    if (selectedProjectId === pId) {
+      setSelectedProjectId(null);
+    }
   };
 
-  // ==========================================
-  // VIEW: INDIVIDUAL PROJECT DETAIL
-  // ==========================================
+  const handleUpdateStatus = async (newStatus: Project['status']) => {
+    if (!activeProject) return;
+    const oldStatus = activeProject.status;
+    await db.projects.update(activeProject.id, {
+      status: newStatus,
+      updatedAt: new Date().toISOString(),
+    });
+
+    if (!isCompleted(oldStatus) && isCompleted(newStatus)) {
+      triggerLevelUpConfetti();
+      await awardXp({
+        source: 'project_completion',
+        sourceId: activeProject.id,
+        amount: 150,
+        stat: 'teamwork',
+      });
+      showToast(`🏆 Project completed! +150 Teamwork XP awarded.`, 'success');
+    } else {
+      showToast(`Status updated to "${newStatus}".`, 'info');
+    }
+  };
+
+  const handleToggleMilestone = async (m: ProjectMilestone) => {
+    const nextDone = !m.isDone;
+    await db.projectMilestones.update(m.id, { isDone: nextDone });
+
+    if (nextDone) {
+      await awardXp({
+        source: 'milestone_done',
+        sourceId: m.id,
+        amount: 75,
+        stat: 'teamwork',
+      });
+      showToast('Floor milestone completed! +75 Teamwork XP', 'success');
+    } else {
+      await reverseXp('milestone_done', m.id);
+      showToast('Milestone reopened.', 'info');
+    }
+  };
+
+  const handleDeleteMilestone = async (m: ProjectMilestone) => {
+    await db.projectMilestones.delete(m.id);
+    showToast('Milestone floor removed.', 'info');
+  };
+
+  const handleCreateMilestone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeProject || !newMilestoneTitle.trim()) return;
+
+    await db.projectMilestones.add({
+      id: generateId(),
+      projectId: activeProject.id,
+      title: newMilestoneTitle.trim(),
+      isDone: false,
+      order: activeMilestones.length,
+    });
+
+    setNewMilestoneTitle('');
+    setIsNewMilestoneModalOpen(false);
+    showToast('New milestone floor established!', 'success');
+  };
+
+  const handleMoveTask = async (taskId: string, col: ProjectTask['column']) => {
+    await db.projectTasks.update(taskId, { column: col });
+    if (col === 'done') {
+      await awardXp({
+        source: 'project_task_done',
+        sourceId: taskId,
+        amount: 25,
+        stat: 'creativity',
+      });
+      showToast('Subtask complete! +25 Creativity XP', 'success');
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    await db.projectTasks.delete(taskId);
+    showToast('Task removed from pipeline.', 'info');
+  };
+
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeProject || !newTaskTitle.trim()) return;
+
+    await db.projectTasks.add({
+      id: generateId(),
+      projectId: activeProject.id,
+      title: newTaskTitle.trim(),
+      column: newTaskColumn,
+      priority: 'medium',
+      createdAt: new Date().toISOString(),
+    });
+
+    setNewTaskTitle('');
+    setIsNewTaskModalOpen(false);
+    showToast('Task added to pipeline!', 'success');
+  };
+
+  const handleCreateMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeProject || !newMemberName.trim()) return;
+
+    const colors = ['#4FA3A5', '#E07A5F', '#3D405B', '#81B29A', '#F2CC8F', '#9B5DE5'];
+    const assignedColor = colors[activeMembers.length % colors.length];
+
+    await db.projectMembers.add({
+      id: generateId(),
+      projectId: activeProject.id,
+      name: newMemberName.trim(),
+      role: newMemberRole.trim() || 'Contributor',
+      contact: newMemberContact.trim() || undefined,
+      color: assignedColor,
+    });
+
+    setNewMemberName('');
+    setNewMemberRole('');
+    setNewMemberContact('');
+    setIsNewMemberModalOpen(false);
+    showToast('Teammate enlisted to project guild!', 'success');
+  };
+
+  const handleCopyTelegramSummary = () => {
+    if (!activeProject) return;
+    const course = activeProject.courseId ? courseMap.get(activeProject.courseId) : undefined;
+    const progress = getProjectProgress(activeProject.id);
+
+    const doneFloors = activeMilestones.filter((m) => m.isDone).length;
+    const doneTs = activeTasks.filter((t) => t.column === 'done').length;
+
+    let text = `🚀 **PROJECT STATUS: ${activeProject.title.toUpperCase()}**\n`;
+    if (course) text += `📚 Course: ${course.code} — ${course.name}\n`;
+    text += `📊 Progress: ${progress}% cleared\n`;
+    text += `🎯 Pipeline Stage: ${activeProject.status.toUpperCase()}\n`;
+    if (activeProject.deadline) text += `⏰ Deadline: ${activeProject.deadline}\n`;
+    text += `\n🏰 **Dungeon Floors:** ${doneFloors}/${activeMilestones.length} Cleared\n`;
+    activeMilestones.forEach((m, idx) => {
+      text += `  ${m.isDone ? '✅' : '⏳'} Floor ${idx + 1}: ${m.title}\n`;
+    });
+
+    text += `\n⚡ **Active Kanban Tasks:** ${doneTs}/${activeTasks.length} Done\n`;
+    text += `👥 **Guild Team:** ${activeMembers.map((m) => m.name).join(', ') || 'Solo'}\n`;
+    text += `\n_Generated from College Life OS (Local-first & Offline)_`;
+
+    navigator.clipboard.writeText(text);
+    showToast('Formatted summary copied to clipboard! Ready to paste into Telegram.', 'success');
+  };
+
+  // INDIVIDUAL PROJECT DETAIL VIEW
   if (activeProject) {
     const course = activeProject.courseId ? courseMap.get(activeProject.courseId) : undefined;
     const progress = getProjectProgress(activeProject.id);
@@ -538,511 +438,186 @@ export const ProjectsPage: React.FC = () => {
 
     return (
       <div className="space-y-6 pb-24 animate-pop">
-        {/* Navigation Breadcrumb & Back Button */}
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <button
-            onClick={() => setSelectedProjectId(null)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface))] text-[rgb(var(--c-text))] hover:border-[#4FA3A5] font-heading font-bold text-xs shadow-2xs hover:shadow-xs transition active:scale-95 cursor-pointer"
-          >
-            <ChevronLeft className="w-4 h-4 text-[#4FA3A5]" />
-            <span>← Back to All Projects</span>
-          </button>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleCopyTelegramSummary}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-2xs cursor-pointer"
-              title="Copy formatted status report for Telegram or WhatsApp group chat"
-            >
-              <Share2 className="w-3.5 h-3.5 text-[#4FA3A5]" />
-              <span>Share Status</span>
-            </button>
-            <button
-              onClick={openEditModal}
-              className="p-1.5 rounded-full border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface))] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] transition cursor-pointer"
-              title="Edit Project Details"
-            >
-              <Edit3 className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setProjectToDelete(activeProject)}
-              className="p-1.5 rounded-full border border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-600 hover:bg-red-100 transition cursor-pointer"
-              title="Delete Project"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Project Hero Banner & Header */}
-        <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-5 sm:p-7 shadow-xs space-y-4 relative overflow-hidden">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                {course ? (
-                  <span
-                    className="px-2.5 py-0.5 rounded-full text-xs font-heading font-bold text-white shadow-2xs"
-                    style={{ backgroundColor: course.color || '#4FA3A5' }}
-                  >
-                    {course.code} — {course.name}
-                  </span>
-                ) : (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-heading font-bold bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-muted))]">
-                    General Project
-                  </span>
-                )}
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-heading font-bold uppercase tracking-wider bg-[#4FA3A5]/10 text-[#4FA3A5]">
-                  {activeProject.type} Project
-                </span>
-                {renderStatusBadge(activeProject.status)}
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-heading font-bold text-[rgb(var(--c-text))] pt-1">
-                {activeProject.title}
-              </h1>
-            </div>
-
-            {/* Quick Completion / Reopen CTA */}
-            <div className="shrink-0">
-              {isProjComplete ? (
-                <button
-                  onClick={() => handleUpdateStatus('active')}
-                  className="px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:bg-[rgb(var(--c-bg))] transition flex items-center gap-1.5"
-                >
-                  <RotateIcon />
-                  <span>Reopen Project</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => handleUpdateStatus('submitted')}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-heading text-xs font-bold shadow-xs hover:shadow-sm active:scale-95 transition flex items-center gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Mark Complete (+150 XP)</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Project Description */}
-          {activeProject.description && (
-            <div className="p-3.5 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-xs text-[rgb(var(--c-text))] font-flourish">
-              {activeProject.description}
-            </div>
-          )}
-
-          {/* Pipeline Stepper: Idea -> Planning -> Active -> Review -> Completed */}
-          <div className="pt-2">
-            <div className="text-[11px] font-heading font-bold uppercase tracking-wider text-[rgb(var(--c-muted))] mb-2 flex items-center justify-between">
-              <span>Pipeline Stage Progression</span>
-              <span className="text-[#4FA3A5]">{progress}% Cleared</span>
-            </div>
-            <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-              {[
-                { key: 'idea', label: '1. Idea' },
-                { key: 'planning', label: '2. Planning' },
-                { key: 'active', label: '3. In Progress' },
-                { key: 'review', label: '4. Review' },
-                { key: 'submitted', label: '5. Completed' },
-              ].map((step) => {
-                const isCurrent = activeProject.status === step.key || (step.key === 'submitted' && activeProject.status === 'graded');
-                return (
-                  <button
-                    key={step.key}
-                    onClick={() => handleUpdateStatus(step.key as Project['status'])}
-                    className={`py-2 px-1 text-center rounded-xl border text-[10px] sm:text-xs font-heading font-bold transition cursor-pointer truncate ${
-                      isCurrent
-                        ? 'border-[#4FA3A5] bg-[#4FA3A5] text-white shadow-xs ring-2 ring-[#4FA3A5]/30'
-                        : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] hover:border-[#4FA3A5]'
-                    }`}
-                  >
-                    {step.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Progress Bar & Key Stats */}
-          <div className="space-y-1.5 pt-1">
-            <div className="w-full h-2.5 bg-[rgb(var(--c-bg))] rounded-full overflow-hidden border border-[rgb(var(--c-border))] p-0.5">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  progress === 100 ? 'bg-emerald-500' : 'bg-[#4FA3A5]'
-                }`}
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between text-xs text-[rgb(var(--c-muted))] font-heading pt-1 flex-wrap gap-2">
-              <div className="flex items-center gap-3">
-                {activeProject.deadline && (
-                  <span className="flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-[#4FA3A5]" />
-                    <span>Deadline: {formatDisplayDate(activeProject.deadline)}</span>
-                  </span>
-                )}
-                {activeProject.weight && (
-                  <span>Academic Weight: {activeProject.weight}% of Course Grade</span>
-                )}
-              </div>
-              <div>{getDeadlineBadge(activeProject.deadline)}</div>
-            </div>
-          </div>
-        </div>
+        {/* Detail Hero Banner */}
+        <ProjectDetailHero
+          project={activeProject}
+          course={course}
+          progress={progress}
+          isCompleted={isProjComplete}
+          onBack={() => setSelectedProjectId(null)}
+          onShareStatus={handleCopyTelegramSummary}
+          onEdit={openEditModal}
+          onDelete={() => setProjectToDelete(activeProject)}
+          onUpdateStatus={handleUpdateStatus}
+          renderStatusBadge={renderStatusBadge}
+          getDeadlineBadge={getDeadlineBadge}
+        />
 
         {/* Section 1: Dungeon Floors (Milestones) */}
-        <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-5 sm:p-6 shadow-2xs space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-[#4FA3A5]/15 text-[#4FA3A5] flex items-center justify-center">
-                <Compass className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
-                  Dungeon Floors &amp; Key Milestones
-                </h3>
-                <p className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
-                  Clear floors in sequence to progress through the dungeon (+75 Teamwork XP per floor)
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setIsNewMilestoneModalOpen(true)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#4FA3A5] text-white font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-2xs cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Floor</span>
-            </button>
-          </div>
-
-          <div className="space-y-2.5">
-            {activeMilestones.length === 0 ? (
-              <div className="p-4 text-center rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-xs text-[rgb(var(--c-muted))] font-flourish">
-                No dungeon floor milestones defined yet. Click &quot;Add Floor&quot; to establish your deliverables.
-              </div>
-            ) : (
-              activeMilestones.map((m, idx) => (
-                <div
-                  key={m.id}
-                  className={`flex items-center justify-between p-3.5 rounded-2xl border transition group ${
-                    m.isDone
-                      ? 'border-emerald-500/50 bg-emerald-50/50 dark:bg-emerald-950/20'
-                      : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] hover:border-[#4FA3A5]'
-                  }`}
-                >
-                  <div
-                    onClick={() => handleToggleMilestone(m)}
-                    className="flex items-center gap-3 cursor-pointer flex-1 min-w-0"
-                  >
-                    {m.isDone ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                    ) : (
-                      <Circle className="w-5 h-5 text-stone-400 group-hover:text-[#4FA3A5] shrink-0 transition" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div
-                        className={`text-xs sm:text-sm font-heading font-bold truncate ${
-                          m.isDone ? 'line-through text-[rgb(var(--c-muted))]' : 'text-[rgb(var(--c-text))]'
-                        }`}
-                      >
-                        {m.title}
-                      </div>
-                      <div className="text-[10px] text-[rgb(var(--c-muted))] font-heading">
-                        Dungeon Floor #{idx + 1} {m.isDone ? '• Cleared' : '• In Progress'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 pl-2 shrink-0">
-                    <span className="text-[10px] font-heading font-bold text-[rgb(var(--c-xp))]">
-                      +75 XP
-                    </span>
-                    <button
-                      onClick={() => handleDeleteMilestone(m)}
-                      className="p-1 text-[rgb(var(--c-muted))] hover:text-red-500 opacity-60 group-hover:opacity-100 transition cursor-pointer"
-                      title="Delete Floor"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        <ProjectMilestonesSection
+          milestones={activeMilestones}
+          onToggleMilestone={handleToggleMilestone}
+          onDeleteMilestone={handleDeleteMilestone}
+          onOpenAddMilestoneModal={() => setIsNewMilestoneModalOpen(true)}
+        />
 
         {/* Section 2: Touch-Safe Execution Kanban Pipeline */}
-        <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-5 sm:p-6 shadow-2xs space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-[#4FA3A5]/15 text-[#4FA3A5] flex items-center justify-center">
-                <Layers className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
-                  Execution Pipeline Kanban
-                </h3>
-                <p className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
-                  Move granular subtasks across the four pipeline stations
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setIsNewTaskModalOpen(true)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#4FA3A5] text-white font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition shadow-2xs cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Task</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            {(['todo', 'doing', 'review', 'done'] as const).map((col) => {
-              const colTasks = activeTasks.filter((t) => t.column === col);
-              const colLabels: Record<string, string> = {
-                todo: 'To Do',
-                doing: 'In Progress',
-                review: 'Review',
-                done: 'Done',
-              };
-
-              return (
-                <div
-                  key={col}
-                  className="p-3.5 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-2.5 flex flex-col min-h-[160px]"
-                >
-                  <div className="flex items-center justify-between text-xs font-heading font-bold uppercase tracking-wider text-[rgb(var(--c-muted))]">
-                    <span>{colLabels[col]}</span>
-                    <span className="px-2 py-0.5 rounded-full bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] text-[10px] text-[rgb(var(--c-text))]">
-                      {colTasks.length}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 flex-1">
-                    {colTasks.length === 0 ? (
-                      <div className="h-full min-h-[60px] flex items-center justify-center text-[11px] text-[rgb(var(--c-muted))] font-flourish">
-                        Empty station
-                      </div>
-                    ) : (
-                      colTasks.map((t) => (
-                        <div
-                          key={t.id}
-                          className="p-2.5 rounded-xl bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] shadow-2xs space-y-1.5"
-                        >
-                          <div className="flex items-start justify-between gap-1">
-                            <span className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
-                              {t.title}
-                            </span>
-                            <button
-                              onClick={() => handleDeleteTask(t.id)}
-                              className="text-[rgb(var(--c-muted))] hover:text-red-500 p-0.5 transition cursor-pointer"
-                              title="Delete task"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-
-                          {/* Quick Move Buttons */}
-                          <div className="flex items-center justify-between pt-1 border-t border-[rgb(var(--c-border))]/60 text-[9px] text-[rgb(var(--c-muted))]">
-                            <span className="font-heading">Move:</span>
-                            <div className="flex gap-1 flex-wrap">
-                              {col !== 'todo' && (
-                                <button
-                                  onClick={() => handleMoveTask(t.id, 'todo')}
-                                  className="px-1.5 py-0.5 rounded bg-[rgb(var(--c-surface2))] hover:bg-[#4FA3A5] hover:text-white transition cursor-pointer"
-                                >
-                                  To Do
-                                </button>
-                              )}
-                              {col !== 'doing' && (
-                                <button
-                                  onClick={() => handleMoveTask(t.id, 'doing')}
-                                  className="px-1.5 py-0.5 rounded bg-[rgb(var(--c-surface2))] hover:bg-[#4FA3A5] hover:text-white transition cursor-pointer"
-                                >
-                                  Doing
-                                </button>
-                              )}
-                              {col !== 'review' && (
-                                <button
-                                  onClick={() => handleMoveTask(t.id, 'review')}
-                                  className="px-1.5 py-0.5 rounded bg-[rgb(var(--c-surface2))] hover:bg-purple-600 hover:text-white transition cursor-pointer"
-                                >
-                                  Review
-                                </button>
-                              )}
-                              {col !== 'done' && (
-                                <button
-                                  onClick={() => handleMoveTask(t.id, 'done')}
-                                  className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-600 hover:text-white transition cursor-pointer font-bold"
-                                >
-                                  Done
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <ProjectKanbanBoard
+          tasks={activeTasks}
+          onMoveTask={handleMoveTask}
+          onDeleteTask={handleDeleteTask}
+          onOpenAddTaskModal={() => setIsNewTaskModalOpen(true)}
+        />
 
         {/* Section 3: Guild Members (Teammates) */}
-        <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-5 sm:p-6 shadow-2xs space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-[#4FA3A5]/15 text-[#4FA3A5] flex items-center justify-center">
-                <Users className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="font-heading text-sm font-bold text-[rgb(var(--c-text))]">
-                  Guild Companions &amp; Team Members
-                </h3>
-                <p className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
-                  Assigned teammates, contacts and guild roles
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setIsNewMemberModalOpen(true)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-heading text-xs font-bold hover:border-[#4FA3A5] transition shadow-2xs cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Teammate</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {activeMembers.length === 0 ? (
-              <div className="sm:col-span-3 p-4 text-center rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-xs text-[rgb(var(--c-muted))] font-flourish">
-                Solo expedition or no comrades logged yet. Add your team members above!
-              </div>
-            ) : (
-              activeMembers.map((m) => (
-                <div
-                  key={m.id}
-                  className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] flex items-center justify-between gap-2"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center font-heading font-bold text-xs text-white shrink-0"
-                      style={{ backgroundColor: m.color || '#4FA3A5' }}
-                    >
-                      {m.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))] truncate">
-                        {m.name}
-                      </div>
-                      <div className="text-[10px] text-[rgb(var(--c-muted))] truncate">
-                        {m.role} {m.contact ? `• ${m.contact}` : ''}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => db.projectMembers.delete(m.id)}
-                    className="text-[rgb(var(--c-muted))] hover:text-red-500 p-1 transition cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        <ProjectTeamSection
+          members={activeMembers}
+          onOpenAddMemberModal={() => setIsNewMemberModalOpen(true)}
+          onDeleteMember={(id) => db.projectMembers.delete(id)}
+        />
 
         {/* Modals for Detail View */}
-        {renderDetailModals()}
+        <EditProjectModal
+          isOpen={isEditProjectModalOpen}
+          onClose={() => setIsEditProjectModalOpen(false)}
+          editTitle={editTitle}
+          setEditTitle={setEditTitle}
+          editCourseId={editCourseId}
+          setEditCourseId={setEditCourseId}
+          courses={courses}
+          editType={editType}
+          setEditType={setEditType}
+          editStatus={editStatus}
+          setEditStatus={setEditStatus}
+          editDescription={editDescription}
+          setEditDescription={setEditDescription}
+          editDeadline={editDeadline}
+          setEditDeadline={setEditDeadline}
+          onSubmit={handleSaveEditProject}
+        />
+
+        <AddMilestoneModal
+          isOpen={isNewMilestoneModalOpen}
+          onClose={() => setIsNewMilestoneModalOpen(false)}
+          title={newMilestoneTitle}
+          setTitle={setNewMilestoneTitle}
+          onSubmit={handleCreateMilestone}
+        />
+
+        <AddTaskModal
+          isOpen={isNewTaskModalOpen}
+          onClose={() => setIsNewTaskModalOpen(false)}
+          title={newTaskTitle}
+          setTitle={setNewTaskTitle}
+          column={newTaskColumn}
+          setColumn={setNewTaskColumn}
+          onSubmit={handleCreateTask}
+        />
+
+        <AddMemberModal
+          isOpen={isNewMemberModalOpen}
+          onClose={() => setIsNewMemberModalOpen(false)}
+          name={newMemberName}
+          setName={setNewMemberName}
+          role={newMemberRole}
+          setRole={setNewMemberRole}
+          contact={newMemberContact}
+          setContact={setNewMemberContact}
+          onSubmit={handleCreateMember}
+        />
+
+        <DeleteProjectModal
+          project={projectToDelete}
+          onCancel={() => setProjectToDelete(null)}
+          onConfirm={handleConfirmDeleteProject}
+        />
       </div>
     );
   }
 
-  // ==========================================
-  // VIEW: PROJECT OVERVIEW (DEFAULT)
-  // ==========================================
+  // OVERVIEW VIEW: ALL PROJECTS
   return (
     <div className="space-y-6 pb-24 animate-pop">
       {/* Overview Top Header Banner */}
-      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-6 sm:p-8 relative overflow-hidden shadow-xs">
+      <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-5 sm:p-7 relative overflow-hidden shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="text-[10px] uppercase font-heading tracking-widest text-[#4FA3A5] font-bold flex items-center gap-1.5">
-              <Compass className="w-4 h-4" />
-              <span>Project Management Command &amp; Dungeons</span>
+          <div>
+            <div className="flex items-center gap-2 text-xs font-heading uppercase tracking-wider text-[#4FA3A5] font-bold">
+              <FolderGit2 className="w-4 h-4" />
+              <span>Project Dungeons &amp; Team Quests</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-heading font-bold text-[rgb(var(--c-text))] tracking-wide">
-              Academic Projects &amp; Guild Endeavors
+            <h1 className="text-xl sm:text-2xl font-heading font-bold text-[rgb(var(--c-text))] mt-1">
+              Academic Projects &amp; Lab Guilds
             </h1>
-            <p className="text-xs sm:text-sm text-[rgb(var(--c-muted))] font-flourish">
-              Track multi-stage milestones, Kanban execution pipelines &amp; group team deliverables
+            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish mt-0.5">
+              Organize term assignments, group reports, capstones, and lab pipelines with clear milestones
             </p>
           </div>
 
-          <div className="shrink-0">
-            <button
-              onClick={openCreateModal}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-[#4FA3A5] hover:opacity-95 text-white font-heading text-xs font-bold shadow-xs hover:shadow-sm active:scale-95 transition cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Project</span>
-            </button>
-          </div>
+          <button
+            onClick={openCreateModal}
+            className="px-4 py-2.5 rounded-2xl bg-[#4FA3A5] text-white font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Commission Project</span>
+          </button>
         </div>
 
         {/* Stats Summary Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-[rgb(var(--c-border))]/60">
-          <div className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))]">
-            <div className="text-[10px] font-heading text-[rgb(var(--c-muted))] uppercase font-bold">
-              Total Endeavors
-            </div>
-            <div className="text-xl font-heading font-bold text-[rgb(var(--c-text))] mt-0.5">
-              {projects.length}
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))]">
-            <div className="text-[10px] font-heading text-sky-600 dark:text-sky-400 uppercase font-bold">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 mt-4 border-t border-[rgb(var(--c-border))]/60">
+          <div className="p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-center">
+            <span className="text-[10px] font-heading uppercase text-[rgb(var(--c-muted))] font-bold block">
               In Progress
-            </div>
-            <div className="text-xl font-heading font-bold text-sky-600 dark:text-sky-400 mt-0.5">
+            </span>
+            <span className="text-lg font-heading font-bold text-[#4FA3A5]">
               {inProgressProjects.length}
-            </div>
+            </span>
           </div>
-          <div className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))]">
-            <div className="text-[10px] font-heading text-amber-600 dark:text-amber-400 uppercase font-bold">
-              Unstarted / Planning
-            </div>
-            <div className="text-xl font-heading font-bold text-amber-600 dark:text-amber-400 mt-0.5">
+
+          <div className="p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-center">
+            <span className="text-[10px] font-heading uppercase text-[rgb(var(--c-muted))] font-bold block">
+              Planning / Ideas
+            </span>
+            <span className="text-lg font-heading font-bold text-amber-500">
               {unstartedProjects.length}
-            </div>
+            </span>
           </div>
-          <div className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))]">
-            <div className="text-[10px] font-heading text-emerald-600 dark:text-emerald-400 uppercase font-bold">
+
+          <div className="p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-center">
+            <span className="text-[10px] font-heading uppercase text-[rgb(var(--c-muted))] font-bold block">
               Completed
-            </div>
-            <div className="text-xl font-heading font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
+            </span>
+            <span className="text-lg font-heading font-bold text-emerald-500">
               {completedProjects.length}
-            </div>
+            </span>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-center">
+            <span className="text-[10px] font-heading uppercase text-[rgb(var(--c-muted))] font-bold block">
+              Total Dungeons
+            </span>
+            <span className="text-lg font-heading font-bold text-[rgb(var(--c-text))]">
+              {projects.length}
+            </span>
           </div>
         </div>
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
         {[
           { key: 'all', label: `All Projects (${projects.length})` },
           { key: 'in_progress', label: `In Progress (${inProgressProjects.length})` },
-          { key: 'unstarted', label: `Unstarted (${unstartedProjects.length})` },
+          { key: 'unstarted', label: `Planning (${unstartedProjects.length})` },
           { key: 'completed', label: `Completed (${completedProjects.length})` },
         ].map((tab) => (
           <button
             key={tab.key}
             onClick={() => setOverviewTab(tab.key as any)}
-            className={`px-4 py-2 rounded-xl text-xs font-heading font-bold border transition whitespace-nowrap cursor-pointer ${
+            className={`px-3 py-1.5 rounded-full text-xs font-heading font-bold whitespace-nowrap transition cursor-pointer ${
               overviewTab === tab.key
-                ? 'border-[#4FA3A5] bg-[#4FA3A5] text-white shadow-xs'
-                : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface))] text-[rgb(var(--c-text))] hover:border-[#4FA3A5]'
+                ? 'bg-[#4FA3A5] text-white shadow-2xs'
+                : 'bg-[rgb(var(--c-surface))] text-[rgb(var(--c-muted))] border border-[rgb(var(--c-border))] hover:border-[#4FA3A5]'
             }`}
           >
             {tab.label}
@@ -1052,648 +627,127 @@ export const ProjectsPage: React.FC = () => {
 
       {/* Overview Sections */}
       {projects.length === 0 ? (
-        <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-12 text-center space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-[#4FA3A5]/15 text-[#4FA3A5] mx-auto flex items-center justify-center">
-            <FolderGit2 className="w-7 h-7" />
+        <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-10 text-center space-y-3 shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-[#4FA3A5]/10 text-[#4FA3A5] flex items-center justify-center mx-auto">
+            <Layers className="w-6 h-6" />
           </div>
-          <div>
-            <h3 className="text-base font-heading font-bold text-[rgb(var(--c-text))]">
-              No Projects Registered Yet
-            </h3>
-            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish max-w-sm mx-auto mt-1">
-              Create your first team dungeon, research proposal, or engineering term assignment.
-            </p>
-          </div>
+          <h3 className="text-base font-heading font-bold text-[rgb(var(--c-text))]">
+            No Project Dungeons Commenced
+          </h3>
+          <p className="text-xs text-[rgb(var(--c-muted))] font-flourish max-w-sm mx-auto">
+            Break down intimidating term projects into clear milestone floors and actionable kanban subtasks.
+          </p>
           <button
             onClick={openCreateModal}
-            className="px-5 py-2.5 rounded-2xl bg-[#4FA3A5] text-white font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition"
+            className="mt-2 px-5 py-2.5 rounded-2xl bg-[#4FA3A5] text-white font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition inline-flex items-center gap-1.5 cursor-pointer"
           >
-            + Create First Project
+            <Plus className="w-4 h-4" />
+            <span>Create First Project</span>
           </button>
         </div>
       ) : (
-        <div className="space-y-8">
-          {/* SECTION 1: IN PROGRESS / PENDING */}
-          {(overviewTab === 'all' || overviewTab === 'in_progress') && (
-            <div className="space-y-3.5">
-              <div className="flex items-center justify-between pb-2 border-b border-[rgb(var(--c-border))]">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-sky-500 animate-pulse" />
-                  <h2 className="text-sm font-heading font-bold uppercase tracking-wider text-[rgb(var(--c-text))]">
-                    In Progress &amp; Active Dungeons
-                  </h2>
-                </div>
-                <span className="text-xs font-heading font-bold text-sky-600 dark:text-sky-400">
-                  {inProgressProjects.length} active
-                </span>
+        <div className="space-y-6">
+          {/* SECTION 1: IN PROGRESS */}
+          {(overviewTab === 'all' || overviewTab === 'in_progress') && inProgressProjects.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs font-heading font-bold text-[rgb(var(--c-muted))] uppercase tracking-wider">
+                <span>Active Expeditions ({inProgressProjects.length})</span>
               </div>
-
-              {inProgressProjects.length === 0 ? (
-                <div className="p-6 rounded-2xl bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] text-center text-xs text-[rgb(var(--c-muted))] font-flourish">
-                  No active projects currently underway.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {inProgressProjects.map(renderProjectCard)}
-                </div>
-              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {inProgressProjects.map((p) => (
+                  <ProjectCard
+                    key={p.id}
+                    project={p}
+                    course={p.courseId ? courseMap.get(p.courseId) : undefined}
+                    progress={getProjectProgress(p.id)}
+                    milestones={milestones}
+                    tasks={projectTasks}
+                    onSelectProject={setSelectedProjectId}
+                    renderStatusBadge={renderStatusBadge}
+                    getDeadlineBadge={getDeadlineBadge}
+                  />
+                ))}
+              </div>
             </div>
           )}
 
           {/* SECTION 2: UNSTARTED / PLANNING */}
-          {(overviewTab === 'all' || overviewTab === 'unstarted') && (
-            <div className="space-y-3.5">
-              <div className="flex items-center justify-between pb-2 border-b border-[rgb(var(--c-border))]">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-amber-500" />
-                  <h2 className="text-sm font-heading font-bold uppercase tracking-wider text-[rgb(var(--c-text))]">
-                    Unstarted &amp; Planning Phase
-                  </h2>
-                </div>
-                <span className="text-xs font-heading font-bold text-amber-600 dark:text-amber-400">
-                  {unstartedProjects.length} queued
-                </span>
+          {(overviewTab === 'all' || overviewTab === 'unstarted') && unstartedProjects.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs font-heading font-bold text-[rgb(var(--c-muted))] uppercase tracking-wider">
+                <span>Planning &amp; Idea Stage ({unstartedProjects.length})</span>
               </div>
-
-              {unstartedProjects.length === 0 ? (
-                <div className="p-6 rounded-2xl bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] text-center text-xs text-[rgb(var(--c-muted))] font-flourish">
-                  No unstarted or planning projects.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {unstartedProjects.map(renderProjectCard)}
-                </div>
-              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {unstartedProjects.map((p) => (
+                  <ProjectCard
+                    key={p.id}
+                    project={p}
+                    course={p.courseId ? courseMap.get(p.courseId) : undefined}
+                    progress={getProjectProgress(p.id)}
+                    milestones={milestones}
+                    tasks={projectTasks}
+                    onSelectProject={setSelectedProjectId}
+                    renderStatusBadge={renderStatusBadge}
+                    getDeadlineBadge={getDeadlineBadge}
+                  />
+                ))}
+              </div>
             </div>
           )}
 
           {/* SECTION 3: COMPLETED */}
-          {(overviewTab === 'all' || overviewTab === 'completed') && (
-            <div className="space-y-3.5">
-              <div className="flex items-center justify-between pb-2 border-b border-[rgb(var(--c-border))]">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                  <h2 className="text-sm font-heading font-bold uppercase tracking-wider text-[rgb(var(--c-text))]">
-                    Completed &amp; Submitted Archives
-                  </h2>
-                </div>
-                <span className="text-xs font-heading font-bold text-emerald-600 dark:text-emerald-400">
-                  {completedProjects.length} completed
-                </span>
+          {(overviewTab === 'all' || overviewTab === 'completed') && completedProjects.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs font-heading font-bold text-[rgb(var(--c-muted))] uppercase tracking-wider">
+                <span>Completed Quests ({completedProjects.length})</span>
               </div>
-
-              {completedProjects.length === 0 ? (
-                <div className="p-6 rounded-2xl bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] text-center text-xs text-[rgb(var(--c-muted))] font-flourish">
-                  No completed projects yet. Advance tasks to clear projects!
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {completedProjects.map(renderProjectCard)}
-                </div>
-              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {completedProjects.map((p) => (
+                  <ProjectCard
+                    key={p.id}
+                    project={p}
+                    course={p.courseId ? courseMap.get(p.courseId) : undefined}
+                    progress={getProjectProgress(p.id)}
+                    milestones={milestones}
+                    tasks={projectTasks}
+                    onSelectProject={setSelectedProjectId}
+                    renderStatusBadge={renderStatusBadge}
+                    getDeadlineBadge={getDeadlineBadge}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Create Project Modal */}
-      {isNewProjectModalOpen && renderCreateModal()}
+      {/* Modals for Overview */}
+      <CreateProjectModal
+        isOpen={isNewProjectModalOpen}
+        onClose={() => setIsNewProjectModalOpen(false)}
+        title={title}
+        setTitle={setTitle}
+        courseId={courseId}
+        setCourseId={setCourseId}
+        courses={courses}
+        projectType={projectType}
+        setProjectType={setProjectType}
+        projectStatus={projectStatus}
+        setProjectStatus={setProjectStatus}
+        description={description}
+        setDescription={setDescription}
+        deadline={deadline}
+        setDeadline={setDeadline}
+        weight={weight}
+        setWeight={setWeight}
+        onSubmit={handleCreateProject}
+      />
 
-      {/* Delete Confirmation Modal */}
-      {projectToDelete && renderDeleteModal()}
+      <DeleteProjectModal
+        project={projectToDelete}
+        onCancel={() => setProjectToDelete(null)}
+        onConfirm={handleConfirmDeleteProject}
+      />
     </div>
   );
-
-  // ==========================================
-  // HELPER MODAL RENDERERS
-  // ==========================================
-  function renderCreateModal() {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-        <div className="relative w-full max-w-lg bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-primary))] rounded-3xl shadow-2xl p-6 text-[rgb(var(--c-text))] space-y-4 max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-[#4FA3A5]/15 text-[#4FA3A5] flex items-center justify-center">
-                <FolderGit2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-heading text-base font-bold text-[rgb(var(--c-text))]">
-                  Commission New Project
-                </h3>
-                <p className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
-                  Establish objectives, academic affiliation and pipeline
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setIsNewProjectModalOpen(false)}
-              className="p-1 rounded-full text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <form onSubmit={handleCreateProject} className="space-y-3.5">
-            <div>
-              <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                Project Title *
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Autonomous Line-Follower Rover"
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:border-[#4FA3A5] focus:outline-none"
-                required
-                autoFocus
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                  Course
-                </label>
-                <select
-                  value={courseId}
-                  onChange={(e) => setCourseId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:border-[#4FA3A5] focus:outline-none"
-                >
-                  <option value="">General Project / Extracurricular</option>
-                  {courses.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.code} — {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                  Project Type
-                </label>
-                <select
-                  value={projectType}
-                  onChange={(e) => setProjectType(e.target.value as any)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:border-[#4FA3A5] focus:outline-none"
-                >
-                  <option value="group">Group Project</option>
-                  <option value="assignment">Term Assignment</option>
-                  <option value="lab">Lab Project</option>
-                  <option value="research">Research Proposal</option>
-                  <option value="final">Final Capstone</option>
-                  <option value="design">Design Studio</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                  Initial Status
-                </label>
-                <select
-                  value={projectStatus}
-                  onChange={(e) => setProjectStatus(e.target.value as any)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:border-[#4FA3A5] focus:outline-none"
-                >
-                  <option value="planning">Planning (Unstarted)</option>
-                  <option value="idea">Idea (Unstarted)</option>
-                  <option value="active">Active (In Progress)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                  Submission Deadline
-                </label>
-                <input
-                  type="date"
-                  value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:border-[#4FA3A5] focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                Description &amp; Deliverables
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                placeholder="Core objectives, system architecture, expected deliverables..."
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:border-[#4FA3A5] focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                Academic Weight (% of final course grade)
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={weight === '' || isNaN(Number(weight)) ? '' : weight}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setWeight(val === '' ? '' : isNaN(Number(val)) ? '' : Number(val));
-                }}
-                placeholder="e.g. 25"
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:border-[#4FA3A5] focus:outline-none"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[rgb(var(--c-border))]">
-              <button
-                type="button"
-                onClick={() => setIsNewProjectModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))] text-xs font-heading"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2.5 rounded-xl bg-[#4FA3A5] text-white font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition"
-              >
-                Construct Project Dungeon
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  function renderDeleteModal() {
-    if (!projectToDelete) return null;
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-        <div className="relative w-full max-w-md bg-[rgb(var(--c-surface))] border-2 border-red-400 rounded-3xl shadow-2xl p-6 text-[rgb(var(--c-text))] space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-red-100 dark:bg-red-950/60 text-red-600 flex items-center justify-center shrink-0">
-              <Trash2 className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-heading text-base font-bold text-[rgb(var(--c-text))]">
-                Delete Project?
-              </h3>
-              <p className="text-xs text-[rgb(var(--c-muted))]">
-                This will delete &ldquo;{projectToDelete.title}&rdquo; and its milestones.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <button
-              onClick={() => setProjectToDelete(null)}
-              className="px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading text-[rgb(var(--c-muted))]"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleConfirmDeleteProject}
-              className="px-5 py-2 rounded-xl bg-red-600 text-white text-xs font-heading font-bold hover:bg-red-700 transition"
-            >
-              Confirm Delete
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function renderDetailModals() {
-    return (
-      <>
-        {/* Edit Project Modal */}
-        {isEditProjectModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-            <div className="relative w-full max-w-lg bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-primary))] rounded-3xl shadow-2xl p-6 text-[rgb(var(--c-text))] space-y-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-[rgb(var(--c-border))]">
-                <div className="font-heading text-base font-bold text-[rgb(var(--c-text))]">
-                  Edit Project Details
-                </div>
-                <button onClick={() => setIsEditProjectModalOpen(false)}>
-                  <X className="w-4 h-4 text-[rgb(var(--c-muted))]" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveEditProject} className="space-y-3.5">
-                <div>
-                  <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                    Title
-                  </label>
-                  <input
-                    type="text"
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                      Course
-                    </label>
-                    <select
-                      value={editCourseId}
-                      onChange={(e) => setEditCourseId(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    >
-                      <option value="">General Project</option>
-                      {courses.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.code} — {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                      Type
-                    </label>
-                    <select
-                      value={editType}
-                      onChange={(e) => setEditType(e.target.value as any)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    >
-                      <option value="group">Group Project</option>
-                      <option value="assignment">Assignment</option>
-                      <option value="lab">Lab</option>
-                      <option value="research">Research</option>
-                      <option value="final">Final Capstone</option>
-                      <option value="design">Design Studio</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                      Status
-                    </label>
-                    <select
-                      value={editStatus}
-                      onChange={(e) => setEditStatus(e.target.value as any)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    >
-                      <option value="idea">Idea</option>
-                      <option value="planning">Planning</option>
-                      <option value="active">Active</option>
-                      <option value="review">Review</option>
-                      <option value="submitted">Submitted</option>
-                      <option value="graded">Graded</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                      Deadline
-                    </label>
-                    <input
-                      type="date"
-                      value={editDeadline}
-                      onChange={(e) => setEditDeadline(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={editDescription}
-                    onChange={(e) => setEditDescription(e.target.value)}
-                    rows={3}
-                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-[rgb(var(--c-border))]">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditProjectModalOpen(false)}
-                    className="px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 rounded-xl bg-[#4FA3A5] text-white text-xs font-heading font-bold"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Add Milestone Modal */}
-        {isNewMilestoneModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-            <div className="relative w-full max-w-sm bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-primary))] rounded-3xl shadow-2xl p-5 text-[rgb(var(--c-text))] space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-[rgb(var(--c-border))]">
-                <div className="font-heading text-sm font-bold">Add Dungeon Floor Milestone</div>
-                <button onClick={() => setIsNewMilestoneModalOpen(false)}>
-                  <X className="w-4 h-4 text-[rgb(var(--c-muted))]" />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateMilestone} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                    Milestone Title *
-                  </label>
-                  <input
-                    type="text"
-                    value={newMilestoneTitle}
-                    onChange={(e) => setNewMilestoneTitle(e.target.value)}
-                    placeholder="e.g. Floor 4: Final Benchmarking & Stress Testing"
-                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    required
-                    autoFocus
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsNewMilestoneModalOpen(false)}
-                    className="px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 rounded-xl bg-[#4FA3A5] text-white text-xs font-heading font-bold"
-                  >
-                    Add Floor
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Add Task Modal */}
-        {isNewTaskModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-            <div className="relative w-full max-w-sm bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-primary))] rounded-3xl shadow-2xl p-5 text-[rgb(var(--c-text))] space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-[rgb(var(--c-border))]">
-                <div className="font-heading text-sm font-bold">Add Task to Pipeline</div>
-                <button onClick={() => setIsNewTaskModalOpen(false)}>
-                  <X className="w-4 h-4 text-[rgb(var(--c-muted))]" />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateTask} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                    Task Title *
-                  </label>
-                  <input
-                    type="text"
-                    value={newTaskTitle}
-                    onChange={(e) => setNewTaskTitle(e.target.value)}
-                    placeholder="e.g. Solder motor driver pin headers"
-                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    required
-                    autoFocus
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                    Pipeline Station
-                  </label>
-                  <select
-                    value={newTaskColumn}
-                    onChange={(e) => setNewTaskColumn(e.target.value as any)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                  >
-                    <option value="todo">To Do</option>
-                    <option value="doing">In Progress</option>
-                    <option value="review">Review</option>
-                    <option value="done">Done</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsNewTaskModalOpen(false)}
-                    className="px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 rounded-xl bg-[#4FA3A5] text-white text-xs font-heading font-bold"
-                  >
-                    Add to Pipeline
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Add Member Modal */}
-        {isNewMemberModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-            <div className="relative w-full max-w-sm bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-primary))] rounded-3xl shadow-2xl p-5 text-[rgb(var(--c-text))] space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-[rgb(var(--c-border))]">
-                <div className="font-heading text-sm font-bold">Enlist Guild Teammate</div>
-                <button onClick={() => setIsNewMemberModalOpen(false)}>
-                  <X className="w-4 h-4 text-[rgb(var(--c-muted))]" />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateMember} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                    Teammate Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={newMemberName}
-                    onChange={(e) => setNewMemberName(e.target.value)}
-                    placeholder="e.g. Henok"
-                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                    required
-                    autoFocus
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                    Guild Role
-                  </label>
-                  <input
-                    type="text"
-                    value={newMemberRole}
-                    onChange={(e) => setNewMemberRole(e.target.value)}
-                    placeholder="e.g. Hardware & Soldering"
-                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-heading font-bold text-[rgb(var(--c-muted))] mb-1">
-                    Contact / Telegram Handle
-                  </label>
-                  <input
-                    type="text"
-                    value={newMemberContact}
-                    onChange={(e) => setNewMemberContact(e.target.value)}
-                    placeholder="e.g. @henok_dev or phone"
-                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]"
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsNewMemberModalOpen(false)}
-                    className="px-4 py-2 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 rounded-xl bg-[#4FA3A5] text-white text-xs font-heading font-bold"
-                  >
-                    Enlist Teammate
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Delete Modal */}
-        {projectToDelete && renderDeleteModal()}
-      </>
-    );
-  }
 };
-
-function RotateIcon() {
-  return (
-    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-      <path d="M3 3v5h5" />
-      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-      <path d="M16 21h5v-5" />
-    </svg>
-  );
-}

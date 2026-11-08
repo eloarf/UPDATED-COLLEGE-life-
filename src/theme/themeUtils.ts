@@ -537,6 +537,21 @@ export function applyAppearanceStyles(options?: AppearanceOptions) {
   }
 }
 
+export function applyReduceAnimations(reduce: boolean) {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  if (reduce) {
+    root.classList.add('reduce-motion');
+  } else {
+    root.classList.remove('reduce-motion');
+  }
+  try {
+    localStorage.setItem('college_os_reduce_animations', reduce ? '1' : '0');
+  } catch {
+    // Ignore
+  }
+}
+
 
 export interface CourseNeonColor {
   hex: string;

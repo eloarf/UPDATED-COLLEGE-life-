@@ -581,6 +581,7 @@ export interface AppSettings {
   fontStyle?: 'serif' | 'sans';
   layoutDensity?: 'comfortable' | 'compact';
   cardBorderGlow?: boolean;
+  reduceAnimations?: boolean;
   pageAccents: Record<string, string>;
   pinLock?: string;
   storageProtected: boolean;

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useUiStore } from './store/uiStore';
 import { initializeDatabase, db, saveEmergencyBackup } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { applyTheme, applyAppearanceStyles, applyAppearanceMode, applyDesignStyle } from './theme/themeUtils';
+import { applyTheme, applyAppearanceStyles, applyAppearanceMode, applyDesignStyle, applyReduceAnimations } from './theme/themeUtils';
 import { initializeNotificationFoundation } from './services/notificationService';
 import { reconcileAllReminders } from './services/reminderEngine';
 
@@ -22,25 +22,36 @@ import { OfflineIndicator } from './components/common/OfflineIndicator';
 
 // Pages
 import { LobbyPage } from './pages/LobbyPage';
-import { TimetablePage } from './pages/TimetablePage';
-import { CoursesPage } from './pages/CoursesPage';
-import { QuestsPage } from './pages/QuestsPage';
-import { ExamsPage } from './pages/ExamsPage';
-import { ProjectsPage } from './pages/ProjectsPage';
-import { FocusPage } from './pages/FocusPage';
-import { HabitsPage } from './pages/HabitsPage';
-import { JournalPage } from './pages/JournalPage';
-import { MasterWeekPage } from './pages/MasterWeekPage';
-import { CalendarPage } from './pages/CalendarPage';
-import { GradesPage } from './pages/GradesPage';
-import { FinancePage } from './pages/FinancePage';
-import { StudioPage } from './pages/StudioPage';
-import { LibraryPage } from './pages/LibraryPage';
-import { LevelsPage } from './pages/LevelsPage';
-import { RitualsPage } from './pages/RitualsPage';
-import { ThemesPage } from './pages/ThemesPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { StatisticsPage } from './pages/StatisticsPage';
+
+// Lazy-loaded pages for mobile performance and fast initial load
+const TimetablePage = React.lazy(() => import('./pages/TimetablePage').then((m) => ({ default: m.TimetablePage })));
+const CoursesPage = React.lazy(() => import('./pages/CoursesPage').then((m) => ({ default: m.CoursesPage })));
+const QuestsPage = React.lazy(() => import('./pages/QuestsPage').then((m) => ({ default: m.QuestsPage })));
+const ExamsPage = React.lazy(() => import('./pages/ExamsPage').then((m) => ({ default: m.ExamsPage })));
+const ProjectsPage = React.lazy(() => import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })));
+const FocusPage = React.lazy(() => import('./pages/FocusPage').then((m) => ({ default: m.FocusPage })));
+const HabitsPage = React.lazy(() => import('./pages/HabitsPage').then((m) => ({ default: m.HabitsPage })));
+const JournalPage = React.lazy(() => import('./pages/JournalPage').then((m) => ({ default: m.JournalPage })));
+const MasterWeekPage = React.lazy(() => import('./pages/MasterWeekPage').then((m) => ({ default: m.MasterWeekPage })));
+const CalendarPage = React.lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
+const GradesPage = React.lazy(() => import('./pages/GradesPage').then((m) => ({ default: m.GradesPage })));
+const FinancePage = React.lazy(() => import('./pages/FinancePage').then((m) => ({ default: m.FinancePage })));
+const StudioPage = React.lazy(() => import('./pages/StudioPage').then((m) => ({ default: m.StudioPage })));
+const LibraryPage = React.lazy(() => import('./pages/LibraryPage').then((m) => ({ default: m.LibraryPage })));
+const LevelsPage = React.lazy(() => import('./pages/LevelsPage').then((m) => ({ default: m.LevelsPage })));
+const RitualsPage = React.lazy(() => import('./pages/RitualsPage').then((m) => ({ default: m.RitualsPage })));
+const ThemesPage = React.lazy(() => import('./pages/ThemesPage').then((m) => ({ default: m.ThemesPage })));
+const SettingsPage = React.lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const StatisticsPage = React.lazy(() => import('./pages/StatisticsPage').then((m) => ({ default: m.StatisticsPage })));
+
+const PageLoadingFallback = () => (
+  <div className="flex flex-col items-center justify-center py-24 space-y-3">
+    <div className="w-7 h-7 rounded-full border-2 border-[rgb(var(--c-primary))] border-t-transparent animate-spin" />
+    <span className="text-xs font-heading font-bold text-[rgb(var(--c-muted))] uppercase tracking-widest">
+      Opening...
+    </span>
+  </div>
+);
 
 export default function App() {
   const { currentRoute, setCurrentRoute, showToast } = useUiStore();
@@ -106,6 +117,7 @@ export default function App() {
         layoutDensity: settings.layoutDensity,
         cardBorderGlow: settings.cardBorderGlow,
       });
+      applyReduceAnimations(!!settings.reduceAnimations);
     }
   }, [
     settings?.theme,
@@ -114,6 +126,7 @@ export default function App() {
     settings?.fontStyle,
     settings?.layoutDensity,
     settings?.cardBorderGlow,
+    settings?.reduceAnimations,
   ]);
 
   // Render active page
@@ -178,7 +191,9 @@ export default function App() {
         <TopBar />
 
         <main className="flex-1 w-full max-w-[1040px] mx-auto p-4 sm:p-8 space-y-6 sm:space-y-8 transition-all">
-          {renderPage()}
+          <React.Suspense fallback={<PageLoadingFallback />}>
+            {renderPage()}
+          </React.Suspense>
         </main>
 
         <BottomTabBar />

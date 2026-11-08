@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useUiStore } from '../../store/uiStore';
 import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { getTotalXp } from '../../db/queries';
 import { calculateLevelFromTotalXp } from '../../services/rpgService';
 import { getEthiopicDateString, getTimeGreeting } from '../../utils/dateUtils';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
@@ -10,9 +11,7 @@ import { Plus, Search, Palette, Bell, Sparkles, WifiOff } from 'lucide-react';
 export const TopBar: React.FC = () => {
   const { setCurrentRoute, setQuickAddOpen, setSearchOpen, setThemeSwitcherOpen, showToast } = useUiStore();
   const settings = useLiveQuery(() => db.settings.get('current_user'));
-  const xpEvents = useLiveQuery(() => db.xpEvents.toArray());
-
-  const totalXp = (xpEvents || []).reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  const totalXp = useLiveQuery(() => getTotalXp()) ?? 0;
   const heroInfo = calculateLevelFromTotalXp(totalXp);
   const userName = settings?.userName || 'Scholar';
 
