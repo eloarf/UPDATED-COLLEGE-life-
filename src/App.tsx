@@ -44,6 +44,7 @@ const RitualsPage = React.lazy(() => import('./pages/RitualsPage').then((m) => (
 const ThemesPage = React.lazy(() => import('./pages/ThemesPage').then((m) => ({ default: m.ThemesPage })));
 const SettingsPage = React.lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const StatisticsPage = React.lazy(() => import('./pages/StatisticsPage').then((m) => ({ default: m.StatisticsPage })));
+const TodayPage = React.lazy(() => import('./pages/TodayPage').then((m) => ({ default: m.TodayPage })));
 
 const PageLoadingFallback = () => (
   <div className="flex flex-col items-center justify-center py-24 space-y-3">
@@ -135,6 +136,10 @@ export default function App() {
     if (currentRoute.startsWith('#/courses/')) {
       const courseId = currentRoute.slice('#/courses/'.length);
       return <CourseHubPage courseId={courseId} />;
+    }
+
+    if (currentRoute.startsWith('#/today') || currentRoute.startsWith('#/day')) {
+      return <TodayPage />;
     }
 
     switch (currentRoute) {

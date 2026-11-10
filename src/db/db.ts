@@ -41,6 +41,7 @@ import {
   ScheduledReminderRecord,
   StudyBlock,
   DismissedStudySuggestion,
+  DailyPlan,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_ACCOUNT_BALANCES,
   DEFAULT_DEPARTMENTS,
@@ -87,6 +88,7 @@ export class CollegeLifeOSDatabase extends Dexie {
   scheduledReminders!: Table<ScheduledReminderRecord, string>;
   studyBlocks!: Table<StudyBlock, string>;
   dismissedStudySuggestions!: Table<DismissedStudySuggestion, string>;
+  dailyPlans!: Table<DailyPlan, string>;
 
   constructor() {
     super('CollegeLifeOSDB');
@@ -201,6 +203,10 @@ export class CollegeLifeOSDatabase extends Dexie {
     this.version(8).stores({
       studyBlocks: 'id, courseId, date, status',
       dismissedStudySuggestions: 'id, suggestionKey, dateKey',
+    });
+
+    this.version(9).stores({
+      dailyPlans: 'id, dateKey',
     });
   }
 }
@@ -322,6 +328,7 @@ export interface EmergencyBackupPayload {
     scheduledReminders?: ScheduledReminderRecord[];
     studyBlocks?: StudyBlock[];
     dismissedStudySuggestions?: DismissedStudySuggestion[];
+    dailyPlans?: DailyPlan[];
   };
 }
 
@@ -385,6 +392,7 @@ function attachDatabaseHooks() {
     db.academicGoals,
     db.studyBlocks,
     db.dismissedStudySuggestions,
+    db.dailyPlans,
   ];
 
   for (const table of allTables) {
@@ -581,6 +589,7 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         academicGoals,
         studyBlocks,
         dismissedStudySuggestions,
+        dailyPlans,
       ] = await Promise.all([
         db.settings.toArray().catch(() => []),
         db.courses.toArray().catch(() => []),
@@ -621,6 +630,7 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         db.academicGoals.toArray().catch(() => []),
         db.studyBlocks.toArray().catch(() => []),
         db.dismissedStudySuggestions.toArray().catch(() => []),
+        db.dailyPlans.toArray().catch(() => []),
       ]);
 
       const tableCounts: Record<string, number> = {
@@ -663,6 +673,7 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         academicGoals: academicGoals.length,
         studyBlocks: studyBlocks.length,
         dismissedStudySuggestions: dismissedStudySuggestions.length,
+        dailyPlans: dailyPlans.length,
       };
 
       const totalRecords = Object.values(tableCounts).reduce((a, b) => a + b, 0);
@@ -731,6 +742,7 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
           academicGoals,
           studyBlocks,
           dismissedStudySuggestions,
+          dailyPlans,
         },
       };
 
@@ -854,6 +866,7 @@ export async function checkAndRestoreFromEmergencyBackup(
       { name: 'academicGoals', table: db.academicGoals, records: d.academicGoals },
       { name: 'studyBlocks', table: db.studyBlocks, records: d.studyBlocks },
       { name: 'dismissedStudySuggestions', table: db.dismissedStudySuggestions, records: d.dismissedStudySuggestions },
+      { name: 'dailyPlans', table: db.dailyPlans, records: d.dailyPlans },
     ];
 
     for (const { name, table, records } of tableDefs) {

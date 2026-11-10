@@ -35,12 +35,21 @@ export const LobbyClassesTimelineSection: React.FC<LobbyClassesTimelineSectionPr
           <span>Today's Classes &amp; Schedule</span>
         </div>
 
-        <button
-          onClick={() => onNavigate('#/timetable')}
-          className="text-xs font-heading font-bold text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-primary))] cursor-pointer"
-        >
-          Timetable →
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onNavigate('#/today')}
+            className="text-xs font-heading font-bold text-[rgb(var(--c-primary))] hover:underline cursor-pointer"
+          >
+            Timeline →
+          </button>
+          <span className="text-[rgb(var(--c-border))]">·</span>
+          <button
+            onClick={() => onNavigate('#/timetable')}
+            className="text-xs font-heading font-bold text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-primary))] cursor-pointer"
+          >
+            Timetable →
+          </button>
+        </div>
       </div>
 
       {timeline.items.length === 0 ? (

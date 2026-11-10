@@ -573,6 +573,58 @@ export async function reconcileAllReminders(): Promise<ReconciliationReport> {
     briefingsCount++;
   }
 
+  // 7. Plan My Day Ritual
+  if (notifSettings.categories.planMyDay?.enabled) {
+    const planTime = notifSettings.categories.planMyDay.time || '08:00';
+    const [pHour, pMin] = planTime.split(':').map(Number);
+    const planTarget = new Date(now);
+    planTarget.setHours(pHour, pMin, 0, 0);
+    if (planTarget.getTime() <= now.getTime()) {
+      planTarget.setDate(planTarget.getDate() + 1);
+    }
+
+    if (!isInQuietHours(planTarget, notifSettings.quietHours)) {
+      const id = 'ritual-plan-my-day';
+      expectedReminders.push({
+        id,
+        numericId: stringToNotificationId(id),
+        title: 'Plan Your Day 🎯',
+        body: "Pick 1-3 priorities for today's focus and review your lecture blocks.",
+        targetTime: planTarget.toISOString(),
+        category: 'briefings',
+        route: '#/today?ritual=plan',
+        createdAt: now.toISOString(),
+      });
+      briefingsCount++;
+    }
+  }
+
+  // 8. Shutdown Ritual
+  if (notifSettings.categories.shutdownRitual?.enabled) {
+    const shutTime = notifSettings.categories.shutdownRitual.time || '21:00';
+    const [sHour, sMin] = shutTime.split(':').map(Number);
+    const shutTarget = new Date(now);
+    shutTarget.setHours(sHour, sMin, 0, 0);
+    if (shutTarget.getTime() <= now.getTime()) {
+      shutTarget.setDate(shutTarget.getDate() + 1);
+    }
+
+    if (!isInQuietHours(shutTarget, notifSettings.quietHours)) {
+      const id = 'ritual-daily-shutdown';
+      expectedReminders.push({
+        id,
+        numericId: stringToNotificationId(id),
+        title: 'Evening Shutdown & Reflection 🌙',
+        body: 'Close your day: celebrate finished tasks, roll over unfinished ones, and collect XP.',
+        targetTime: shutTarget.toISOString(),
+        category: 'briefings',
+        route: '#/today?ritual=shutdown',
+        createdAt: now.toISOString(),
+      });
+      briefingsCount++;
+    }
+  }
+
   // =========================================================================
   // RECONCILIATION DIFFERENCING
   // =========================================================================

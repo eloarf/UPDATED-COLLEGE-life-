@@ -1,15 +1,15 @@
 import React from 'react';
 import { useUiStore } from '../../store/uiStore';
-import { Home, Calendar, CheckSquare, Feather, Menu } from 'lucide-react';
+import { Home, Calendar, BookOpen, Activity, Menu } from 'lucide-react';
 
 export const BottomTabBar: React.FC = () => {
   const { currentRoute, setCurrentRoute, isMoreSheetOpen, setMoreSheetOpen } = useUiStore();
 
   const navItems = [
-    { label: 'Today', route: '#/', icon: Home },
-    { label: 'Timetable', route: '#/timetable', icon: Calendar },
-    { label: 'Tasks', route: '#/tasks', icon: CheckSquare },
-    { label: 'Journal', route: '#/journal', icon: Feather },
+    { label: 'Home', route: '#/', icon: Home },
+    { label: 'Calendar', route: '#/calendar', icon: Calendar },
+    { label: 'Study', route: '#/courses', icon: BookOpen },
+    { label: 'Habits', route: '#/habits', icon: Activity },
   ];
 
   return (

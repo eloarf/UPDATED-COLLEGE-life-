@@ -68,8 +68,9 @@ export function getEthiopicDateString(date: Date = new Date()): string {
 }
 
 // 0 = Monday, 1 = Tuesday ... 6 = Sunday
-export function getDayOfWeekIndex(date: Date = new Date()): 0 | 1 | 2 | 3 | 4 | 5 | 6 {
-  const day = date.getDay(); // 0 is Sunday, 1 is Monday...
+export function getDayOfWeekIndex(date: Date | string = new Date()): 0 | 1 | 2 | 3 | 4 | 5 | 6 {
+  const d = typeof date === 'string' ? parseDayKey(date) : date;
+  const day = d.getDay(); // 0 is Sunday, 1 is Monday...
   return (day === 0 ? 6 : day - 1) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
 }
 

@@ -200,6 +200,56 @@ export function getQuestXpReward(task: { effort?: string; priority?: string }): 
   return base;
 }
 
+export interface DailyXpCapConfig {
+  cap: number;
+  softThreshold: number;
+}
+
+export const SOURCE_DAILY_XP_CAPS: Record<string, DailyXpCapConfig> = {
+  daily_shutdown: { cap: 35, softThreshold: 25 },
+  daily_plan: { cap: 35, softThreshold: 20 },
+  habit_complete: { cap: 150, softThreshold: 100 },
+  task_complete: { cap: 300, softThreshold: 200 },
+  focus_session: { cap: 250, softThreshold: 180 },
+  attendance_mark: { cap: 100, softThreshold: 75 },
+  journal_entry: { cap: 80, softThreshold: 50 },
+  default: { cap: 250, softThreshold: 180 },
+};
+
+export function getSourceCapConfig(source: string): DailyXpCapConfig {
+  return SOURCE_DAILY_XP_CAPS[source] || SOURCE_DAILY_XP_CAPS.default;
+}
+
+export async function getDailySourceXp(source: string, dayKey: string = getTodayKey()): Promise<number> {
+  const events = await db.xpEvents
+    .where('dayKey')
+    .equals(dayKey)
+    .filter((e) => e.source === source)
+    .toArray();
+  return events.reduce((sum, e) => sum + (e.amount || 0), 0);
+}
+
+export async function getDailySourceProgress(source: string, dayKey: string = getTodayKey()): Promise<{
+  source: string;
+  earned: number;
+  cap: number;
+  softThreshold: number;
+  percent: number;
+  isCapped: boolean;
+}> {
+  const config = getSourceCapConfig(source);
+  const earned = await getDailySourceXp(source, dayKey);
+  const percent = Math.min(100, Math.round((earned / config.cap) * 100));
+  return {
+    source,
+    earned,
+    cap: config.cap,
+    softThreshold: config.softThreshold,
+    percent,
+    isCapped: earned >= config.cap,
+  };
+}
+
 export async function awardXp(params: {
   source: string;
   sourceId: string;
@@ -209,7 +259,7 @@ export async function awardXp(params: {
 }): Promise<boolean> {
   const dayKey = params.dayKey || getTodayKey();
 
-  // Idempotency check: see if source + sourceId already exists
+  // 1. Idempotency check: see if source + sourceId already exists
   const existing = await db.xpEvents
     .where('source')
     .equals(params.source)
@@ -220,11 +270,33 @@ export async function awardXp(params: {
     return false; // Already awarded
   }
 
+  // 2. Check per-day caps & diminishing returns
+  const capConfig = getSourceCapConfig(params.source);
+  const alreadyEarnedToday = await getDailySourceXp(params.source, dayKey);
+
+  if (alreadyEarnedToday >= capConfig.cap) {
+    return false; // Cap reached for today
+  }
+
+  let finalAmount = params.amount;
+  // Apply diminishing returns (50% reduction) if past soft threshold
+  if (alreadyEarnedToday >= capConfig.softThreshold) {
+    finalAmount = Math.max(1, Math.floor(params.amount * 0.5));
+  }
+
+  // Ensure award does not exceed remaining cap room
+  const remainingRoom = capConfig.cap - alreadyEarnedToday;
+  finalAmount = Math.min(finalAmount, remainingRoom);
+
+  if (finalAmount <= 0) {
+    return false;
+  }
+
   const event: XpEvent = {
     id: generateId(),
     source: params.source,
     sourceId: params.sourceId,
-    amount: params.amount,
+    amount: finalAmount,
     stat: params.stat,
     dayKey,
     timestamp: new Date().toISOString(),
@@ -248,7 +320,7 @@ export async function awardXp(params: {
   return true;
 }
 
-export async function reverseXp(source: string, sourceId: string) {
+export async function reverseXp(source: string, sourceId: string): Promise<boolean> {
   const existing = await db.xpEvents
     .where('source')
     .equals(source)
@@ -257,7 +329,35 @@ export async function reverseXp(source: string, sourceId: string) {
 
   if (existing) {
     await db.xpEvents.delete(existing.id);
+    return true;
   }
+  return false;
+}
+
+/**
+ * Awards daily shutdown XP (+25 discipline XP) under daily cap.
+ */
+export async function awardDailyShutdownXp(dateKey: string = getTodayKey()): Promise<boolean> {
+  return awardXp({
+    source: 'daily_shutdown',
+    sourceId: `shutdown-${dateKey}`,
+    amount: 25,
+    stat: 'discipline',
+    dayKey: dateKey,
+  });
+}
+
+/**
+ * Awards daily planning XP (+20 intellect XP) under daily cap.
+ */
+export async function awardDailyPlanXp(dateKey: string = getTodayKey()): Promise<boolean> {
+  return awardXp({
+    source: 'daily_plan',
+    sourceId: `plan-${dateKey}`,
+    amount: 20,
+    stat: 'knowledge',
+    dayKey: dateKey,
+  });
 }
 
 export async function reconcileXpLedger(): Promise<{

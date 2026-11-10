@@ -647,6 +647,16 @@ export interface StudyPlannerSuggestion {
   revisionDayNumber?: number;
 }
 
+export interface DailyPlan {
+  id: string;
+  dateKey: string; // YYYY-MM-DD
+  priorityIds: string[]; // 1-3 priorities (task IDs or custom text)
+  priorityNotes?: string[];
+  createdAt: string;
+  shutdownAt?: string;
+  note?: string; // Optional reflection line
+}
+
 export interface NotificationSettings {
   enabled: boolean;
   permissionRequested?: boolean;
@@ -687,6 +697,14 @@ export interface NotificationSettings {
       enabled: boolean;
       dayOfWeek: number; // 0 = Sunday
       time: string; // default: "19:00"
+    };
+    planMyDay?: {
+      enabled: boolean;
+      time: string; // default: "08:00"
+    };
+    shutdownRitual?: {
+      enabled: boolean;
+      time: string; // default: "21:00"
     };
   };
   snoozeDurationMinutes: number; // default: 10
@@ -732,6 +750,14 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
       enabled: true,
       dayOfWeek: 0, // Sunday
       time: '19:00',
+    },
+    planMyDay: {
+      enabled: true,
+      time: '08:00',
+    },
+    shutdownRitual: {
+      enabled: true,
+      time: '21:00',
     },
   },
   snoozeDurationMinutes: 10,

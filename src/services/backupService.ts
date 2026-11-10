@@ -43,6 +43,7 @@ import {
   AcademicGoal,
   StudyBlock,
   DismissedStudySuggestion,
+  DailyPlan,
 } from '../types';
 
 export const CURRENT_BACKUP_VERSION = 2;
@@ -90,6 +91,7 @@ export interface BackupData {
     academicGoals?: AcademicGoal[];
     studyBlocks?: StudyBlock[];
     dismissedStudySuggestions?: DismissedStudySuggestion[];
+    dailyPlans?: DailyPlan[];
   };
 }
 
@@ -133,6 +135,7 @@ const ALL_TABLES = [
   db.academicGoals,
   db.studyBlocks,
   db.dismissedStudySuggestions,
+  db.dailyPlans,
 ];
 
 export async function exportDatabaseToJson(): Promise<string> {
@@ -179,6 +182,7 @@ export async function exportDatabaseToJson(): Promise<string> {
       academicGoals: await db.academicGoals.toArray(),
       studyBlocks: await db.studyBlocks.toArray(),
       dismissedStudySuggestions: await db.dismissedStudySuggestions.toArray(),
+      dailyPlans: await db.dailyPlans.toArray(),
     },
   };
 
@@ -444,6 +448,7 @@ export async function restoreDatabase(
         if (d.academicGoals?.length) await db.academicGoals.bulkPut(d.academicGoals);
         if (d.studyBlocks?.length) await db.studyBlocks.bulkPut(d.studyBlocks);
         if (d.dismissedStudySuggestions?.length) await db.dismissedStudySuggestions.bulkPut(d.dismissedStudySuggestions);
+        if (d.dailyPlans?.length) await db.dailyPlans.bulkPut(d.dailyPlans);
       });
     } else {
       // Merge mode
@@ -488,6 +493,7 @@ export async function restoreDatabase(
         if (d.academicGoals?.length) await db.academicGoals.bulkPut(d.academicGoals);
         if (d.studyBlocks?.length) await db.studyBlocks.bulkPut(d.studyBlocks);
         if (d.dismissedStudySuggestions?.length) await db.dismissedStudySuggestions.bulkPut(d.dismissedStudySuggestions);
+        if (d.dailyPlans?.length) await db.dailyPlans.bulkPut(d.dailyPlans);
       });
     }
 

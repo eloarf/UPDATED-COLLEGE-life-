@@ -7,6 +7,7 @@ import {
   ShieldAlert,
   Target,
   Edit3,
+  Clock,
 } from 'lucide-react';
 import { AppSettings, Exam } from '../../types';
 import {
@@ -76,6 +77,15 @@ export const LobbyHeroHeader: React.FC<LobbyHeroHeaderProps> = ({
           >
             {isDormDay ? <Smartphone className="w-3.5 h-3.5" /> : <Laptop className="w-3.5 h-3.5" />}
             <span>{isDormDay ? 'Dorm Mode' : 'Desk Mode'}</span>
+          </button>
+
+          <button
+            onClick={() => onNavigate('#/today')}
+            className="min-h-[36px] px-3 py-1 rounded-xl text-xs font-heading font-bold border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] hover:border-[rgb(var(--c-primary))] transition flex items-center gap-1.5 cursor-pointer"
+            title="Open 06:00-23:00 Day Timeline & Rituals"
+          >
+            <Clock className="w-3.5 h-3.5 text-[rgb(var(--c-primary))]" />
+            <span>Timeline</span>
           </button>
 
           <button

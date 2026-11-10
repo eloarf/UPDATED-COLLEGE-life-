@@ -41,10 +41,11 @@ export const SideNavRail: React.FC = () => {
     {
       title: 'Daily Flow',
       items: [
-        { label: 'Today', route: '#/', icon: Home },
+        { label: 'Home', route: '#/', icon: Home },
+        { label: 'Day Timeline', route: '#/today', icon: Clock },
         { label: 'Timetable', route: '#/timetable', icon: Calendar },
-        { label: 'Tasks & To-Dos', route: '#/tasks', icon: CheckSquare },
-        { label: 'Focus Timer', route: '#/focus', icon: Clock },
+        { label: 'Tasks', route: '#/tasks', icon: CheckSquare },
+        { label: 'Focus Timer', route: '#/focus', icon: Sparkles },
       ],
     },
     {

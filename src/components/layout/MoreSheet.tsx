@@ -32,43 +32,62 @@ interface ChamberItem {
   subtitle: string;
   route: string;
   icon: any;
-  category: 'Daily' | 'Academics' | 'Personal' | 'System';
+  category: 'Academics' | 'Life' | 'Creative' | 'Settings';
 }
 
 export const MoreSheet: React.FC = () => {
   const { isMoreSheetOpen, setMoreSheetOpen, setCurrentRoute, currentRoute } = useUiStore();
   const [search, setSearch] = useState('');
+  const [recentRoutes, setRecentRoutes] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('college_os_recent_chambers');
+      return raw ? JSON.parse(raw) : ['#/today', '#/courses', '#/tasks', '#/habits'];
+    } catch {
+      return ['#/today', '#/courses', '#/tasks', '#/habits'];
+    }
+  });
 
   const chambers: ChamberItem[] = [
-    // Daily
-    { name: 'Today Overview', subtitle: 'Daily cockpit, classes & top priorities', route: '#/', icon: Home, category: 'Daily' },
-    { name: 'Class Timetable', subtitle: 'Weekly lecture schedule & room numbers', route: '#/timetable', icon: Calendar, category: 'Daily' },
-    { name: 'Tasks & To-Dos', subtitle: 'Assignments, coursework & deadlines', route: '#/tasks', icon: CheckSquare, category: 'Daily' },
-    { name: 'Focus Timer', subtitle: 'Pomodoro timer & flow session tracker', route: '#/focus', icon: Clock, category: 'Daily' },
-
     // Academics
-    { name: 'Semester Goals', subtitle: 'Roadmap objectives & milestone tracking', route: '#/goals', icon: Target, category: 'Academics' },
+    { name: 'Class Timetable', subtitle: 'Weekly lecture schedule & room numbers', route: '#/timetable', icon: Calendar, category: 'Academics' },
+    { name: 'Tasks & To-Dos', subtitle: 'Assignments, coursework & deadlines', route: '#/tasks', icon: CheckSquare, category: 'Academics' },
     { name: 'Courses & Syllabi', subtitle: 'Instructors, modules & lecture materials', route: '#/courses', icon: BookOpen, category: 'Academics' },
+    { name: 'Semester Goals', subtitle: 'Roadmap objectives & milestone tracking', route: '#/goals', icon: Target, category: 'Academics' },
     { name: 'Exams & Deadlines', subtitle: 'Countdown timers & revision topics', route: '#/exams', icon: ShieldAlert, category: 'Academics' },
     { name: 'Grades & GPA', subtitle: 'CGPA calculator & target projections', route: '#/grades', icon: GraduationCap, category: 'Academics' },
     { name: 'Master Week', subtitle: 'Dorm vs home timeblock templates', route: '#/week', icon: LayoutGrid, category: 'Academics' },
     { name: 'Calendar', subtitle: 'Monthly academic timeline & deadlines', route: '#/calendar', icon: CalendarDays, category: 'Academics' },
 
-    // Personal
-    { name: 'Habit Tracker', subtitle: 'Routines, consistency & streak counters', route: '#/habits', icon: Activity, category: 'Personal' },
-    { name: 'Private Journal', subtitle: 'Reflections, prompt deck & daily notes', route: '#/journal', icon: Feather, category: 'Personal' },
-    { name: 'Projects', subtitle: 'Team & personal milestones with kanban', route: '#/projects', icon: Layers, category: 'Personal' },
-    { name: 'Finance & Budget', subtitle: 'Expense tracking & savings vault', route: '#/finance', icon: CreditCard, category: 'Personal' },
-    { name: 'Reading Library', subtitle: 'Book queue & study topics', route: '#/library', icon: Bookmark, category: 'Personal' },
-    { name: 'Creative Studio', subtitle: 'Writing, audio & creative ideas', route: '#/studio', icon: Music, category: 'Personal' },
-    { name: 'Weekly Rituals', subtitle: 'Sunday review & weekly planning', route: '#/rituals', icon: RefreshCw, category: 'Personal' },
+    // Life
+    { name: 'Day Timeline', subtitle: 'Vertical 06:00-23:00 timeline, plan & shutdown', route: '#/today', icon: Clock, category: 'Life' },
+    { name: 'Today Overview', subtitle: 'Daily cockpit, classes & top priorities', route: '#/', icon: Home, category: 'Life' },
+    { name: 'Habit Tracker', subtitle: 'Routines, consistency & streak counters', route: '#/habits', icon: Activity, category: 'Life' },
+    { name: 'Private Journal', subtitle: 'Reflections, prompt deck & daily notes', route: '#/journal', icon: Feather, category: 'Life' },
+    { name: 'Finance & Budget', subtitle: 'Expense tracking & savings vault', route: '#/finance', icon: CreditCard, category: 'Life' },
+    { name: 'Weekly Rituals', subtitle: 'Sunday review & weekly planning', route: '#/rituals', icon: RefreshCw, category: 'Life' },
 
-    // System
-    { name: 'Visual Themes', subtitle: '27 distinctive crafted color palettes', route: '#/themes', icon: Palette, category: 'System' },
-    { name: 'Life Analytics', subtitle: 'Study hours & completion statistics', route: '#/statistics', icon: Sparkles, category: 'System' },
-    { name: 'XP & Progression', subtitle: 'Gamified ranks & achievement ledger', route: '#/levels', icon: Award, category: 'System' },
-    { name: 'Settings & Storage', subtitle: 'Data backup, offline health & setup', route: '#/settings', icon: Settings, category: 'System' },
+    // Creative
+    { name: 'Focus Timer', subtitle: 'Pomodoro timer & flow session tracker', route: '#/focus', icon: Clock, category: 'Creative' },
+    { name: 'Creative Studio', subtitle: 'Writing, audio & creative ideas', route: '#/studio', icon: Music, category: 'Creative' },
+    { name: 'Projects', subtitle: 'Team & personal milestones with kanban', route: '#/projects', icon: Layers, category: 'Creative' },
+    { name: 'Reading Library', subtitle: 'Book queue & study topics', route: '#/library', icon: Bookmark, category: 'Creative' },
+
+    // Settings
+    { name: 'Visual Themes', subtitle: '27 distinctive crafted color palettes', route: '#/themes', icon: Palette, category: 'Settings' },
+    { name: 'Life Analytics', subtitle: 'Study hours & completion statistics', route: '#/statistics', icon: Sparkles, category: 'Settings' },
+    { name: 'XP & Progression', subtitle: 'Gamified ranks & achievement ledger', route: '#/levels', icon: Award, category: 'Settings' },
+    { name: 'Settings & Storage', subtitle: 'Data backup, offline health & setup', route: '#/settings', icon: Settings, category: 'Settings' },
   ];
+
+  const handleNavigate = (route: string) => {
+    const updated = [route, ...recentRoutes.filter((r) => r !== route)].slice(0, 4);
+    setRecentRoutes(updated);
+    try {
+      localStorage.setItem('college_os_recent_chambers', JSON.stringify(updated));
+    } catch {}
+    setCurrentRoute(route);
+    setMoreSheetOpen(false);
+  };
 
   const filteredChambers = useMemo(() => {
     if (!search.trim()) return chambers;
@@ -84,10 +103,10 @@ export const MoreSheet: React.FC = () => {
   if (!isMoreSheetOpen) return null;
 
   const categories: { key: ChamberItem['category']; label: string }[] = [
-    { key: 'Daily', label: 'Daily Flow' },
-    { key: 'Academics', label: 'Academics & Study' },
-    { key: 'Personal', label: 'Personal & Life' },
-    { key: 'System', label: 'System & Tools' },
+    { key: 'Academics', label: 'Academics' },
+    { key: 'Life', label: 'Life' },
+    { key: 'Creative', label: 'Creative' },
+    { key: 'Settings', label: 'Settings' },
   ];
 
   return (
@@ -138,6 +157,37 @@ export const MoreSheet: React.FC = () => {
 
         {/* Categorized List */}
         <div className="overflow-y-auto py-2 space-y-5 pr-1">
+          {/* Recently Used Row (if not searching) */}
+          {!search && recentRoutes.length > 0 && (
+            <div className="space-y-2 pb-2 border-b border-[rgb(var(--c-border))]">
+              <div className="text-[10px] font-heading uppercase font-bold tracking-widest text-[rgb(var(--c-primary))] flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3" />
+                <span>Recently Used</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {recentRoutes.map((r) => {
+                  const item = chambers.find((c) => c.route === r);
+                  if (!item) return null;
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={`recent-${item.route}`}
+                      onClick={() => handleNavigate(item.route)}
+                      className="flex items-center gap-2 p-2 rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))] hover:border-[rgb(var(--c-primary))] transition active:scale-95 text-left"
+                    >
+                      <div className="p-1 rounded-lg bg-[rgb(var(--c-surface))] text-[rgb(var(--c-primary))] shrink-0">
+                        <Icon className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-xs font-heading font-bold text-[rgb(var(--c-text))] truncate">
+                        {item.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {categories.map((cat) => {
             const items = filteredChambers.filter((c) => c.category === cat.key);
             if (items.length === 0) return null;
@@ -155,10 +205,7 @@ export const MoreSheet: React.FC = () => {
                     return (
                       <button
                         key={item.route}
-                        onClick={() => {
-                          setCurrentRoute(item.route);
-                          setMoreSheetOpen(false);
-                        }}
+                        onClick={() => handleNavigate(item.route)}
                         className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all active:scale-98 cursor-pointer ${
                           isSelected
                             ? 'border-[rgb(var(--c-primary))] bg-[rgb(var(--c-surface2))] ring-1 ring-[rgb(var(--c-primary))] shadow-xs'
