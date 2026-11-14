@@ -25,7 +25,7 @@ import {
 } from '../utils/todayEngine';
 import { buildDayTimeline } from '../utils/timelineEngine';
 import { saveAttendanceQuickMark } from '../utils/attendanceEngine';
-import { getRemainingRestTokens, calculateHabitStreak } from '../utils/streakEngine';
+import { getRemainingRestTokens, calculateHabitStreak, isHabitLogCompleted } from '../utils/streakEngine';
 import { getDueFlashcardsCount } from '../utils/flashcardEngine';
 import { deriveHotelProgress } from '../utils/hotelProgressEngine';
 import { generateId } from '../utils/idGenerator';
@@ -527,13 +527,14 @@ export const LobbyPage: React.FC = () => {
 
   // Toggle habit
   const handleToggleHabit = async (habitId: string) => {
+    const habit = habits.find((h) => h.id === habitId);
     const existingLog = habitLogs.find((l) => l.habitId === habitId);
-    if (existingLog) {
+    if (existingLog && isHabitLogCompleted(existingLog)) {
       await db.habitLogs.delete(existingLog.id);
       await reverseXp('habit', habitId + '_' + todayKey);
 
       const updatedLogs = allHabitLogs.filter((l) => l.id !== existingLog.id);
-      const newStreak = calculateHabitStreak(habitId, updatedLogs, restDays, todayKey);
+      const newStreak = calculateHabitStreak(habitId, updatedLogs, restDays, todayKey, habit);
       await db.habits.update(habitId, {
         currentStreak: newStreak.currentStreak,
         bestStreak: newStreak.bestStreak,
@@ -541,20 +542,35 @@ export const LobbyPage: React.FC = () => {
 
       showToast('Habit check-in undone (-10 XP)', 'info');
     } else {
-      const newId = generateId();
-      await db.habitLogs.add({
-        id: newId,
-        habitId,
-        date: todayKey,
-        count: 1,
-        isPartial: false,
-      });
+      const nowIso = new Date().toISOString();
+      let updatedLogs: typeof allHabitLogs;
 
-      const updatedLogs = [
-        ...allHabitLogs,
-        { id: newId, habitId, date: todayKey, count: 1, isPartial: false },
-      ];
-      const newStreak = calculateHabitStreak(habitId, updatedLogs, restDays, todayKey);
+      if (existingLog) {
+        const updatedRecord = {
+          ...existingLog,
+          count: 1,
+          isPartial: false,
+          status: 'completed' as const,
+          updatedAt: nowIso,
+        };
+        await db.habitLogs.put(updatedRecord);
+        updatedLogs = allHabitLogs.map((l) => (l.id === existingLog.id ? updatedRecord : l));
+      } else {
+        const newId = generateId();
+        const newRecord = {
+          id: newId,
+          habitId,
+          date: todayKey,
+          count: 1,
+          isPartial: false,
+          status: 'completed' as const,
+          updatedAt: nowIso,
+        };
+        await db.habitLogs.add(newRecord);
+        updatedLogs = [...allHabitLogs, newRecord];
+      }
+
+      const newStreak = calculateHabitStreak(habitId, updatedLogs, restDays, todayKey, habit);
       await db.habits.update(habitId, {
         currentStreak: newStreak.currentStreak,
         bestStreak: newStreak.bestStreak,

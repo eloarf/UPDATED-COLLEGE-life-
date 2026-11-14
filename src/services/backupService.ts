@@ -41,11 +41,14 @@ import {
   DebtRecord,
   RecurringTransaction,
   AcademicGoal,
+  ScheduledReminderRecord,
+  AppNotification,
   StudyBlock,
   DismissedStudySuggestion,
   DailyPlan,
   FlashcardDeck,
   Flashcard,
+  DailyCheckIn,
 } from '../types';
 
 export const CURRENT_BACKUP_VERSION = 2;
@@ -91,11 +94,14 @@ export interface BackupData {
     restDays?: RestDay[];
     dailyReflections?: DailyReflection[];
     academicGoals?: AcademicGoal[];
+    scheduledReminders?: ScheduledReminderRecord[];
+    appNotifications?: AppNotification[];
     studyBlocks?: StudyBlock[];
     dismissedStudySuggestions?: DismissedStudySuggestion[];
     dailyPlans?: DailyPlan[];
     flashcardDecks?: FlashcardDeck[];
     flashcards?: Flashcard[];
+    dailyCheckIns?: DailyCheckIn[];
   };
 }
 
@@ -137,11 +143,14 @@ const ALL_TABLES = [
   db.restDays,
   db.dailyReflections,
   db.academicGoals,
+  db.scheduledReminders,
+  db.appNotifications,
   db.studyBlocks,
   db.dismissedStudySuggestions,
   db.dailyPlans,
   db.flashcardDecks,
   db.flashcards,
+  db.dailyCheckIns,
 ];
 
 export async function exportDatabaseToJson(): Promise<string> {
@@ -186,11 +195,14 @@ export async function exportDatabaseToJson(): Promise<string> {
       restDays: await db.restDays.toArray(),
       dailyReflections: await db.dailyReflections.toArray(),
       academicGoals: await db.academicGoals.toArray(),
+      scheduledReminders: await db.scheduledReminders.toArray(),
+      appNotifications: await db.appNotifications.toArray(),
       studyBlocks: await db.studyBlocks.toArray(),
       dismissedStudySuggestions: await db.dismissedStudySuggestions.toArray(),
       dailyPlans: await db.dailyPlans.toArray(),
       flashcardDecks: await db.flashcardDecks.toArray(),
       flashcards: await db.flashcards.toArray(),
+      dailyCheckIns: await db.dailyCheckIns.toArray(),
     },
   };
 
@@ -454,11 +466,14 @@ export async function restoreDatabase(
         if (d.restDays?.length) await db.restDays.bulkPut(d.restDays);
         if (d.dailyReflections?.length) await db.dailyReflections.bulkPut(d.dailyReflections);
         if (d.academicGoals?.length) await db.academicGoals.bulkPut(d.academicGoals);
+        if (d.scheduledReminders?.length) await db.scheduledReminders.bulkPut(d.scheduledReminders);
+        if (d.appNotifications?.length) await db.appNotifications.bulkPut(d.appNotifications);
         if (d.studyBlocks?.length) await db.studyBlocks.bulkPut(d.studyBlocks);
         if (d.dismissedStudySuggestions?.length) await db.dismissedStudySuggestions.bulkPut(d.dismissedStudySuggestions);
         if (d.dailyPlans?.length) await db.dailyPlans.bulkPut(d.dailyPlans);
         if (d.flashcardDecks?.length) await db.flashcardDecks.bulkPut(d.flashcardDecks);
         if (d.flashcards?.length) await db.flashcards.bulkPut(d.flashcards);
+        if (d.dailyCheckIns?.length) await db.dailyCheckIns.bulkPut(d.dailyCheckIns);
       });
     } else {
       // Merge mode
@@ -501,11 +516,14 @@ export async function restoreDatabase(
         if (d.restDays?.length) await db.restDays.bulkPut(d.restDays);
         if (d.dailyReflections?.length) await db.dailyReflections.bulkPut(d.dailyReflections);
         if (d.academicGoals?.length) await db.academicGoals.bulkPut(d.academicGoals);
+        if (d.scheduledReminders?.length) await db.scheduledReminders.bulkPut(d.scheduledReminders);
+        if (d.appNotifications?.length) await db.appNotifications.bulkPut(d.appNotifications);
         if (d.studyBlocks?.length) await db.studyBlocks.bulkPut(d.studyBlocks);
         if (d.dismissedStudySuggestions?.length) await db.dismissedStudySuggestions.bulkPut(d.dismissedStudySuggestions);
         if (d.dailyPlans?.length) await db.dailyPlans.bulkPut(d.dailyPlans);
         if (d.flashcardDecks?.length) await db.flashcardDecks.bulkPut(d.flashcardDecks);
         if (d.flashcards?.length) await db.flashcards.bulkPut(d.flashcards);
+        if (d.dailyCheckIns?.length) await db.dailyCheckIns.bulkPut(d.dailyCheckIns);
       });
     }
 

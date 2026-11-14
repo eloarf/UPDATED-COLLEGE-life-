@@ -1,7 +1,7 @@
 import React from 'react';
 import { Flame, Shield, Plus } from 'lucide-react';
 import { Habit, HabitLog, RestDay } from '../../types';
-import { calculateHabitStreak } from '../../utils/streakEngine';
+import { calculateHabitStreak, isHabitLogCompleted } from '../../utils/streakEngine';
 
 interface LobbyHabitsSectionProps {
   habits: Habit[];
@@ -24,6 +24,10 @@ export const LobbyHabitsSection: React.FC<LobbyHabitsSectionProps> = ({
   handleToggleHabit,
   onNavigate,
 }) => {
+  const activeHabits = habits
+    .filter((h) => h.status !== 'paused' && h.status !== 'archived')
+    .sort((a, b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999));
+
   return (
     <div className="space-y-3 pt-1">
       <div className="flex items-center justify-between">
@@ -39,9 +43,9 @@ export const LobbyHabitsSection: React.FC<LobbyHabitsSectionProps> = ({
         </button>
       </div>
 
-      {habits.length === 0 ? (
+      {activeHabits.length === 0 ? (
         <div className="text-center py-5 text-xs text-[rgb(var(--c-muted))] space-y-2.5">
-          <div>No habits added yet.</div>
+          <div>No active habits added yet.</div>
           <button
             onClick={() => onNavigate('#/habits')}
             className="px-3.5 py-1.5 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
@@ -52,10 +56,10 @@ export const LobbyHabitsSection: React.FC<LobbyHabitsSectionProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          {habits.slice(0, 4).map((habit) => {
+          {activeHabits.slice(0, 4).map((habit) => {
             const todayLog = habitLogs.find((l) => l.habitId === habit.id);
-            const isStamped = !!todayLog;
-            const habitStreak = calculateHabitStreak(habit.id, allHabitLogs, restDays, todayKey);
+            const isStamped = isHabitLogCompleted(todayLog);
+            const habitStreak = calculateHabitStreak(habit.id, allHabitLogs, restDays, todayKey, habit);
             return (
               <button
                 key={habit.id}
@@ -74,7 +78,7 @@ export const LobbyHabitsSection: React.FC<LobbyHabitsSectionProps> = ({
                 </div>
                 <div className="text-[10px] text-[rgb(var(--c-muted))]">
                   {isStamped
-                    ? todayLog?.isPartial
+                    ? todayLog?.isPartial || todayLog?.status === 'partial'
                       ? '✓ Mini done'
                       : '✓ Done (+10 XP)'
                     : `${habitStreak.currentStreak}d • ${remainingTokens} rest`}

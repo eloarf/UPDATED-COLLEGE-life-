@@ -8,6 +8,23 @@ import {
 
 export type NotificationPermissionState = 'granted' | 'denied' | 'prompt' | 'web-mode' | 'unavailable';
 
+export const ANDROID_MAX_SCHEDULED_ALARMS = 50;
+
+export const ACTION_TYPE_TASK = 'COLLEGE_OS_TASK_ACTIONS';
+export const ACTION_TYPE_REMINDER = 'COLLEGE_OS_REMINDER_ACTIONS';
+
+export interface NotificationEventCallbacks {
+  onActionPerformed?: (payload: {
+    actionId: string;
+    id: number;
+    extra?: Record<string, any>;
+  }) => void | Promise<void>;
+  onReceived?: (payload: {
+    id: number;
+    extra?: Record<string, any>;
+  }) => void | Promise<void>;
+}
+
 export interface ChannelDefinition {
   id: string;
   name: string;
@@ -60,6 +77,20 @@ export const NOTIFICATION_CHANNELS: ChannelDefinition[] = [
     importance: 3,
     vibration: false,
   },
+  {
+    id: 'college_os_focus',
+    name: 'Focus Timer & Study Blocks',
+    description: 'Pomodoro work session and break completion alerts.',
+    importance: 4,
+    vibration: true,
+  },
+  {
+    id: 'college_os_goals',
+    name: 'Academic Goals & Milestones',
+    description: 'Upcoming semester goal target dates and milestone cues.',
+    importance: 3,
+    vibration: true,
+  },
 ];
 
 /**
@@ -88,21 +119,30 @@ export function stringToNotificationId(key: string): number {
 }
 
 let isInitialized = false;
+let registeredCallbacks: NotificationEventCallbacks = {};
 
 /**
- * Initializes notification channels and deep-link tap listeners on native Android.
+ * Registers callbacks from reminderEngine / UI layer so native notification
+ * taps, inline actions, and foreground deliveries stay in sync with Dexie.
+ */
+export function registerNotificationEventCallbacks(callbacks: NotificationEventCallbacks): void {
+  registeredCallbacks = { ...registeredCallbacks, ...callbacks };
+}
+
+/**
+ * Initializes notification channels, interactive action buttons, and deep-link listeners on native Android.
  */
 export async function initializeNotificationFoundation(): Promise<void> {
   if (isInitialized) return;
   isInitialized = true;
 
   if (!isNativeAndroid()) {
-    console.debug('[NotificationFoundation] Running in Web Preview mode; native local notifications inactive.');
+    console.debug('[NotificationFoundation] Running in Web/PWA mode; native Android alarms inactive.');
     return;
   }
 
   try {
-    // Register all 6 notification channels
+    // Register all notification channels
     for (const ch of NOTIFICATION_CHANNELS) {
       const channel: Channel = {
         id: ch.id,
@@ -115,18 +155,60 @@ export async function initializeNotificationFoundation(): Promise<void> {
       await LocalNotifications.createChannel(channel);
     }
 
-    // Attach deep-link action listener
+    // Register interactive notification action buttons for Android shade
+    try {
+      await LocalNotifications.registerActionTypes({
+        types: [
+          {
+            id: ACTION_TYPE_TASK,
+            actions: [
+              { id: 'complete_task', title: 'Mark Done' },
+              { id: 'snooze', title: 'Snooze' },
+              { id: 'dismiss', title: 'Dismiss' },
+            ],
+          },
+          {
+            id: ACTION_TYPE_REMINDER,
+            actions: [
+              { id: 'snooze', title: 'Snooze' },
+              { id: 'dismiss', title: 'Dismiss' },
+            ],
+          },
+        ],
+      });
+    } catch (actionErr) {
+      console.warn('[NotificationFoundation] Action types registration warning:', actionErr);
+    }
+
+    // Attach delivery listener when app is open/backgrounded
+    await LocalNotifications.addListener('localNotificationReceived', (notification) => {
+      try {
+        registeredCallbacks.onReceived?.({
+          id: notification.id,
+          extra: notification.extra,
+        });
+      } catch (err) {
+        console.warn('[NotificationFoundation] Receive handler warning:', err);
+      }
+    });
+
+    // Attach deep-link & interactive action listener
     await LocalNotifications.addListener(
       'localNotificationActionPerformed',
-      (action: ActionPerformed) => {
+      async (action: ActionPerformed) => {
         try {
-          const route = action.notification.extra?.route;
-          if (route && typeof window !== 'undefined') {
-            console.log('[NotificationFoundation] Notification tapped, navigating to:', route);
-            window.location.hash = route;
+          const extra = action.notification.extra || {};
+          if (registeredCallbacks.onActionPerformed) {
+            await registeredCallbacks.onActionPerformed({
+              actionId: action.actionId || 'tap',
+              id: action.notification.id,
+              extra,
+            });
+          } else if ((action.actionId === 'tap' || !action.actionId) && extra.route && typeof window !== 'undefined') {
+            window.location.hash = extra.route;
           }
         } catch (err) {
-          console.error('[NotificationFoundation] Tap handler error:', err);
+          console.error('[NotificationFoundation] Action handler error:', err);
         }
       }
     );
@@ -202,6 +284,7 @@ export interface NativeNotificationOptions {
   at: Date;
   channelId?: string;
   route?: string;
+  actionTypeId?: string;
   extra?: Record<string, any>;
   allowWhileIdle?: boolean;
 }
@@ -213,7 +296,7 @@ export async function scheduleNativeLocalNotification(
   options: NativeNotificationOptions
 ): Promise<boolean> {
   if (!isNativeAndroid()) {
-    console.debug(`[NotificationFoundation] [Web Simulated] Schedule #${options.id} at ${options.at.toISOString()}: ${options.title}`);
+    console.debug(`[NotificationFoundation] [Web Mode] Queued reminder #${options.id} at ${options.at.toISOString()}: ${options.title}`);
     return true;
   }
 
@@ -225,6 +308,7 @@ export async function scheduleNativeLocalNotification(
           title: options.title,
           body: options.body,
           channelId: options.channelId || 'college_os_academic',
+          actionTypeId: options.actionTypeId,
           schedule: {
             at: options.at,
             allowWhileIdle: options.allowWhileIdle ?? true,
@@ -250,6 +334,7 @@ export async function scheduleNativeLocalNotification(
             title: options.title,
             body: options.body,
             channelId: options.channelId || 'college_os_academic',
+            actionTypeId: options.actionTypeId,
             schedule: {
               at: options.at,
               allowWhileIdle: false, // fallback to standard alarm
@@ -305,6 +390,47 @@ export async function getPendingNativeNotifications(): Promise<number[]> {
 }
 
 /**
+ * Fetches notification IDs currently shown/delivered in Android notification shade.
+ */
+export async function getDeliveredNativeNotificationIds(): Promise<number[]> {
+  if (!isNativeAndroid()) return [];
+  try {
+    const res = await LocalNotifications.getDeliveredNotifications();
+    return (res.notifications || []).map((n) => n.id);
+  } catch (err) {
+    console.warn('[NotificationFoundation] getDeliveredNotifications warning:', err);
+    return [];
+  }
+}
+
+/**
+ * Provides clear offline Android settings guidance when POST_NOTIFICATIONS or exact alarms are disabled.
+ */
+export function getAndroidNotificationSettingsGuidance(): {
+  title: string;
+  steps: string[];
+} {
+  if (!isNativeAndroid()) {
+    return {
+      title: 'Web / PWA Notification Behavior',
+      steps: [
+        'In browser and installed PWA mode, reminders appear inside the in-app Notification Center instead of browser push popups.',
+        'Install the Android APK for lock-screen and system shade alerts delivered by Android AlarmManager.',
+      ],
+    };
+  }
+
+  return {
+    title: 'How to enable notifications on Android',
+    steps: [
+      'Open Android Settings > Apps > College Life OS > Notifications and turn on Allow notifications.',
+      'Ensure categories (Classes, Exams, Tasks, Habits, Focus, Goals) are enabled.',
+      'For exact timing during Doze mode, enable Alarms & reminders under Special app access.',
+    ],
+  };
+}
+
+/**
  * Fires a test notification to verify delivery, channel sound, and deep linking.
  */
 export async function triggerTestNotification(delaySeconds: number = 2): Promise<{
@@ -314,7 +440,7 @@ export async function triggerTestNotification(delaySeconds: number = 2): Promise
   if (!isNativeAndroid()) {
     return {
       success: true,
-      message: 'Test simulated (Web Preview Mode). When built into the Android APK, a native system notification will appear in the Android notification shade.',
+      message: 'Test alert added to your in-app Notification Center. Android APK installs also deliver a native system shade alert.',
     };
   }
 
@@ -324,7 +450,7 @@ export async function triggerTestNotification(delaySeconds: number = 2): Promise
     if (!req.granted) {
       return {
         success: false,
-        message: 'Notification permission was denied. Please enable notifications in Android Settings for College Life OS.',
+        message: 'Notification permission was denied. Enable notifications in Android Settings > Apps > College Life OS.',
       };
     }
   }
@@ -334,11 +460,12 @@ export async function triggerTestNotification(delaySeconds: number = 2): Promise
 
   const ok = await scheduleNativeLocalNotification({
     id: testId,
-    title: '🔔 College Life OS — Test Notification',
-    body: 'Local reminders are operational! Tap to return to College Life OS settings.',
+    title: 'College Life OS — Test Notification',
+    body: 'Local reminders are operational. Tap to return to Reminder Settings.',
     at: fireDate,
     channelId: 'college_os_academic',
-    route: '#/settings',
+    route: '#/notification-settings',
+    actionTypeId: ACTION_TYPE_REMINDER,
     extra: { isTest: true },
   });
 

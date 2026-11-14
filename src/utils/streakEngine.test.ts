@@ -4,9 +4,13 @@ import {
   getRemainingRestTokens,
   calculateCourseAttendance,
   getHabitComebackState,
-  MAX_WEEKLY_REST_TOKENS,
+  isHabitScheduledForDate,
+  getHabitDayState,
+  calculateHabitDetailStats,
+  getDailyHabitsSummary,
+  isHabitLogCompleted,
 } from './streakEngine';
-import { HabitLog, RestDay, AttendanceRecord } from '../types';
+import { Habit, HabitLog, RestDay, AttendanceRecord } from '../types';
 
 describe('streakEngine', () => {
   it('manages 2 weekly rest tokens per week refilling on Mondays', () => {
@@ -120,5 +124,93 @@ describe('streakEngine', () => {
     );
     expect(restart.state).toBe('gentle_restart');
     expect(restart.message?.toLowerCase()).toContain('minimum version');
+  });
+
+  it('respects weekday and interval schedules so unscheduled days never break streaks', () => {
+    // 2026-10-12 is Monday (0), 2026-10-14 is Wednesday (2), 2026-10-16 is Friday (4)
+    const mwfHabit: Habit = {
+      id: 'h-mwf',
+      title: 'Gym',
+      category: 'health',
+      type: 'daily',
+      targetCount: 1,
+      color: '#B6E63E',
+      currentStreak: 0,
+      bestStreak: 0,
+      icon: 'Activity',
+      graceDaysLeft: 2,
+      recurrence: 'weekdays',
+      scheduledDays: [0, 2, 4],
+    };
+
+    expect(isHabitScheduledForDate(mwfHabit, '2026-10-12')).toBe(true); // Mon
+    expect(isHabitScheduledForDate(mwfHabit, '2026-10-13')).toBe(false); // Tue
+
+    const mwfLogs: HabitLog[] = [
+      { id: 'l1', habitId: 'h-mwf', date: '2026-10-12', count: 1, isPartial: false, status: 'completed' },
+      { id: 'l2', habitId: 'h-mwf', date: '2026-10-14', count: 1, isPartial: false, status: 'completed' },
+      { id: 'l3', habitId: 'h-mwf', date: '2026-10-16', count: 1, isPartial: false, status: 'completed' },
+    ];
+
+    const streak = calculateHabitStreak('h-mwf', mwfLogs, [], '2026-10-16', mwfHabit);
+    expect(streak.currentStreak).toBe(3);
+    expect(streak.bestStreak).toBe(3);
+
+    // Interval habit: every 2 days starting 2026-10-10
+    const intervalHabit: Habit = {
+      ...mwfHabit,
+      id: 'h-int',
+      recurrence: 'interval',
+      intervalDays: 2,
+      scheduleStartDate: '2026-10-10',
+    };
+    expect(isHabitScheduledForDate(intervalHabit, '2026-10-10')).toBe(true);
+    expect(isHabitScheduledForDate(intervalHabit, '2026-10-11')).toBe(false);
+    expect(isHabitScheduledForDate(intervalHabit, '2026-10-12')).toBe(true);
+  });
+
+  it('treats skipped logs as non-completed and distinguishes partial/completed/skipped/unscheduled states', () => {
+    const durationHabit: Habit = {
+      id: 'h-read',
+      title: 'Deep Reading',
+      category: 'study',
+      type: 'minutes',
+      targetCount: 30,
+      trackingMethod: 'duration',
+      unit: 'min',
+      targetValue: 30,
+      color: '#B6E63E',
+      currentStreak: 0,
+      bestStreak: 0,
+      icon: 'Activity',
+      graceDaysLeft: 2,
+      recurrence: 'daily',
+    };
+
+    const logs: HabitLog[] = [
+      { id: 'l1', habitId: 'h-read', date: '2026-10-14', count: 1, isPartial: false, value: 35, status: 'completed' },
+      { id: 'l2', habitId: 'h-read', date: '2026-10-15', count: 1, isPartial: true, value: 15, status: 'partial' },
+      { id: 'l3', habitId: 'h-read', date: '2026-10-16', count: 0, isPartial: false, status: 'skipped' },
+    ];
+
+    expect(isHabitLogCompleted(logs[2])).toBe(false);
+    expect(getHabitDayState(durationHabit, logs, [], '2026-10-14', '2026-10-16').state).toBe('completed');
+    expect(getHabitDayState(durationHabit, logs, [], '2026-10-15', '2026-10-16').state).toBe('partial');
+    expect(getHabitDayState(durationHabit, logs, [], '2026-10-16', '2026-10-16').state).toBe('skipped');
+
+    const detail = calculateHabitDetailStats(durationHabit, logs, [], {
+      startDate: '2026-10-14',
+      endDate: '2026-10-16',
+      referenceDateKey: '2026-10-16',
+    });
+    expect(detail.totalCompletions).toBe(2);
+    expect(detail.totalValue).toBe(50);
+    expect(detail.averageValue).toBe(25);
+    expect(detail.targetHitCount).toBe(1);
+
+    const summary = getDailyHabitsSummary([durationHabit], logs, [], '2026-10-16');
+    expect(summary.scheduledTodayCount).toBe(1);
+    expect(summary.skippedCount).toBe(1);
+    expect(summary.completedCount).toBe(0);
   });
 });

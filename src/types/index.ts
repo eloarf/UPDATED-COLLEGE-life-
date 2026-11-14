@@ -202,6 +202,10 @@ export interface FocusSession {
   notes?: string;
 }
 
+export type HabitTrackingMethod = 'simple' | 'duration' | 'quantity' | 'frequency' | 'avoidance';
+export type HabitRecurrenceType = 'daily' | 'weekdays' | 'weekly_target' | 'interval';
+export type HabitStatusType = 'active' | 'paused' | 'archived';
+
 export interface Habit {
   id: string;
   title: string;
@@ -215,6 +219,18 @@ export interface Habit {
   bestStreak: number;
   icon: string;
   graceDaysLeft: number;
+  // Part 3 additive upgrades (optional & backward-compatible)
+  trackingMethod?: HabitTrackingMethod;
+  unit?: string;
+  targetValue?: number;
+  recurrence?: HabitRecurrenceType;
+  scheduledDays?: DayOfWeek[]; // 0=Mon..6=Sun
+  weeklyTargetCount?: number;
+  intervalDays?: number;
+  scheduleStartDate?: string; // YYYY-MM-DD
+  status?: HabitStatusType;
+  sortOrder?: number;
+  description?: string;
 }
 
 export interface HabitLog {
@@ -223,6 +239,26 @@ export interface HabitLog {
   date: string; // YYYY-MM-DD
   count: number;
   isPartial: boolean;
+  // Part 3 additive upgrades
+  value?: number;
+  unit?: string;
+  status?: 'completed' | 'partial' | 'skipped';
+  note?: string;
+  updatedAt?: string;
+}
+
+export interface DailyCheckIn {
+  id: string;
+  dateKey: string; // YYYY-MM-DD
+  moodScore?: number; // 1-5
+  energyScore?: number; // 1-5
+  stressScore?: number; // 1-5
+  emotions: string[];
+  contextTags: string[];
+  note?: string;
+  journalEntryId?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface JournalEntry {
@@ -238,6 +274,7 @@ export interface JournalEntry {
   isPinned?: boolean;
   isFavorite?: boolean;
   deletedAt?: string;
+  checkInId?: string;
   structuredReflection?: {
     happened?: string;
     mattered?: string;
@@ -600,6 +637,8 @@ export interface AppSettings {
   sleepEndTime?: string; // default "07:00"
   lobbySectionStates?: Record<string, boolean>;
   showVisibleProgress?: boolean;
+  customEmotions?: string[];
+  habitCategories?: { id: string; label: string }[];
 }
 
 export interface StudyBlock {
@@ -684,6 +723,46 @@ export interface Flashcard {
   updatedAt: string;
 }
 
+export type NotificationCategory =
+  | 'academics'
+  | 'tasks'
+  | 'habits'
+  | 'focus'
+  | 'goals'
+  | 'finance'
+  | 'briefings';
+
+export type AppNotificationDeliveryStatus =
+  | 'pending'
+  | 'scheduled'
+  | 'delivered'
+  | 'cancelled'
+  | 'failed'
+  | 'in_app_only';
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  description: string;
+  category: NotificationCategory;
+  createdAt: string;
+  scheduledFor?: string;
+  deliveredAt?: string;
+  isRead: boolean;
+  isDismissed: boolean;
+  isArchived?: boolean;
+  priority: 'low' | 'normal' | 'high';
+  entityType?: string;
+  entityId?: string;
+  route?: string;
+  actionType?: string;
+  deliveryStatus: AppNotificationDeliveryStatus;
+  sourceReminderId?: string;
+  numericId?: number;
+  snoozedUntil?: string;
+  meta?: Record<string, any>;
+}
+
 export interface NotificationSettings {
   enabled: boolean;
   permissionRequested?: boolean;
@@ -702,6 +781,7 @@ export interface NotificationSettings {
       enabled: boolean;
       defaultLeadTime: 'due' | '1h' | '1d'; // default: '1d'
       defaultTime: string; // "09:00"
+      overdueReminders?: boolean; // default: true
     };
     exams: {
       enabled: boolean;
@@ -711,6 +791,7 @@ export interface NotificationSettings {
     habits: {
       enabled: boolean;
       defaultTime: string; // default: "20:00"
+      repeatMode?: 'daily' | 'scheduled_only' | 'off'; // default: 'scheduled_only'
     };
     finance: {
       enabled: boolean;
@@ -732,6 +813,17 @@ export interface NotificationSettings {
     shutdownRitual?: {
       enabled: boolean;
       time: string; // default: "21:00"
+    };
+    focus?: {
+      enabled: boolean;
+      notifyBreakEnd: boolean;
+    };
+    goals?: {
+      enabled: boolean;
+      leadDays: number[]; // default: [3, 1]
+    };
+    achievements?: {
+      enabled: boolean;
     };
   };
   snoozeDurationMinutes: number; // default: 10
@@ -755,6 +847,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
       enabled: true,
       defaultLeadTime: '1d',
       defaultTime: '09:00',
+      overdueReminders: true,
     },
     exams: {
       enabled: true,
@@ -764,6 +857,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     habits: {
       enabled: false,
       defaultTime: '20:00',
+      repeatMode: 'scheduled_only',
     },
     finance: {
       enabled: true,
@@ -786,6 +880,17 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
       enabled: true,
       time: '21:00',
     },
+    focus: {
+      enabled: true,
+      notifyBreakEnd: true,
+    },
+    goals: {
+      enabled: true,
+      leadDays: [3, 1],
+    },
+    achievements: {
+      enabled: true,
+    },
   },
   snoozeDurationMinutes: 10,
 };
@@ -796,7 +901,7 @@ export interface ScheduledReminderRecord {
   title: string;
   body: string;
   targetTime: string; // ISO string
-  category: 'classes' | 'tasks' | 'exams' | 'habits' | 'finance' | 'briefings';
+  category: 'classes' | 'tasks' | 'exams' | 'habits' | 'finance' | 'briefings' | 'goals' | 'focus';
   route: string; // deep link route: '#/timetable', '#/tasks', etc.
   entityId?: string;
   extra?: Record<string, any>;

@@ -6,6 +6,7 @@ import {
   insertFormattingSyntax,
   calculateJournalStats,
   buildStructuredReflectionContent,
+  selectTodayJournalEntry,
 } from './journalEngine';
 import { JournalEntry } from '../types';
 
@@ -125,5 +126,58 @@ This is **bold text** and *italic note*.
     expect(text).toContain('Finished Lab 3 analysis.');
     expect(text).toContain('### 2. What Mattered Most?');
     expect(text).toContain('### 3. What Do I Want To Do Next?');
+  });
+
+  it('selects today primary non-deleted entry and ignores trashed entries', () => {
+    const today = '2026-11-10';
+    const entries: JournalEntry[] = [
+      {
+        id: 'trashed-today',
+        date: today,
+        moodScore: 3,
+        energyScore: 3,
+        content: 'Trashed draft',
+        wordCount: 2,
+        tags: [],
+        createdAt: `${today}T07:00:00.000Z`,
+        updatedAt: `${today}T12:00:00.000Z`,
+        deletedAt: `${today}T12:05:00.000Z`,
+      },
+      {
+        id: 'older-today',
+        date: today,
+        moodScore: 4,
+        energyScore: 4,
+        content: 'Morning entry',
+        wordCount: 2,
+        tags: [],
+        createdAt: `${today}T08:00:00.000Z`,
+        updatedAt: `${today}T08:30:00.000Z`,
+      },
+      {
+        id: 'latest-today',
+        date: today,
+        moodScore: 5,
+        energyScore: 4,
+        content: 'Updated afternoon entry',
+        wordCount: 3,
+        tags: [],
+        createdAt: `${today}T09:00:00.000Z`,
+        updatedAt: `${today}T11:00:00.000Z`,
+      },
+      {
+        id: 'yesterday',
+        date: '2026-11-09',
+        moodScore: 4,
+        energyScore: 3,
+        content: 'Yesterday entry',
+        wordCount: 2,
+        tags: [],
+        createdAt: '2026-11-09T20:00:00.000Z',
+      },
+    ];
+
+    expect(selectTodayJournalEntry(entries, today)?.id).toBe('latest-today');
+    expect(selectTodayJournalEntry(entries, '2026-11-11')).toBeNull();
   });
 });

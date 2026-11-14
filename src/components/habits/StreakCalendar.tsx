@@ -2,15 +2,15 @@ import React, { useState } from 'react';
 import { Habit, HabitLog, RestDay } from '../../types';
 import {
   calculateHabitStreak,
+  getHabitDayState,
+  getHabitTrackingMethod,
+  getHabitUnitLabel,
   getRemainingRestTokens,
   getWeekBounds,
   MAX_WEEKLY_REST_TOKENS,
 } from '../../utils/streakEngine';
 import {
-  formatDayKey,
-  parseDayKey,
   getTodayKey,
-  addDaysToKey,
   DAY_NAMES,
 } from '../../utils/dateUtils';
 import {
@@ -20,8 +20,8 @@ import {
   ChevronRight,
   Check,
   Calendar as CalendarIcon,
-  Sparkles,
   Info,
+  Minus,
 } from 'lucide-react';
 
 interface StreakCalendarProps {
@@ -30,6 +30,8 @@ interface StreakCalendarProps {
   restDays: RestDay[];
   onApplyRestToken?: (dateKey: string) => void;
   onRemoveRestToken?: (restDayId: string) => void;
+  rangeStart?: string;
+  rangeEnd?: string;
 }
 
 export const StreakCalendar: React.FC<StreakCalendarProps> = ({
@@ -38,6 +40,8 @@ export const StreakCalendar: React.FC<StreakCalendarProps> = ({
   restDays,
   onApplyRestToken,
   onRemoveRestToken,
+  rangeStart,
+  rangeEnd,
 }) => {
   const todayKey = getTodayKey();
   const [viewDate, setViewDate] = useState(() => new Date());
@@ -65,28 +69,25 @@ export const StreakCalendar: React.FC<StreakCalendarProps> = ({
     dayCells.push(dStr);
   }
 
-  // Pre-index habit logs and rest days
-  const completedDateSet = new Set<string>();
-  logs
-    .filter((l) => l.habitId === habit.id && (l.count > 0 || l.isPartial))
-    .forEach((l) => completedDateSet.add(l.date));
-
-  const habitRestDays = restDays.filter((r) => r.habitId === habit.id);
-  const restDayMap = new Map<string, RestDay>();
-  habitRestDays.forEach((r) => restDayMap.set(r.dateKey, r));
-
-  // Compute active streak metrics
-  const streak = calculateHabitStreak(habit.id, logs, restDays, todayKey);
+  const streak = calculateHabitStreak(habit.id, logs, restDays, todayKey, habit);
   const remainingTokens = getRemainingRestTokens(restDays, todayKey);
   const { mondayKey, sundayKey } = getWeekBounds(todayKey);
+  const method = getHabitTrackingMethod(habit);
+  const unitLabel = getHabitUnitLabel(habit);
 
   // Month stats
   let monthCompletedCount = 0;
+  let monthPartialCount = 0;
   let monthRestCount = 0;
+  let monthSkippedCount = 0;
+
   for (let d = 1; d <= totalDays; d++) {
     const dStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    if (completedDateSet.has(dStr)) monthCompletedCount++;
-    if (restDayMap.has(dStr)) monthRestCount++;
+    const info = getHabitDayState(habit, logs, restDays, dStr, todayKey);
+    if (info.state === 'completed') monthCompletedCount++;
+    else if (info.state === 'partial') monthPartialCount++;
+    else if (info.state === 'rested') monthRestCount++;
+    else if (info.state === 'skipped') monthSkippedCount++;
   }
 
   const handlePrevMonth = () => {
@@ -98,19 +99,17 @@ export const StreakCalendar: React.FC<StreakCalendarProps> = ({
   };
 
   const handleCellClick = (dateKey: string) => {
-    if (dateKey > todayKey) return; // Future dates cannot be stamped or rest-tokened
+    if (dateKey > todayKey) return;
 
-    const existingRest = restDayMap.get(dateKey);
-    if (existingRest) {
-      // Allow removing rest token
+    const info = getHabitDayState(habit, logs, restDays, dateKey, todayKey);
+    if (info.restDay) {
       if (onRemoveRestToken) {
-        onRemoveRestToken(existingRest.id);
+        onRemoveRestToken(info.restDay.id);
       }
       return;
     }
 
-    if (!completedDateSet.has(dateKey)) {
-      // Check if user has rest tokens left for this week
+    if (info.state !== 'completed' && info.state !== 'partial' && info.state !== 'unscheduled') {
       if (remainingTokens > 0 && onApplyRestToken) {
         onApplyRestToken(dateKey);
       }
@@ -127,7 +126,7 @@ export const StreakCalendar: React.FC<StreakCalendarProps> = ({
               <CalendarIcon className="w-3 h-3" />
               Streak Matrix
             </span>
-            <span className="text-[10px] px-2 py-0.2 rounded-full bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-bold">
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-text))] font-bold">
               {habit.title}
             </span>
           </div>
@@ -143,7 +142,7 @@ export const StreakCalendar: React.FC<StreakCalendarProps> = ({
         </div>
 
         {/* Month Navigation & Rest Token Pill */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-heading font-bold">
             <Shield className="w-3.5 h-3.5" />
             <span>
@@ -153,6 +152,7 @@ export const StreakCalendar: React.FC<StreakCalendarProps> = ({
 
           <div className="flex items-center gap-1">
             <button
+              type="button"
               onClick={handlePrevMonth}
               className="p-1.5 rounded-lg border border-[rgb(var(--c-border))] hover:bg-[rgb(var(--c-surface2))] transition active:scale-95 text-[rgb(var(--c-text))]"
               title="Previous month"
@@ -163,6 +163,7 @@ export const StreakCalendar: React.FC<StreakCalendarProps> = ({
               {monthTitle}
             </span>
             <button
+              type="button"
               onClick={handleNextMonth}
               className="p-1.5 rounded-lg border border-[rgb(var(--c-border))] hover:bg-[rgb(var(--c-surface2))] transition active:scale-95 text-[rgb(var(--c-text))]"
               title="Next month"
@@ -184,50 +185,92 @@ export const StreakCalendar: React.FC<StreakCalendarProps> = ({
       <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
         {dayCells.map((dayKey, idx) => {
           if (!dayKey) {
-            return <div key={`empty-${idx}`} className="h-10 sm:h-12 rounded-xl" />;
+            return <div key={`empty-${idx}`} className="h-11 sm:h-13 rounded-xl" />;
           }
 
           const isToday = dayKey === todayKey;
           const isFuture = dayKey > todayKey;
-          const isCompleted = completedDateSet.has(dayKey);
-          const restRecord = restDayMap.get(dayKey);
-          const isRestDay = !!restRecord;
           const dayNum = parseInt(dayKey.slice(8), 10);
           const isInCurrentWeek = dayKey >= mondayKey && dayKey <= sundayKey;
+          const info = getHabitDayState(habit, logs, restDays, dayKey, todayKey);
+          const logVal = info.log?.value;
+
+          const outOfRange =
+            (rangeStart && dayKey < rangeStart) || (rangeEnd && dayKey > rangeEnd);
 
           let cellClass =
             'border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))]';
 
-          if (isCompleted) {
+          if (info.state === 'completed') {
             cellClass =
-              'border-[#B6E63E] bg-[#B6E63E]/20 text-emerald-600 dark:text-[#B6E63E] font-bold shadow-xs';
-          } else if (isRestDay) {
+              'border-[#B6E63E] bg-[#B6E63E]/20 text-emerald-700 dark:text-[#B6E63E] font-bold shadow-xs';
+          } else if (info.state === 'partial') {
+            cellClass =
+              'border-lime-500/60 bg-lime-500/15 text-lime-700 dark:text-lime-300 font-bold';
+          } else if (info.state === 'rested') {
             cellClass =
               'border-amber-500/50 bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold';
+          } else if (info.state === 'skipped') {
+            cellClass =
+              'border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface2))]/70 text-[rgb(var(--c-muted))]';
+          } else if (info.state === 'unscheduled') {
+            cellClass =
+              'border-dashed border-[rgb(var(--c-border))]/60 bg-transparent text-[rgb(var(--c-muted))]/60';
           } else if (isToday) {
             cellClass =
               'border-[rgb(var(--c-primary))] bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-primary))] font-bold';
           } else if (isFuture) {
-            cellClass = 'border-transparent bg-transparent text-[rgb(var(--c-muted))]/40 opacity-40 cursor-default';
+            cellClass =
+              'border-transparent bg-transparent text-[rgb(var(--c-muted))]/40 opacity-40 cursor-default';
           }
+
+          const shortMeasureLabel =
+            typeof logVal === 'number' && logVal > 0 && (method === 'duration' || method === 'quantity' || method === 'frequency')
+              ? `${logVal}${unitLabel === 'min' ? 'm' : unitLabel === 'hours' || unitLabel === 'hr' ? 'h' : ''}`
+              : null;
+
+          let bottomLabel = '';
+          if (info.state === 'completed') {
+            bottomLabel = shortMeasureLabel || 'Done';
+          } else if (info.state === 'partial') {
+            bottomLabel = shortMeasureLabel || 'Mini';
+          } else if (info.state === 'rested') {
+            bottomLabel = 'Rest';
+          } else if (info.state === 'skipped') {
+            bottomLabel = 'Skip';
+          } else if (info.state === 'unscheduled' && !isFuture) {
+            bottomLabel = 'Off';
+          }
+
+          const titleText =
+            info.state === 'completed'
+              ? `${dayKey}: Completed${shortMeasureLabel ? ` (${logVal} ${unitLabel})` : ''}`
+              : info.state === 'partial'
+              ? `${dayKey}: Partial / minimum${shortMeasureLabel ? ` (${logVal} ${unitLabel})` : ''}`
+              : info.state === 'rested'
+              ? `${dayKey}: Rest Token applied (Tap to remove)`
+              : info.state === 'skipped'
+              ? `${dayKey}: Skipped cleanly`
+              : info.state === 'unscheduled'
+              ? `${dayKey}: Off-schedule day`
+              : !isFuture && isInCurrentWeek && remainingTokens > 0
+              ? `${dayKey}: Tap to apply Rest Token (${remainingTokens} left)`
+              : `${dayKey}`;
 
           return (
             <button
+              type="button"
               key={dayKey}
-              disabled={isFuture}
+              disabled={isFuture || info.state === 'unscheduled'}
               onClick={() => handleCellClick(dayKey)}
               className={`h-11 sm:h-13 rounded-xl p-1 flex flex-col items-center justify-between transition-all relative group ${cellClass} ${
-                !isFuture ? 'active:scale-95 hover:border-[rgb(var(--c-primary))] cursor-pointer' : ''
+                outOfRange ? 'opacity-45' : ''
+              } ${
+                !isFuture && info.state !== 'unscheduled'
+                  ? 'active:scale-95 hover:border-[rgb(var(--c-primary))] cursor-pointer'
+                  : 'cursor-default'
               }`}
-              title={
-                isCompleted
-                  ? `${dayKey}: Stamped completed!`
-                  : isRestDay
-                  ? `${dayKey}: Rest Token applied (Tap to undo)`
-                  : !isFuture && isInCurrentWeek && remainingTokens > 0
-                  ? `${dayKey}: Tap to apply Rest Token (${remainingTokens} left)`
-                  : `${dayKey}`
-              }
+              title={titleText}
             >
               <div className="w-full flex items-center justify-between text-[10px]">
                 <span className="font-mono">{dayNum}</span>
@@ -236,24 +279,32 @@ export const StreakCalendar: React.FC<StreakCalendarProps> = ({
                 )}
               </div>
 
-              {/* Status Indicator Icon */}
               <div className="flex items-center justify-center my-auto">
-                {isCompleted ? (
+                {info.state === 'completed' ? (
                   <div className="w-5 h-5 rounded-full bg-[#B6E63E] text-stone-950 flex items-center justify-center shadow-2xs">
                     <Check className="w-3 h-3 stroke-[3]" />
                   </div>
-                ) : isRestDay ? (
+                ) : info.state === 'partial' ? (
+                  <div className="w-5 h-5 rounded-full bg-lime-400/70 text-stone-950 flex items-center justify-center shadow-2xs">
+                    <Check className="w-3 h-3 stroke-[2.5]" />
+                  </div>
+                ) : info.state === 'rested' ? (
                   <div className="w-5 h-5 rounded-full bg-amber-500 text-stone-950 flex items-center justify-center shadow-2xs">
                     <Shield className="w-3 h-3 fill-stone-950" />
                   </div>
+                ) : info.state === 'skipped' ? (
+                  <div className="w-4 h-4 rounded-full bg-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] flex items-center justify-center">
+                    <Minus className="w-2.5 h-2.5" />
+                  </div>
+                ) : info.state === 'unscheduled' ? (
+                  <div className="w-1.5 h-1.5 rounded-full bg-[rgb(var(--c-border))]" />
                 ) : !isFuture ? (
                   <div className="w-1.5 h-1.5 rounded-full bg-[rgb(var(--c-muted))]/30 group-hover:bg-amber-400 transition" />
                 ) : null}
               </div>
 
-              {/* Bottom Label */}
-              <div className="text-[8px] uppercase tracking-tighter opacity-80 leading-none">
-                {isCompleted ? 'Done' : isRestDay ? 'Rest' : ''}
+              <div className="text-[8px] uppercase tracking-tighter opacity-85 leading-none truncate max-w-full">
+                {bottomLabel}
               </div>
             </button>
           );
@@ -265,21 +316,33 @@ export const StreakCalendar: React.FC<StreakCalendarProps> = ({
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-full bg-[#B6E63E] inline-block shadow-2xs" />
-            <span>Completed ({monthCompletedCount}d)</span>
+            <span>Done ({monthCompletedCount}d)</span>
           </div>
+          {monthPartialCount > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-lime-400/70 inline-block" />
+              <span>Partial ({monthPartialCount}d)</span>
+            </div>
+          )}
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-full bg-amber-500 inline-block shadow-2xs" />
-            <span>Rest Token ({monthRestCount}d)</span>
+            <span>Rest ({monthRestCount}d)</span>
           </div>
+          {monthSkippedCount > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-[rgb(var(--c-border))] inline-block" />
+              <span>Skipped ({monthSkippedCount}d)</span>
+            </div>
+          )}
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full border border-[rgb(var(--c-primary))] inline-block" />
-            <span>Today</span>
+            <span className="w-3 h-3 rounded-full border border-dashed border-[rgb(var(--c-border))] inline-block" />
+            <span>Off-day</span>
           </div>
         </div>
 
         <div className="text-[11px] text-[rgb(var(--c-muted))] flex items-center gap-1">
           <Info className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-          <span>Tap any missed day this week to apply or remove a Rest Token.</span>
+          <span>Tap any scheduled day to apply or remove a Rest Token.</span>
         </div>
       </div>
     </div>

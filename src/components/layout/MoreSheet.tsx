@@ -24,6 +24,8 @@ import {
   Search,
   X,
   Target,
+  Bell,
+  HeartPulse,
 } from 'lucide-react';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 
@@ -64,6 +66,7 @@ export const MoreSheet: React.FC = () => {
     { name: 'Today Overview', subtitle: 'Daily cockpit, classes & top priorities', route: '#/', icon: Home, category: 'Life' },
     { name: 'Habit Tracker', subtitle: 'Routines, consistency & streak counters', route: '#/habits', icon: Activity, category: 'Life' },
     { name: 'Private Journal', subtitle: 'Reflections, prompt deck & daily notes', route: '#/journal', icon: Feather, category: 'Life' },
+    { name: 'Wellbeing Insights', subtitle: 'Mood, energy, stress & habit analytics', route: '#/wellbeing', icon: HeartPulse, category: 'Life' },
     { name: 'Finance & Budget', subtitle: 'Expense tracking & savings vault', route: '#/finance', icon: CreditCard, category: 'Life' },
     { name: 'Weekly Rituals', subtitle: 'Sunday review & weekly planning', route: '#/rituals', icon: RefreshCw, category: 'Life' },
 
@@ -74,6 +77,8 @@ export const MoreSheet: React.FC = () => {
     { name: 'Reading Library', subtitle: 'Book queue & study topics', route: '#/library', icon: Bookmark, category: 'Creative' },
 
     // Settings
+    { name: 'Notification Center', subtitle: 'Due reminders, deadlines & overdue tasks', route: '#/notifications', icon: Bell, category: 'Settings' },
+    { name: 'Reminder Settings', subtitle: 'Quiet hours, lead times & alert categories', route: '#/notification-settings', icon: Clock, category: 'Settings' },
     { name: 'Visual Themes', subtitle: '27 distinctive crafted color palettes', route: '#/themes', icon: Palette, category: 'Settings' },
     { name: 'Life Analytics', subtitle: 'Study hours & completion statistics', route: '#/statistics', icon: Sparkles, category: 'Settings' },
     { name: 'XP & Progression', subtitle: 'Gamified ranks & achievement ledger', route: '#/levels', icon: Award, category: 'Settings' },

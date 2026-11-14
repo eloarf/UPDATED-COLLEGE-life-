@@ -4,13 +4,18 @@ import { initializeDatabase, db, saveEmergencyBackup } from './db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { applyTheme, applyAppearanceStyles, applyAppearanceMode, applyDesignStyle, applyReduceAnimations } from './theme/themeUtils';
 import { initializeNotificationFoundation } from './services/notificationService';
-import { reconcileAllReminders } from './services/reminderEngine';
+import {
+  reconcileAllReminders,
+  registerReminderActionHandlers,
+  syncNotificationCenter,
+} from './services/reminderEngine';
 
 // Layout
 import { TopBar } from './components/layout/TopBar';
 import { BottomTabBar } from './components/layout/BottomTabBar';
 import { SideNavRail } from './components/layout/SideNavRail';
 import { MoreSheet } from './components/layout/MoreSheet';
+import { NotificationCenterDrawer } from './components/notifications/NotificationCenterDrawer';
 
 // Modals
 import { QuickAddModal } from './components/common/QuickAddModal';
@@ -46,6 +51,9 @@ const SettingsPage = React.lazy(() => import('./pages/SettingsPage').then((m) =>
 const StatisticsPage = React.lazy(() => import('./pages/StatisticsPage').then((m) => ({ default: m.StatisticsPage })));
 const TodayPage = React.lazy(() => import('./pages/TodayPage').then((m) => ({ default: m.TodayPage })));
 const FlashcardsPage = React.lazy(() => import('./pages/FlashcardsPage').then((m) => ({ default: m.FlashcardsPage })));
+const WellbeingPage = React.lazy(() => import('./pages/WellbeingPage').then((m) => ({ default: m.WellbeingPage })));
+const NotificationsPage = React.lazy(() => import('./pages/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
+const NotificationSettingsPage = React.lazy(() => import('./pages/NotificationSettingsPage').then((m) => ({ default: m.NotificationSettingsPage })));
 
 const PageLoadingFallback = () => (
   <div className="flex flex-col items-center justify-center py-24 space-y-3">
@@ -61,21 +69,24 @@ export default function App() {
   const settings = useLiveQuery(() => db.settings.get('current_user'));
 
   useEffect(() => {
+    registerReminderActionHandlers((route) => setCurrentRoute(route));
+
     initializeDatabase()
       .then((res) => {
         if (res?.recovered) {
           showToast(`🛡️ Restored ${res.recoveredCount} items from emergency local mirror!`, 'success');
         }
-        // Initialize notification foundation & reconcile active reminders on startup
+        // Initialize notification foundation, reconcile alarms, and sync Notification Center
         initializeNotificationFoundation()
           .then(() => reconcileAllReminders())
+          .then(() => syncNotificationCenter())
           .catch((e) => console.warn('[CollegeLifeOS] Notification init warning:', e));
       })
       .catch((err) => {
         console.error('[CollegeLifeOS] Database init notice:', err);
       });
 
-    // Flush emergency backup on page hide / app switch
+    // Flush emergency backup on page hide / app switch, and sync notifications on foreground
     const handleFlushEmergencyBackup = () => {
       saveEmergencyBackup(true);
     };
@@ -85,9 +96,16 @@ export default function App() {
     const handleVisibility = () => {
       if (document.visibilityState === 'hidden') {
         saveEmergencyBackup(true);
+      } else if (document.visibilityState === 'visible') {
+        syncNotificationCenter().catch(console.warn);
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
+
+    // 60-second foreground sync for Web/PWA & live Notification Center badge
+    const syncInterval = setInterval(() => {
+      syncNotificationCenter().catch(console.warn);
+    }, 60 * 1000);
 
     // Hash sync
     const handleHashChange = () => {
@@ -101,6 +119,7 @@ export default function App() {
     }
 
     return () => {
+      clearInterval(syncInterval);
       window.removeEventListener('hashchange', handleHashChange);
       window.removeEventListener('pagehide', handleFlushEmergencyBackup);
       window.removeEventListener('beforeunload', handleFlushEmergencyBackup);
@@ -134,16 +153,18 @@ export default function App() {
 
   // Render active page
   const renderPage = () => {
-    if (currentRoute.startsWith('#/courses/')) {
-      const courseId = currentRoute.slice('#/courses/'.length);
+    const baseRoute = currentRoute.split('?')[0] || '#/';
+
+    if (baseRoute.startsWith('#/courses/')) {
+      const courseId = baseRoute.slice('#/courses/'.length);
       return <CourseHubPage courseId={courseId} />;
     }
 
-    if (currentRoute.startsWith('#/today') || currentRoute.startsWith('#/day')) {
+    if (baseRoute.startsWith('#/today') || baseRoute.startsWith('#/day')) {
       return <TodayPage />;
     }
 
-    switch (currentRoute) {
+    switch (baseRoute) {
       case '#/timetable':
         return <TimetablePage />;
       case '#/courses':
@@ -163,6 +184,13 @@ export default function App() {
         return <HabitsPage />;
       case '#/journal':
         return <JournalPage />;
+      case '#/wellbeing':
+      case '#/insights':
+        return <WellbeingPage />;
+      case '#/notifications':
+        return <NotificationsPage />;
+      case '#/notification-settings':
+        return <NotificationSettingsPage />;
       case '#/week':
         return <MasterWeekPage />;
       case '#/calendar':
@@ -215,6 +243,7 @@ export default function App() {
 
       {/* Global Concierge Modals & Toasts */}
       <MoreSheet />
+      <NotificationCenterDrawer />
       <QuickAddModal />
       <GlobalSearchModal />
       <ThemeSwitcherModal />

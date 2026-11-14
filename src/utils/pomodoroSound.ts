@@ -86,36 +86,3 @@ export function triggerHaptic(pattern: number[] = [120, 60, 120]) {
   }
 }
 
-/**
- * Request notification permissions from user
- */
-export async function requestNotificationPermission(): Promise<boolean> {
-  if (typeof window === 'undefined' || !('Notification' in window)) return false;
-  try {
-    if (Notification.permission === 'granted') return true;
-    if (Notification.permission !== 'denied') {
-      const res = await Notification.requestPermission();
-      return res === 'granted';
-    }
-  } catch {
-    // Graceful fallback
-  }
-  return false;
-}
-
-/**
- * Send local browser/Android notification for timer completion
- */
-export function sendLocalNotification(title: string, body: string) {
-  try {
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, {
-        body,
-        icon: '/favicon.svg',
-        badge: '/favicon.svg',
-      });
-    }
-  } catch {
-    // Graceful fallback
-  }
-}

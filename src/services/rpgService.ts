@@ -2,6 +2,11 @@ import { db } from '../db/db';
 import { generateId } from '../utils/idGenerator';
 import { getTodayKey } from '../utils/dateUtils';
 import { Achievement, DailyQuest, StatKey, XpEvent } from '../types';
+import {
+  isNativeAndroid,
+  scheduleNativeLocalNotification,
+  stringToNotificationId,
+} from './notificationService';
 
 export interface LevelThreshold {
   level: number;
@@ -461,7 +466,7 @@ export async function reconcileXpLedger(): Promise<{
 }
 
 export async function triggerLevelUpConfetti() {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
   const isReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (isReduced) return;
 
@@ -499,14 +504,55 @@ export async function checkAchievementsTrigger() {
   if (focusCount >= 3) toUnlock.push('ach_deep_focus');
   if (journalCount >= 5) toUnlock.push('ach_wordsmith');
 
+  const settings = toUnlock.length > 0 ? await db.settings.get('current_user') : undefined;
+  const achNotifEnabled = settings?.notificationSettings?.categories?.achievements?.enabled !== false;
+
   for (const id of toUnlock) {
     const ach = await db.achievementsUnlocked.get(id);
     if (ach && !ach.isUnlocked) {
+      const unlockedAt = new Date().toISOString();
       await db.achievementsUnlocked.update(id, {
         isUnlocked: true,
-        unlockedAt: new Date().toISOString(),
+        unlockedAt,
       });
       triggerLevelUpConfetti();
+
+      if (achNotifEnabled) {
+        const notifId = `ach-${ach.id}`;
+        const existingNotif = await db.appNotifications.get(notifId);
+        if (!existingNotif) {
+          const numericId = stringToNotificationId(notifId);
+          const nativeOn = isNativeAndroid() && Boolean(settings?.notificationSettings?.enabled);
+          await db.appNotifications.put({
+            id: notifId,
+            title: `Achievement Unlocked: ${ach.title}`,
+            description: ach.description,
+            category: 'briefings',
+            createdAt: unlockedAt,
+            scheduledFor: unlockedAt,
+            deliveredAt: unlockedAt,
+            isRead: false,
+            isDismissed: false,
+            priority: 'normal',
+            entityType: 'achievement',
+            entityId: ach.id,
+            route: '#/levels',
+            deliveryStatus: nativeOn ? 'delivered' : 'in_app_only',
+            numericId,
+          });
+          if (nativeOn) {
+            await scheduleNativeLocalNotification({
+              id: numericId,
+              title: `Achievement Unlocked: ${ach.title}`,
+              body: ach.description,
+              at: new Date(Date.now() + 250),
+              channelId: 'college_os_briefings',
+              route: '#/levels',
+              extra: { notificationId: notifId, category: 'briefings', entityId: ach.id },
+            });
+          }
+        }
+      }
     }
   }
 }

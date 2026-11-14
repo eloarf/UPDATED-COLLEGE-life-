@@ -9,13 +9,15 @@ import {
 } from 'lucide-react';
 import { formatDisplayDate } from '../../utils/dateUtils';
 import { formatLightweightMarkdown } from '../../utils/journalEngine';
-import { JournalEntry } from '../../types';
+import { JournalEntry, DailyCheckIn } from '../../types';
 import { JournalEntrySummary } from '../../db/queries';
+import { getScaleLabel } from '../../utils/wellbeingEngine';
 
 const MOOD_ICONS = ['😞', '😐', '🙂', '😊', '🔥'];
 
 interface ViewModalProps {
   entry: JournalEntry | null;
+  associatedCheckIn?: DailyCheckIn | null;
   onClose: () => void;
   onEdit: (entry: JournalEntry) => void;
   onTrash: (entry: JournalEntry) => void;
@@ -24,6 +26,7 @@ interface ViewModalProps {
 
 export const JournalViewModal: React.FC<ViewModalProps> = ({
   entry,
+  associatedCheckIn,
   onClose,
   onEdit,
   onTrash,
@@ -94,6 +97,41 @@ export const JournalViewModal: React.FC<ViewModalProps> = ({
           {entry.promptQuestion && (
             <div className="p-3 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-xs font-flourish italic text-[rgb(var(--c-muted))]">
               Prompt: “{entry.promptQuestion}”
+            </div>
+          )}
+
+          {associatedCheckIn && (
+            <div className="p-3 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-xs space-y-1.5">
+              <div className="font-heading font-bold text-[rgb(var(--c-text))]">
+                Daily Check-in Summary
+              </div>
+              <div className="text-[rgb(var(--c-muted))] flex flex-wrap gap-x-3 gap-y-1">
+                {associatedCheckIn.moodScore !== undefined && (
+                  <span>
+                    Mood: <strong className="text-[rgb(var(--c-text))]">{associatedCheckIn.moodScore}/5 ({getScaleLabel('mood', associatedCheckIn.moodScore)})</strong>
+                  </span>
+                )}
+                {associatedCheckIn.energyScore !== undefined && (
+                  <span>
+                    Energy: <strong className="text-[rgb(var(--c-text))]">{associatedCheckIn.energyScore}/5 ({getScaleLabel('energy', associatedCheckIn.energyScore)})</strong>
+                  </span>
+                )}
+                {associatedCheckIn.stressScore !== undefined && (
+                  <span>
+                    Stress: <strong className="text-[rgb(var(--c-text))]">{associatedCheckIn.stressScore}/5 ({getScaleLabel('stress', associatedCheckIn.stressScore)})</strong>
+                  </span>
+                )}
+              </div>
+              {associatedCheckIn.emotions?.length > 0 && (
+                <div className="text-[rgb(var(--c-muted))]">
+                  Emotions: {associatedCheckIn.emotions.join(' · ')}
+                </div>
+              )}
+              {associatedCheckIn.contextTags?.length > 0 && (
+                <div className="text-[rgb(var(--c-muted))]">
+                  Context: {associatedCheckIn.contextTags.join(' · ')}
+                </div>
+              )}
             </div>
           )}
 

@@ -37,8 +37,8 @@ const getPhaseThemeColor = (phase: PomodoroPhase): string => {
 import {
   playPomodoroChime,
   triggerHaptic,
-  sendLocalNotification,
 } from '../utils/pomodoroSound';
+import { emitFocusNotification } from '../services/reminderEngine';
 
 import { FocusActiveTaskBanner } from '../components/focus/FocusActiveTaskBanner';
 import { FocusTimerDial } from '../components/focus/FocusTimerDial';
@@ -231,12 +231,13 @@ export const FocusPage: React.FC = () => {
       );
     }
     if (settings.notificationsEnabled) {
-      sendLocalNotification(
-        completedPhase === 'work' ? 'Focus Session Complete! 🏆' : 'Break Finished! ⚡',
-        completedPhase === 'work'
-          ? 'Great work! Take a breath and transition to your rest break.'
-          : 'Break is up. Return to flow when you are ready to focus.'
-      );
+      const completedMins = Math.max(1, Math.round(totalPhaseSeconds / 60));
+      emitFocusNotification({
+        phase: completedPhase,
+        minutes: completedMins,
+        courseId: selectedCourseId || undefined,
+        taskTitle: activeFocusTask?.taskTitle,
+      }).catch(console.warn);
     }
 
     // Advance to next phase

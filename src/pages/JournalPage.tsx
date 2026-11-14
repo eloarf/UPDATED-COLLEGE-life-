@@ -13,8 +13,9 @@ import {
   calculateJournalStats,
   buildStructuredReflectionContent,
   ReflectionTemplate,
+  selectTodayJournalEntry,
 } from '../utils/journalEngine';
-import { THEMES } from '../theme/themeUtils';
+import { getDailyHabitsSummary } from '../utils/streakEngine';
 import {
   getJournalSummaries,
   getJournalEntriesForDate,
@@ -22,10 +23,11 @@ import {
   JournalEntrySummary,
 } from '../db/queries';
 
-import { JournalHeaderStats } from '../components/journal/JournalHeaderStats';
+import { JournalHeaderStats, JournalTabView } from '../components/journal/JournalHeaderStats';
 import { JournalArchiveView } from '../components/journal/JournalArchiveView';
 import { JournalEditorView } from '../components/journal/JournalEditorView';
 import { JournalTrashView } from '../components/journal/JournalTrashView';
+import { CheckInHistoryView } from '../components/journal/CheckInHistoryView';
 import {
   JournalViewModal,
   JournalStructuredModal,
@@ -46,41 +48,20 @@ function downloadTextFile(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
-const MOOD_EMOJIS = ['😞 Melancholy', '😐 Neutral', '🙂 Pleasant', '😊 Serene', '🔥 High Vitality'];
-
-const THEME_AMBIANCE_LABELS: Record<string, { label: string; motif: string }> = {
-  'gothic-romance': { label: 'Gothic Romance • Antique Parchment & Ink', motif: '❦' },
-  'pink-neon-dream': { label: 'Pink Neon Dream • Ultraviolet Bloom', motif: '✧' },
-  'halloween-after-dark': { label: 'Halloween After Dark • Spectral Library', motif: '✦' },
-  'cyberpunk-grid': { label: 'Cyberpunk Grid • Terminal Deck Log', motif: '⌗' },
-  'emerald-arcana': { label: 'Emerald Arcana • Grimoire Foliage', motif: '🌿' },
-  'oceanic-abyss': { label: 'Oceanic Abyss • Bioluminescent Depth', motif: '≋' },
-  'solar-flare': { label: 'Solar Flare • Radiant Flare Studio', motif: '☼' },
-  'celestial-starlight': { label: 'Celestial Starlight • Astral Observatory', motif: '★' },
-  'dark-academia': { label: 'Dark Academia • Mahogany Study Desk', motif: '📜' },
-  'tokyo-vaporwave': { label: 'Tokyo Sunset Vaporwave • Retro Horizon', motif: '░' },
-  'arctic-frost': { label: 'Arctic Frost • Crystalline Alpine Focus', motif: '❄' },
-  'forest-moss': { label: 'Forest Moss Sanctuary • Ancient Grove', motif: '🍃' },
-  'pink-lobby': { label: 'Pink Lobby • Storybook Concierge', motif: '🗝' },
-  'matcha-cream': { label: 'Matcha Cream • Botanical Tea Parlor', motif: '🍵' },
-  'blush-cocoa': { label: 'Blush & Cocoa • Patisserie Suite', motif: '🌸' },
-  'chocolate-lime': { label: 'Chocolate Lime • Espresso Woodgrain', motif: '☕' },
-  'midnight-plum': { label: 'Midnight Plum • Velvet Amethyst', motif: '🌙' },
-  'burgundy-velvet': { label: 'Burgundy Velvet • Grand Theatre Wine', motif: '🍷' },
-};
+const MOOD_EMOJIS = ['😞 Very low', '😐 Low', '🙂 Okay', '😊 Good', '✨ Very good'];
 
 export const JournalPage: React.FC = () => {
-  const { showToast } = useUiStore();
+  const { showToast, setCurrentRoute, currentRoute } = useUiStore();
   const todayKey = getTodayKey();
   const currentMonthKey = todayKey.slice(0, 7);
 
-  // Active user theme from DB
+  // Active user settings (for custom emotions)
   const userSettings = useLiveQuery(() => db.settings.get('current_user'));
-  const currentThemeId = userSettings?.theme || 'pink-lobby';
-  const activeThemeMeta = THEMES.find((t) => t.id === currentThemeId) || THEMES[0];
-  const activeThemeAmbiance = THEME_AMBIANCE_LABELS[currentThemeId] || {
-    label: `${activeThemeMeta.name} • Private Writing Canvas`,
-    motif: '✦',
+  const customEmotions = userSettings?.customEmotions || [];
+
+  const handleUpdateCustomEmotions = async (nextList: string[]) => {
+    const clean = Array.from(new Set(nextList.map((e) => e.trim()).filter(Boolean)));
+    await db.settings.update('current_user', { customEmotions: clean });
   };
 
   // Typography & Canvas Scaling
@@ -111,12 +92,12 @@ export const JournalPage: React.FC = () => {
     localStorage.setItem('college_os_journal_paper', String(next));
   };
 
-  // View mode: 'archive' | 'editor' | 'trash'
-  const [activeView, setActiveView] = useState<'archive' | 'editor' | 'trash'>('archive');
+  // Default landing view opens immediately into Today's writing canvas
+  const [activeView, setActiveView] = useState<JournalTabView>('editor');
   const [isZenMode, setIsZenMode] = useState(false);
   const [previewMode, setPreviewMode] = useState<'write' | 'preview'>('write');
 
-  // Currently editing entry ID (null means brand-new draft)
+  // Currently editing entry ID (null means fresh draft for entryDate)
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
   const activeEntryIdRef = useRef<string | null>(null);
 
@@ -128,11 +109,10 @@ export const JournalPage: React.FC = () => {
   const [energy, setEnergy] = useState(3);
   const [isPinned, setIsPinned] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
-  const [activeTags, setActiveTags] = useState<string[]>(['reflection']);
+  const [activeTags, setActiveTags] = useState<string[]>([]);
   const [customTagInput, setCustomTagInput] = useState('');
   const [selectedPromptCategory, setSelectedPromptCategory] = useState<PromptCategory>('reflection');
   const [promptIndex, setPromptIndex] = useState(0);
-  const [showPromptsPanel, setShowPromptsPanel] = useState(true);
   const [appliedPromptQuestion, setAppliedPromptQuestion] = useState<string | undefined>(undefined);
 
   // Structured Reflection Modal
@@ -141,16 +121,18 @@ export const JournalPage: React.FC = () => {
   const [structMattered, setStructMattered] = useState('');
   const [structNext, setStructNext] = useState('');
 
-  // Autosave Telemetry
+  // Autosave State
   const [autosaveStatus, setAutosaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'failed'>('saved');
   const [lastSavedTimestamp, setLastSavedTimestamp] = useState<string | null>(null);
-  const autosaveTimeoutRef = useRef<any>(null);
+  const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDirtyRef = useRef(false);
+  const suppressDirtyOnceRef = useRef(false);
+  const hasHydratedTodayRef = useRef(false);
 
-  // Content Textarea Ref
+  // Textarea Ref
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Archive Search & Filter State (with 250ms debounced query)
+  // Archive Search & Filter State (250ms debounced query)
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
@@ -161,13 +143,65 @@ export const JournalPage: React.FC = () => {
   const [calendarFilterDate, setCalendarFilterDate] = useState<string | null>(null);
   const [selectedDayEntries, setSelectedDayEntries] = useState<JournalEntry[] | null>(null);
 
-  // 1-Minute Quick Mode state on Journal page
-  const [quickMood, setQuickMood] = useState(4);
-  const [quickText, setQuickText] = useState('');
-  const [quickPromptIdx, setQuickPromptIdx] = useState(0);
-
-  // Bounded & lightweight queries: Load summaries without full text bodies for archive list
+  // Live Queries
   const summariesRaw = useLiveQuery(() => getJournalSummaries()) || [];
+  const allCheckIns = useLiveQuery(() => db.dailyCheckIns.toArray()) || [];
+  const allJournalEntriesForHistory = useLiveQuery(() => db.journalEntries.toArray()) || [];
+  const habits = useLiveQuery(() => db.habits.toArray()) || [];
+  const habitLogs = useLiveQuery(() => db.habitLogs.toArray()) || [];
+  const restDays = useLiveQuery(() => db.restDays.toArray()) || [];
+
+  const dailyHabitsSummary = useMemo(
+    () => getDailyHabitsSummary(habits, habitLogs, restDays, todayKey),
+    [habits, habitLogs, restDays, todayKey]
+  );
+
+  // Hydrate Today's existing entry once on mount so reopening Journal restores today's draft cleanly without duplicates
+  const hydrateTodayEntry = useCallback(async () => {
+    const todayRows = await getJournalEntriesForDate(todayKey);
+    const existingToday = selectTodayJournalEntry(todayRows, todayKey);
+    suppressDirtyOnceRef.current = true;
+    isDirtyRef.current = false;
+
+    if (existingToday) {
+      activeEntryIdRef.current = existingToday.id;
+      setActiveEntryId(existingToday.id);
+      setEntryTitle(existingToday.title || '');
+      setContent(existingToday.content || '');
+      setEntryDate(existingToday.date || todayKey);
+      setMood(isNaN(existingToday.moodScore) ? 4 : existingToday.moodScore);
+      setEnergy(isNaN(existingToday.energyScore) ? 3 : existingToday.energyScore);
+      setIsPinned(!!existingToday.isPinned);
+      setIsFavorite(!!existingToday.isFavorite);
+      setActiveTags(Array.isArray(existingToday.tags) ? existingToday.tags : []);
+      setAppliedPromptQuestion(existingToday.promptQuestion);
+      setAutosaveStatus('saved');
+      const stamp = existingToday.updatedAt || existingToday.createdAt;
+      if (stamp) {
+        setLastSavedTimestamp(new Date(stamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      }
+    } else {
+      activeEntryIdRef.current = null;
+      setActiveEntryId(null);
+      setEntryTitle('');
+      setContent('');
+      setEntryDate(todayKey);
+      setMood(4);
+      setEnergy(3);
+      setIsPinned(false);
+      setIsFavorite(false);
+      setActiveTags([]);
+      setAppliedPromptQuestion(undefined);
+      setAutosaveStatus('saved');
+      setLastSavedTimestamp(null);
+    }
+  }, [todayKey]);
+
+  useEffect(() => {
+    if (hasHydratedTodayRef.current) return;
+    hasHydratedTodayRef.current = true;
+    hydrateTodayEntry();
+  }, [hydrateTodayEntry]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -176,7 +210,7 @@ export const JournalPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Load full entry text only when a specific day is selected in the strip
+  // Load full entry text only when a specific day is selected in the archive strip
   useEffect(() => {
     let active = true;
     if (!calendarFilterDate) {
@@ -198,32 +232,46 @@ export const JournalPage: React.FC = () => {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportMonthInput, setExportMonthInput] = useState(currentMonthKey);
 
+  // Support deep link #/journal?entry=<id> from Wellbeing Insights Day Inspection
+  useEffect(() => {
+    const queryIdx = currentRoute.indexOf('?');
+    if (queryIdx === -1) return;
+    const params = new URLSearchParams(currentRoute.slice(queryIdx + 1));
+    const requestedEntryId = params.get('entry');
+    if (!requestedEntryId) return;
+    getJournalEntryById(requestedEntryId).then((full) => {
+      if (full && !full.deletedAt) {
+        setEntryToView(full);
+      }
+    });
+  }, [currentRoute]);
+
   // Separate active entries from trash
-  const activeEntries = useMemo(() => {
-    return summariesRaw.filter((e) => !e.deletedAt);
-  }, [summariesRaw]);
+  const activeEntries = useMemo(() => summariesRaw.filter((e) => !e.deletedAt), [summariesRaw]);
+  const trashEntries = useMemo(
+    () =>
+      summariesRaw
+        .filter((e) => !!e.deletedAt)
+        .sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || '')),
+    [summariesRaw]
+  );
 
-  const trashEntries = useMemo(() => {
-    return summariesRaw
-      .filter((e) => !!e.deletedAt)
-      .sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
-  }, [summariesRaw]);
-
-  // Sorted active entries: Pinned entries float first, then newest date first
+  // Sorted active entries: Pinned first, then newest date first
   const sortedEntries = useMemo(() => {
     return [...activeEntries].sort((a, b) => {
       if (a.isPinned && !b.isPinned) return -1;
       if (!a.isPinned && b.isPinned) return 1;
-      return b.date.localeCompare(a.date);
+      const dDiff = b.date.localeCompare(a.date);
+      if (dDiff !== 0) return dDiff;
+      return (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || '');
     });
   }, [activeEntries]);
 
-  // Overall honest journal stats
-  const journalStats = useMemo(() => {
-    return calculateJournalStats(summariesRaw as any, todayKey);
-  }, [summariesRaw, todayKey]);
+  const journalStats = useMemo(
+    () => calculateJournalStats(summariesRaw as any, todayKey),
+    [summariesRaw, todayKey]
+  );
 
-  // Tag frequency counts for badge display
   const tagCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     activeEntries.forEach((e) => {
@@ -235,7 +283,6 @@ export const JournalPage: React.FC = () => {
     return counts;
   }, [activeEntries]);
 
-  // Months available
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
     activeEntries.forEach((e) => {
@@ -246,7 +293,6 @@ export const JournalPage: React.FC = () => {
     return Array.from(months).sort((a, b) => b.localeCompare(a));
   }, [activeEntries]);
 
-  // Filtered Archive entries
   const filteredEntries = useMemo(() => {
     return sortedEntries.filter((entry) => {
       if (onlyFavorites && !entry.isFavorite) return false;
@@ -254,7 +300,8 @@ export const JournalPage: React.FC = () => {
       if (calendarFilterDate && entry.date !== calendarFilterDate) return false;
       if (selectedMonth !== 'all' && !entry.date.startsWith(selectedMonth)) return false;
       if (selectedMoodFilter !== 'all' && entry.moodScore !== selectedMoodFilter) return false;
-      if (selectedTagFilter !== 'all' && (!entry.tags || !entry.tags.includes(selectedTagFilter))) return false;
+      if (selectedTagFilter !== 'all' && (!entry.tags || !entry.tags.includes(selectedTagFilter)))
+        return false;
 
       if (debouncedSearchQuery.trim()) {
         const q = debouncedSearchQuery.toLowerCase();
@@ -281,9 +328,10 @@ export const JournalPage: React.FC = () => {
     return content.trim() ? content.trim().split(/\s+/).length : 0;
   }, [content]);
 
-  const activePrompt = useMemo(() => {
-    return getPromptForCategory(selectedPromptCategory, promptIndex);
-  }, [selectedPromptCategory, promptIndex]);
+  const activePrompt = useMemo(
+    () => getPromptForCategory(selectedPromptCategory, promptIndex),
+    [selectedPromptCategory, promptIndex]
+  );
 
   // 14-day activity strip
   const activityStripDays = useMemo(() => {
@@ -302,10 +350,26 @@ export const JournalPage: React.FC = () => {
     return days;
   }, [todayKey, journalStats.recentEntriesByDate]);
 
+  // Associated Check-in for the active editor date and the viewed entry modal
+  const editorDateCheckIn = useMemo(
+    () => allCheckIns.find((c) => c.dateKey === entryDate),
+    [allCheckIns, entryDate]
+  );
+
+  const viewModalCheckIn = useMemo(() => {
+    if (!entryToView) return null;
+    if (entryToView.checkInId) {
+      const byId = allCheckIns.find((c) => c.id === entryToView.checkInId);
+      if (byId) return byId;
+    }
+    return allCheckIns.find((c) => c.dateKey === entryToView.date) || null;
+  }, [entryToView, allCheckIns]);
+
   // Autosave Function
   const executeAutosave = useCallback(async () => {
     if (!content.trim() && !entryTitle.trim()) {
       setAutosaveStatus('saved');
+      isDirtyRef.current = false;
       return;
     }
 
@@ -319,7 +383,7 @@ export const JournalPage: React.FC = () => {
         const updatedCount = await db.journalEntries.update(currentTargetId, {
           title: entryTitle.trim() || undefined,
           date: entryDate,
-          content: content.trim(),
+          content,
           moodScore: mood,
           energyScore: energy,
           wordCount: currentWords,
@@ -335,7 +399,7 @@ export const JournalPage: React.FC = () => {
             id: currentTargetId,
             title: entryTitle.trim() || undefined,
             date: entryDate,
-            content: content.trim(),
+            content,
             moodScore: mood,
             energyScore: energy,
             wordCount: currentWords,
@@ -355,7 +419,7 @@ export const JournalPage: React.FC = () => {
           id: newId,
           title: entryTitle.trim() || undefined,
           date: entryDate,
-          content: content.trim(),
+          content,
           moodScore: mood,
           energyScore: energy,
           wordCount: currentWords,
@@ -368,8 +432,18 @@ export const JournalPage: React.FC = () => {
         });
       }
 
+      if (currentWords >= 20 && activeEntryIdRef.current) {
+        awardXp({
+          source: 'journal_entry',
+          sourceId: activeEntryIdRef.current,
+          amount: 15,
+          stat: 'creativity',
+          dayKey: entryDate,
+        }).catch(() => {});
+      }
+
       setAutosaveStatus('saved');
-      setLastSavedTimestamp(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setLastSavedTimestamp(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
       isDirtyRef.current = false;
       saveEmergencyBackup();
     } catch (err) {
@@ -392,20 +466,40 @@ export const JournalPage: React.FC = () => {
   // Debounced autosave
   useEffect(() => {
     if (activeView !== 'editor') return;
+
+    if (suppressDirtyOnceRef.current) {
+      suppressDirtyOnceRef.current = false;
+      return;
+    }
+
     if (!content.trim() && !entryTitle.trim()) return;
 
     isDirtyRef.current = true;
     setAutosaveStatus('unsaved');
-    clearTimeout(autosaveTimeoutRef.current);
+    if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
 
     autosaveTimeoutRef.current = setTimeout(() => {
       executeAutosave();
     }, 800);
 
-    return () => clearTimeout(autosaveTimeoutRef.current);
-  }, [content, entryTitle, entryDate, mood, energy, activeTags, isPinned, isFavorite, activeView, executeAutosave]);
+    return () => {
+      if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+    };
+  }, [
+    content,
+    entryTitle,
+    entryDate,
+    mood,
+    energy,
+    activeTags,
+    appliedPromptQuestion,
+    isPinned,
+    isFavorite,
+    activeView,
+    executeAutosave,
+  ]);
 
-  // Lifecycle flush
+  // Lifecycle flush (ensures drafts aren't lost on background/tab close on Android & Web)
   useEffect(() => {
     const handleFlush = () => {
       if (isDirtyRef.current) {
@@ -436,11 +530,21 @@ export const JournalPage: React.FC = () => {
     };
   }, [executeAutosave]);
 
-  // Actions
-  const handleStartNewEntry = () => {
-    if (isDirtyRef.current) {
-      executeAutosave();
+  // Navigation / Switching Actions
+  const handleSelectView = async (nextView: JournalTabView) => {
+    if (activeView === 'editor' && isDirtyRef.current) {
+      await executeAutosave();
     }
+    setActiveView(nextView);
+    setIsZenMode(false);
+  };
+
+  const handleStartNewSeparateNote = async () => {
+    if (isDirtyRef.current) {
+      await executeAutosave();
+    }
+    suppressDirtyOnceRef.current = true;
+    isDirtyRef.current = false;
     activeEntryIdRef.current = null;
     setActiveEntryId(null);
     setEntryTitle('');
@@ -450,7 +554,7 @@ export const JournalPage: React.FC = () => {
     setEnergy(3);
     setIsPinned(false);
     setIsFavorite(false);
-    setActiveTags(['reflection']);
+    setActiveTags([]);
     setAppliedPromptQuestion(undefined);
     setAutosaveStatus('saved');
     setLastSavedTimestamp(null);
@@ -460,11 +564,13 @@ export const JournalPage: React.FC = () => {
 
   const handleEditEntry = async (entryOrSummary: { id: string }) => {
     if (isDirtyRef.current) {
-      executeAutosave();
+      await executeAutosave();
     }
     const full = await getJournalEntryById(entryOrSummary.id);
     if (!full) return;
 
+    suppressDirtyOnceRef.current = true;
+    isDirtyRef.current = false;
     activeEntryIdRef.current = full.id;
     setActiveEntryId(full.id);
     setEntryTitle(full.title || '');
@@ -474,10 +580,13 @@ export const JournalPage: React.FC = () => {
     setEnergy(isNaN(full.energyScore) ? 3 : full.energyScore);
     setIsPinned(!!full.isPinned);
     setIsFavorite(!!full.isFavorite);
-    setActiveTags(full.tags && full.tags.length > 0 ? full.tags : ['reflection']);
+    setActiveTags(Array.isArray(full.tags) ? full.tags : []);
     setAppliedPromptQuestion(full.promptQuestion);
     setAutosaveStatus('saved');
-    setLastSavedTimestamp(null);
+    const stamp = full.updatedAt || full.createdAt;
+    setLastSavedTimestamp(
+      stamp ? new Date(stamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
+    );
     setPreviewMode('write');
     setActiveView('editor');
   };
@@ -489,90 +598,32 @@ export const JournalPage: React.FC = () => {
     }
   };
 
-  const quickModePrompt = useMemo(
-    () => getPromptForCategory('reflection', quickPromptIdx),
-    [quickPromptIdx]
-  );
-
-  const handleSaveQuickMode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickText.trim()) {
-      showToast('Write a quick line first.', 'info');
-      return;
-    }
-    const targetDate = calendarFilterDate || todayKey;
-    const nowIso = new Date().toISOString();
-    const id = generateId();
-    await db.journalEntries.add({
-      id,
-      title: `Quick Note (${targetDate})`,
-      date: targetDate,
-      moodScore: quickMood,
-      energyScore: quickMood,
-      content: quickText.trim(),
-      wordCount: quickText.trim().split(/\s+/).length,
-      tags: ['quick-mode'],
-      promptQuestion: quickModePrompt.prompt,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    });
-    await awardXp({
-      source: 'journal_entry',
-      sourceId: `quick_${targetDate}`,
-      amount: 10,
-      stat: 'creativity',
-      dayKey: targetDate,
-    });
-    setQuickText('');
-    showToast('1-minute note saved!', 'success');
-  };
-
-  const handleReturnToArchive = async () => {
-    if (isDirtyRef.current) {
-      await executeAutosave();
-    }
-    setActiveView('archive');
-    setIsZenMode(false);
-  };
-
-  const handleExplicitSave = async () => {
-    if (!content.trim() && !entryTitle.trim()) {
-      showToast('Please compose some thoughts or an entry title.', 'warning');
-      return;
-    }
-
-    await executeAutosave();
-
-    if (wordCount >= 20) {
-      await awardXp({
-        source: 'journal_entry',
-        sourceId: activeEntryId || generateId(),
-        amount: 15,
-        stat: 'creativity',
-      });
-      showToast('Journal entry inscribed in local vault! +15 Creativity XP', 'success');
+  const handleOpenJournalById = async (entryId: string) => {
+    const full = await getJournalEntryById(entryId);
+    if (full && !full.deletedAt) {
+      setEntryToView(full);
     } else {
-      showToast('Journal draft securely preserved.', 'info');
+      showToast('Linked journal entry is no longer available.', 'info');
     }
+  };
 
-    setActiveView('archive');
-    setIsZenMode(false);
+  const handleSaveNow = async () => {
+    if (!content.trim() && !entryTitle.trim()) {
+      showToast('Write a line before saving.', 'info');
+      return;
+    }
+    await executeAutosave();
+    showToast('Entry saved.', 'success');
   };
 
   const handleApplyPrompt = () => {
     setAppliedPromptQuestion(activePrompt.prompt);
-    if (!entryTitle.trim()) {
-      setEntryTitle(activePrompt.prompt);
-    }
-    showToast(`Prompt applied: "${activePrompt.categoryLabel}"`, 'info');
+    showToast(`Prompt added: ${activePrompt.categoryLabel}`, 'info');
   };
 
   const handleApplyQuickTemplate = (tpl: ReflectionTemplate) => {
     setContent((prev) => (prev ? `${prev}\n\n${tpl.content}` : tpl.content));
-    if (!entryTitle.trim()) {
-      setEntryTitle(tpl.name);
-    }
-    showToast(`Template "${tpl.name}" applied!`, 'success');
+    showToast(`Template "${tpl.name}" inserted`, 'success');
   };
 
   const handleInsertStructuredReflection = () => {
@@ -584,7 +635,7 @@ export const JournalPage: React.FC = () => {
 
     if (formatted) {
       setContent((prev) => (prev ? `${prev}\n\n${formatted}` : formatted));
-      showToast('Structured reflection inserted into editor!', 'success');
+      showToast('3-part reflection inserted', 'success');
     }
     setIsStructuredModalOpen(false);
     setStructHappened('');
@@ -595,7 +646,12 @@ export const JournalPage: React.FC = () => {
   const handleToolbarFormat = (type: 'bold' | 'italic' | 'h2' | 'h3' | 'quote' | 'bullet' | 'todo') => {
     if (!textareaRef.current) return;
     const { selectionStart, selectionEnd, value } = textareaRef.current;
-    const { updatedText, newCursorStart, newCursorEnd } = insertFormattingSyntax(value, selectionStart, selectionEnd, type);
+    const { updatedText, newCursorStart, newCursorEnd } = insertFormattingSyntax(
+      value,
+      selectionStart,
+      selectionEnd,
+      type
+    );
 
     setContent(updatedText);
     setTimeout(() => {
@@ -628,22 +684,25 @@ export const JournalPage: React.FC = () => {
 
     showToast(`Entry "${entry.title || entry.date}" moved to trash.`, 'info');
     if (activeView === 'editor' && activeEntryId === entry.id) {
+      await hydrateTodayEntry();
       setActiveView('archive');
     }
     setEntryToDelete(null);
   };
 
   const handleRestoreFromTrash = async (entry: JournalEntry | JournalEntrySummary) => {
-    const copy = { ...entry };
+    const full = await db.journalEntries.get(entry.id);
+    if (!full) return;
+    const copy = { ...full };
     delete copy.deletedAt;
     copy.updatedAt = new Date().toISOString();
-    await db.journalEntries.put(copy as any);
-    showToast(`Entry "${entry.title || entry.date}" restored to chronicle.`, 'success');
+    await db.journalEntries.put(copy);
+    showToast(`Entry "${entry.title || entry.date}" restored.`, 'success');
   };
 
   const handlePermanentDelete = async (entryId: string) => {
     await db.journalEntries.delete(entryId);
-    showToast('Entry permanently deleted from storage.', 'info');
+    showToast('Entry permanently deleted.', 'info');
     setEntryToDelete(null);
   };
 
@@ -651,7 +710,7 @@ export const JournalPage: React.FC = () => {
     for (const e of trashEntries) {
       await db.journalEntries.delete(e.id);
     }
-    showToast(`Permanently cleared ${trashEntries.length} discarded entries.`, 'info');
+    showToast(`Removed ${trashEntries.length} discarded entries.`, 'info');
     setActiveView('archive');
   };
 
@@ -662,7 +721,7 @@ export const JournalPage: React.FC = () => {
       isPinned: newVal,
       updatedAt: new Date().toISOString(),
     });
-    showToast(newVal ? 'Entry pinned to top of archive' : 'Entry unpinned', 'info');
+    showToast(newVal ? 'Entry pinned to top' : 'Entry unpinned', 'info');
   };
 
   const handleToggleFavoriteCard = async (entry: JournalEntrySummary, e: React.MouseEvent) => {
@@ -672,16 +731,19 @@ export const JournalPage: React.FC = () => {
       isFavorite: newVal,
       updatedAt: new Date().toISOString(),
     });
-    showToast(newVal ? 'Added to starred entries' : 'Removed from starred entries', 'info');
+    showToast(newVal ? 'Starred entry' : 'Removed star', 'info');
   };
 
-  const handleExportSingleEntry = async (entryOrSummary: { id: string; date: string; title?: string }, e?: React.MouseEvent) => {
+  const handleExportSingleEntry = async (
+    entryOrSummary: { id: string; date: string; title?: string },
+    e?: React.MouseEvent
+  ) => {
     e?.stopPropagation();
     const full = await db.journalEntries.get(entryOrSummary.id);
     if (!full) return;
 
     const titleLine = full.title ? `Title: ${full.title}\n` : '';
-    const moodStr = MOOD_EMOJIS[full.moodScore - 1] || 'Neutral';
+    const moodStr = MOOD_EMOJIS[full.moodScore - 1] || 'Okay';
     const promptLine = full.promptQuestion ? `Prompt: “${full.promptQuestion}”\n` : '';
     const tagsLine = full.tags?.length ? `Tags: #${full.tags.join(' #')}\n` : '';
 
@@ -697,13 +759,13 @@ ${tagsLine}${promptLine}========================================================
 ${full.content}
 
 ----------------------------------------------------------------------
-College Life OS — Private Local Archive (No external cloud leakage)
+College Life OS — Private Local Archive (Offline)
 Exported on: ${new Date().toLocaleString()}
 `;
 
     const sanitized = (full.title || full.date).replace(/[^a-zA-Z0-9_-]/g, '_');
     downloadTextFile(`journal_${full.date}_${sanitized}.txt`, text);
-    showToast('Entry exported as plain-text file.', 'success');
+    showToast('Entry exported as .txt file.', 'success');
   };
 
   const handleExportMonth = async () => {
@@ -716,7 +778,7 @@ Exported on: ${new Date().toLocaleString()}
       .sort((a, b) => b.date.localeCompare(a.date));
 
     if (monthEntries.length === 0) {
-      showToast(`No journal entries found for month ${monthKey}.`, 'info');
+      showToast(`No journal entries found for ${monthKey}.`, 'info');
       setIsExportModalOpen(false);
       return;
     }
@@ -730,7 +792,7 @@ Generated: ${new Date().toLocaleString()}
 
     monthEntries.forEach((entry, idx) => {
       const titleLine = entry.title ? `Title: ${entry.title}\n` : '';
-      const moodStr = MOOD_EMOJIS[entry.moodScore - 1] || 'Neutral';
+      const moodStr = MOOD_EMOJIS[entry.moodScore - 1] || 'Okay';
       const promptLine = entry.promptQuestion ? `Prompt: “${entry.promptQuestion}”\n` : '';
 
       fileContent += `----------------------------------------------------------------------
@@ -753,21 +815,25 @@ End of Archive for ${monthKey}
   };
 
   return (
-    <div className={`space-y-5 pb-24 animate-pop ${isZenMode ? 'fixed inset-0 z-50 bg-[rgb(var(--c-bg))] p-4 sm:p-8 overflow-y-auto' : ''}`}>
-      {/* 1. Header & Stats */}
+    <div
+      className={`space-y-4 pb-28 sm:pb-24 animate-pop ${
+        isZenMode ? 'fixed inset-0 z-50 bg-[rgb(var(--c-bg))] p-4 sm:p-8 overflow-y-auto' : ''
+      }`}
+    >
+      {/* 1. Calm Top Navigation */}
       <JournalHeaderStats
         isZenMode={isZenMode}
         activeView={activeView}
         activeEntriesCount={activeEntries.length}
         trashEntriesCount={trashEntries.length}
-        journalStats={journalStats}
-        onStartNewEntry={handleStartNewEntry}
-        onReturnToArchive={handleReturnToArchive}
-        onSelectView={setActiveView}
+        checkInsCount={allCheckIns.length}
+        onStartNewSeparateNote={handleStartNewSeparateNote}
+        onSelectView={handleSelectView}
         onOpenExportModal={() => setIsExportModalOpen(true)}
+        onOpenInsights={() => setCurrentRoute('#/wellbeing')}
       />
 
-      {/* 2. Editor View */}
+      {/* 2. Default Today Writing View */}
       {activeView === 'editor' && (
         <JournalEditorView
           isZenMode={isZenMode}
@@ -780,10 +846,10 @@ End of Archive for ${monthKey}
           onTogglePinned={() => setIsPinned(!isPinned)}
           isFavorite={isFavorite}
           onToggleFavorite={() => setIsFavorite(!isFavorite)}
-          onReturnToArchive={handleReturnToArchive}
-          onExplicitSave={handleExplicitSave}
-          showPromptsPanel={showPromptsPanel}
-          onToggleShowPromptsPanel={setShowPromptsPanel}
+          onStartNewSeparateNote={handleStartNewSeparateNote}
+          onSaveNow={handleSaveNow}
+          isEditingHistorical={entryDate !== todayKey}
+          onReturnToToday={hydrateTodayEntry}
           selectedPromptCategory={selectedPromptCategory}
           onSelectPromptCategory={(cat) => {
             setSelectedPromptCategory(cat);
@@ -793,6 +859,8 @@ End of Archive for ${monthKey}
           activePrompt={activePrompt}
           onApplyPrompt={handleApplyPrompt}
           onApplyQuickTemplate={handleApplyQuickTemplate}
+          appliedPromptQuestion={appliedPromptQuestion}
+          onClearAppliedPrompt={() => setAppliedPromptQuestion(undefined)}
           entryTitle={entryTitle}
           onEntryTitleChange={setEntryTitle}
           entryDate={entryDate}
@@ -808,7 +876,6 @@ End of Archive for ${monthKey}
           onToggleFont={handleToggleFont}
           paperTexture={paperTexture}
           onTogglePaper={handleTogglePaper}
-          activeThemeAmbiance={activeThemeAmbiance}
           mood={mood}
           onMoodChange={setMood}
           energy={energy}
@@ -819,86 +886,27 @@ End of Archive for ${monthKey}
           customTagInput={customTagInput}
           onCustomTagInputChange={setCustomTagInput}
           onAddTag={handleAddTag}
+          activeEntryId={activeEntryId}
+          todayCheckIn={editorDateCheckIn}
+          customEmotions={customEmotions}
+          onUpdateCustomEmotions={handleUpdateCustomEmotions}
+          dailyHabitsSummary={dailyHabitsSummary}
         />
       )}
 
-      {/* 3. Archive View + Default 1-Minute Quick Mode */}
+      {/* 3. Entries (History) View */}
       {activeView === 'archive' && (
-        <div className="space-y-5">
-          {/* 1-Minute Quick Journal Mode */}
-          <form
-            onSubmit={handleSaveQuickMode}
-            className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-4 sm:p-5 shadow-xs space-y-3"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
-                1-Minute Quick Entry ({calendarFilterDate || todayKey})
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setQuickPromptIdx((i) => i + 1)}
-                  className="text-[11px] font-heading font-semibold text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-primary))] cursor-pointer"
-                >
-                  New prompt ↻
-                </button>
-                <button
-                  type="button"
-                  onClick={handleStartNewEntry}
-                  className="text-[11px] font-heading font-bold text-[rgb(var(--c-primary))] hover:underline cursor-pointer"
-                >
-                  Open Full Editor →
-                </button>
-              </div>
-            </div>
-
-            <div className="text-xs font-flourish text-[rgb(var(--c-muted))]">
-              “{quickModePrompt.prompt}”
-            </div>
-
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {[1, 2, 3, 4, 5].map((score) => (
-                <button
-                  key={score}
-                  type="button"
-                  onClick={() => setQuickMood(score)}
-                  className={`px-2.5 py-1 rounded-xl text-xs border transition cursor-pointer ${
-                    quickMood === score
-                      ? 'border-[rgb(var(--c-primary))] bg-[rgb(var(--c-surface2))] font-bold'
-                      : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))]'
-                  }`}
-                >
-                  {MOOD_EMOJIS[score - 1]}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2">
-              <textarea
-                rows={2}
-                value={quickText}
-                onChange={(e) => setQuickText(e.target.value)}
-                placeholder="Write a quick 1-minute thought..."
-                className="flex-1 px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-1 focus:ring-[rgb(var(--c-primary))]"
-              />
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold self-end sm:self-stretch cursor-pointer hover:opacity-90"
-              >
-                Save Quick Note
-              </button>
-            </div>
-          </form>
-
-          {/* Selected Day Full Entries (loaded strictly for the selected day) */}
+        <div className="space-y-4">
           {calendarFilterDate && selectedDayEntries && selectedDayEntries.length > 0 && (
-            <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-4 sm:p-5 space-y-2.5">
+            <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-4 space-y-2.5">
               <div className="flex items-center justify-between text-xs font-heading font-bold text-[rgb(var(--c-primary))]">
-                <span>Entries for {formatDisplayDate(calendarFilterDate)} ({selectedDayEntries.length})</span>
+                <span>
+                  Entries for {formatDisplayDate(calendarFilterDate)} ({selectedDayEntries.length})
+                </span>
                 <button
                   type="button"
                   onClick={() => setCalendarFilterDate(null)}
-                  className="text-[11px] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))]"
+                  className="text-xs text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] cursor-pointer"
                 >
                   Show All Days
                 </button>
@@ -907,12 +915,12 @@ End of Archive for ${monthKey}
                 <div
                   key={entry.id}
                   onClick={() => setEntryToView(entry)}
-                  className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] cursor-pointer hover:border-[rgb(var(--c-primary))] space-y-1"
+                  className="p-3 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] cursor-pointer hover:border-[rgb(var(--c-primary))] space-y-1"
                 >
                   <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
-                    {entry.title || 'Untitled Reflection'}
+                    {entry.title || 'Untitled entry'}
                   </div>
-                  <p className="text-xs text-[rgb(var(--c-muted))] font-flourish whitespace-pre-wrap">
+                  <p className="text-xs text-[rgb(var(--c-muted))] font-flourish whitespace-pre-wrap line-clamp-3">
                     {entry.content}
                   </p>
                 </div>
@@ -944,12 +952,25 @@ End of Archive for ${monthKey}
             onToggleFavorite={handleToggleFavoriteCard}
             onTogglePin={handleTogglePinCard}
             onExportSingleEntry={handleExportSingleEntry}
-            onStartNewEntry={handleStartNewEntry}
+            onStartNewEntry={handleStartNewSeparateNote}
           />
         </div>
       )}
 
-      {/* 4. Trash View */}
+      {/* 4. Check-ins (Mood & Wellbeing History) View */}
+      {activeView === 'checkins' && (
+        <CheckInHistoryView
+          checkIns={allCheckIns}
+          journalEntries={allJournalEntriesForHistory}
+          customEmotions={customEmotions}
+          onUpdateCustomEmotions={handleUpdateCustomEmotions}
+          dailyHabitsSummary={dailyHabitsSummary}
+          onOpenJournalEntryById={handleOpenJournalById}
+          onOpenInsights={() => setCurrentRoute('#/wellbeing')}
+        />
+      )}
+
+      {/* 5. Trash View */}
       {activeView === 'trash' && (
         <JournalTrashView
           trashEntries={trashEntries}
@@ -962,9 +983,10 @@ End of Archive for ${monthKey}
         />
       )}
 
-      {/* 5. View Detail Modal */}
+      {/* 6. View Detail Modal */}
       <JournalViewModal
         entry={entryToView}
+        associatedCheckIn={viewModalCheckIn}
         onClose={() => setEntryToView(null)}
         onEdit={(e) => {
           setEntryToView(null);
@@ -978,7 +1000,7 @@ End of Archive for ${monthKey}
         onExport={(e) => handleExportSingleEntry(e)}
       />
 
-      {/* 6. Structured Reflection Modal */}
+      {/* 7. Structured Reflection Modal */}
       <JournalStructuredModal
         isOpen={isStructuredModalOpen}
         onClose={() => setIsStructuredModalOpen(false)}
@@ -991,7 +1013,7 @@ End of Archive for ${monthKey}
         onInsert={handleInsertStructuredReflection}
       />
 
-      {/* 7. Delete Modal */}
+      {/* 8. Delete Confirmation Modal */}
       <JournalDeleteModal
         entry={entryToDelete}
         isPermanent={isPermanentDelete}
@@ -1006,7 +1028,7 @@ End of Archive for ${monthKey}
         }}
       />
 
-      {/* 8. Export Month Modal */}
+      {/* 9. Export Month Modal */}
       <JournalExportModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}

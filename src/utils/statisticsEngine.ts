@@ -23,7 +23,7 @@ import {
   FULL_DAY_NAMES,
   DAY_NAMES,
 } from './dateUtils';
-import { calculateHabitStreak } from './streakEngine';
+import { calculateHabitStreak, isHabitLogCompleted } from './streakEngine';
 
 export type TimeRangeType = 'week' | 'month' | 'semester' | 'year' | 'all';
 
@@ -373,7 +373,8 @@ export function calculateComprehensiveStats(params: {
   const taskRateComparison = computeComparison(taskCompletionRate, prevTaskRate, true);
 
   // 2. Habits
-  const rangeLogs = habitLogs.filter((l) => inRange(l.date) && (l.count > 0 || l.isPartial));
+  const activeHabits = habits.filter((h) => h.status !== 'paused' && h.status !== 'archived');
+  const rangeLogs = habitLogs.filter((l) => inRange(l.date) && isHabitLogCompleted(l));
   const habitsCompletedCount = rangeLogs.length;
 
   // Calculate total days elapsed in period up to referenceDateKey
@@ -384,20 +385,20 @@ export function calculateComprehensiveStats(params: {
     Math.round((effEnd.getTime() - effStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
   );
 
-  const habitsScheduledCount = habits.length * totalDaysElapsed;
+  const habitsScheduledCount = activeHabits.length * totalDaysElapsed;
   const habitOverallRate =
     habitsScheduledCount > 0 ? Math.round((habitsCompletedCount / habitsScheduledCount) * 100) : 0;
 
-  const prevRangeLogs = habitLogs.filter((l) => inPrevRange(l.date) && (l.count > 0 || l.isPartial));
+  const prevRangeLogs = habitLogs.filter((l) => inPrevRange(l.date) && isHabitLogCompleted(l));
   const prevHabitsCompleted = prevRangeLogs.length;
   const habitsComparison = computeComparison(habitsCompletedCount, prevHabitsCompleted, true);
 
   // Individual habit stats (streaks read exclusively from streakEngine)
-  const habitStats: HabitStatistic[] = habits.map((h) => {
+  const habitStats: HabitStatistic[] = activeHabits.map((h) => {
     const hLogs = rangeLogs.filter((l) => l.habitId === h.id);
     const completed = hLogs.length;
     const rate = totalDaysElapsed > 0 ? Math.round((completed / totalDaysElapsed) * 100) : 0;
-    const streak = calculateHabitStreak(h.id, habitLogs, restDays, referenceDateKey);
+    const streak = calculateHabitStreak(h.id, habitLogs, restDays, referenceDateKey, h);
     return {
       habitId: h.id,
       title: h.title,
@@ -621,7 +622,7 @@ export function calculateComprehensiveStats(params: {
       (t) => t.status === 'done' && (t.completedAt?.startsWith(curKey) || t.dueDate === curKey)
     ).length;
 
-    const dayHabits = habitLogs.filter((l) => l.date === curKey && (l.count > 0 || l.isPartial)).length;
+    const dayHabits = habitLogs.filter((l) => l.date === curKey && isHabitLogCompleted(l)).length;
 
     const dayFocus = focusSessions
       .filter((s) => s.completedAt?.startsWith(curKey))

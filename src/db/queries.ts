@@ -7,8 +7,10 @@ import {
   JournalEntry,
   FocusSession,
   AttendanceRecord,
+  DailyCheckIn,
 } from '../types';
 import { addDaysToKey, getTodayKey } from '../utils/dateUtils';
+import { generateId } from '../utils/idGenerator';
 
 // ============================================================================
 // 1. HABIT LOGS QUERIES
@@ -250,3 +252,96 @@ export async function getAttendanceByDateRange(
   if (startDate > endDate) return [];
   return db.attendance.where('date').between(startDate, endDate, true, true).toArray();
 }
+
+// ============================================================================
+// 8. DAILY CHECK-IN QUERIES
+// ============================================================================
+
+/**
+ * Returns the single DailyCheckIn for a specific dateKey (or undefined).
+ */
+export async function getCheckInByDate(dateKey: string): Promise<DailyCheckIn | undefined> {
+  if (!dateKey) return undefined;
+  const rows = await db.dailyCheckIns.where('dateKey').equals(dateKey).toArray();
+  if (rows.length === 0) return undefined;
+  return rows.sort((a, b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt))[0];
+}
+
+/**
+ * Returns DailyCheckIn records within a bounded date range [startDate, endDate] inclusive.
+ */
+export async function getCheckInsByDateRange(
+  startDate: string,
+  endDate: string
+): Promise<DailyCheckIn[]> {
+  if (!startDate || !endDate) return [];
+  if (startDate > endDate) return [];
+  return db.dailyCheckIns.where('dateKey').between(startDate, endDate, true, true).toArray();
+}
+
+/**
+ * Upserts a DailyCheckIn by dateKey to guarantee one check-in record per date.
+ * Returns the saved DailyCheckIn record.
+ */
+export async function upsertDailyCheckIn(input: {
+  dateKey: string;
+  moodScore?: number;
+  energyScore?: number;
+  stressScore?: number;
+  emotions?: string[];
+  contextTags?: string[];
+  note?: string;
+  journalEntryId?: string;
+}): Promise<DailyCheckIn> {
+  const nowIso = new Date().toISOString();
+  const existing = await getCheckInByDate(input.dateKey);
+
+  const normalizedEmotions = Array.from(
+    new Set((input.emotions || []).map((e) => e.trim()).filter(Boolean))
+  );
+  const normalizedContextTags = Array.from(
+    new Set((input.contextTags || []).map((t) => t.trim()).filter(Boolean))
+  );
+
+  if (existing) {
+    const updated: DailyCheckIn = {
+      ...existing,
+      moodScore: input.moodScore !== undefined ? input.moodScore : existing.moodScore,
+      energyScore: input.energyScore !== undefined ? input.energyScore : existing.energyScore,
+      stressScore: input.stressScore !== undefined ? input.stressScore : existing.stressScore,
+      emotions: input.emotions !== undefined ? normalizedEmotions : existing.emotions,
+      contextTags: input.contextTags !== undefined ? normalizedContextTags : existing.contextTags,
+      note: input.note !== undefined ? (input.note.trim() || undefined) : existing.note,
+      journalEntryId:
+        input.journalEntryId !== undefined ? input.journalEntryId : existing.journalEntryId,
+      updatedAt: nowIso,
+    };
+    await db.dailyCheckIns.put(updated);
+    return updated;
+  }
+
+  const created: DailyCheckIn = {
+    id: generateId(),
+    dateKey: input.dateKey,
+    moodScore: input.moodScore,
+    energyScore: input.energyScore,
+    stressScore: input.stressScore,
+    emotions: normalizedEmotions,
+    contextTags: normalizedContextTags,
+    note: input.note?.trim() || undefined,
+    journalEntryId: input.journalEntryId,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+  await db.dailyCheckIns.put(created);
+  return created;
+}
+
+/**
+ * Deletes a DailyCheckIn by id.
+ */
+export async function deleteDailyCheckIn(id: string): Promise<void> {
+  if (!id) return;
+  await db.dailyCheckIns.delete(id);
+}
+

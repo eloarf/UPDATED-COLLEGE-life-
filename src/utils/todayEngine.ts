@@ -11,7 +11,11 @@ import {
 } from '../types';
 import { ScheduledClass } from './scheduleEngine';
 import { checkTimeClash, getDayOfWeekIndex, getTodayKey } from './dateUtils';
-import { calculateHabitStreak } from './streakEngine';
+import {
+  calculateHabitStreak,
+  isHabitLogCompleted,
+  isHabitScheduledForDate,
+} from './streakEngine';
 import type { TimelineBlock } from './timelineEngine';
 
 export interface DailyProgressResult {
@@ -102,9 +106,9 @@ export function calculateDailyProgress(params: {
       ? Math.round((totalCompletedTasks / effectiveTasksPlanned) * 100)
       : 100;
 
-  // 2. Habits: completed or rest-tokened today
-  const activeHabits = habits;
-  const habitLogsToday = habitLogs.filter((l) => l.date === todayKey && (l.count > 0 || l.isPartial));
+  // 2. Habits: completed or rest-tokened today (active & scheduled)
+  const activeHabits = habits.filter((h) => isHabitScheduledForDate(h, todayKey));
+  const habitLogsToday = habitLogs.filter((l) => l.date === todayKey && isHabitLogCompleted(l));
   const restDaysToday = restDays.filter((r) => r.dateKey === todayKey);
 
   let habitsCompletedCount = 0;
@@ -437,9 +441,10 @@ export function getUpNextItem(params: {
 
   // 5. Uncompleted core habits to protect streak (streaks read strictly from streakEngine)
   const unstampedHabits = habits
+    .filter((h) => isHabitScheduledForDate(h, todayKey))
     .map((h) => ({
       habit: h,
-      streak: calculateHabitStreak(h.id, habitLogs, restDays, todayKey),
+      streak: calculateHabitStreak(h.id, habitLogs, restDays, todayKey, h),
     }))
     .filter(({ streak }) => !streak.isCompletedToday && !streak.isRestDayToday)
     .sort((a, b) => b.streak.currentStreak - a.streak.currentStreak);
@@ -897,9 +902,10 @@ export function getDoThisNext(params: {
 
   // 5. Habit not yet done today (read streaks exclusively via streakEngine)
   const pendingHabits = habits
+    .filter((h) => isHabitScheduledForDate(h, todayKey))
     .map((h) => ({
       habit: h,
-      streak: calculateHabitStreak(h.id, habitLogs, restDays, todayKey),
+      streak: calculateHabitStreak(h.id, habitLogs, restDays, todayKey, h),
     }))
     .filter(({ streak }) => !streak.isCompletedToday && !streak.isRestDayToday)
     .sort((a, b) => {

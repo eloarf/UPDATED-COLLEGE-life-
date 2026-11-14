@@ -472,3 +472,22 @@ export const QUICK_REFLECTION_TEMPLATES: ReflectionTemplate[] = [
   },
 ];
 
+/**
+ * Selects today's primary non-deleted journal entry so reopening Today's Journal
+ * resumes safely without generating duplicate entries for the same date.
+ */
+export function selectTodayJournalEntry<
+  T extends Pick<JournalEntry, 'id' | 'date' | 'deletedAt' | 'createdAt' | 'updatedAt'>
+>(entries: T[], todayKey: string = getTodayKey()): T | null {
+  const candidates = entries
+    .filter((e) => !e.deletedAt && e.date === todayKey)
+    .sort((a, b) => {
+      const timeA = a.updatedAt || a.createdAt || '';
+      const timeB = b.updatedAt || b.createdAt || '';
+      return timeB.localeCompare(timeA);
+    });
+
+  return candidates[0] || null;
+}
+
+

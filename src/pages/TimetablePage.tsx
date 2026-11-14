@@ -19,6 +19,7 @@ import { encodeShareCode, decodeShareCode } from '../utils/shareCode';
 import { generateId } from '../utils/idGenerator';
 import { CourseModal } from '../components/common/CourseModal';
 import { getContrastTextColor } from '../theme/themeUtils';
+import { reconcileAllReminders } from '../services/reminderEngine';
 import {
   Calendar,
   Clock,
@@ -223,11 +224,13 @@ export const TimetablePage: React.FC = () => {
     }
 
     setIsAddModalOpen(false);
+    reconcileAllReminders().catch(console.warn);
   };
 
   const handleDeleteSession = async (id: string) => {
     await db.classSessions.delete(id);
     showToast('Class session removed from timetable.', 'info');
+    reconcileAllReminders().catch(console.warn);
   };
 
   const handleExportShareCode = () => {
@@ -256,6 +259,7 @@ export const TimetablePage: React.FC = () => {
     showToast(`Imported ${decoded.sessions.length} class sessions successfully!`, 'success');
     setIsShareModalOpen(false);
     setShareInputCode('');
+    reconcileAllReminders().catch(console.warn);
   };
 
   return (

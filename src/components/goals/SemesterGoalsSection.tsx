@@ -15,6 +15,10 @@ import {
   triggerLevelUpConfetti,
 } from '../../services/rpgService';
 import {
+  reconcileAllReminders,
+  cancelGoalReminders,
+} from '../../services/reminderEngine';
+import {
   Plus,
   Target,
   CheckCircle2,
@@ -201,6 +205,7 @@ export const SemesterGoalsSection: React.FC = () => {
     }
 
     setIsModalOpen(false);
+    reconcileAllReminders().catch(console.warn);
   };
 
   // Milestone check / uncheck directly on goal card
@@ -284,6 +289,7 @@ export const SemesterGoalsSection: React.FC = () => {
     });
 
     if (nextStatus === 'completed') {
+      cancelGoalReminders(goal.id).catch(console.warn);
       await awardXp({
         source: 'academic_goal',
         sourceId: goal.id,
@@ -293,13 +299,16 @@ export const SemesterGoalsSection: React.FC = () => {
       triggerLevelUpConfetti();
       showToast('🏆 Goal marked completed! +100 XP', 'success');
     } else {
+      reconcileAllReminders().catch(console.warn);
       showToast('Goal reopened to active progress.', 'info');
     }
   };
 
   const handleConfirmDelete = async () => {
     if (!goalToDelete) return;
-    await db.academicGoals.delete(goalToDelete.id);
+    const deletedId = goalToDelete.id;
+    await db.academicGoals.delete(deletedId);
+    cancelGoalReminders(deletedId).catch(console.warn);
     showToast('Goal removed.', 'info');
     setGoalToDelete(null);
   };

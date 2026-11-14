@@ -6,6 +6,8 @@ import { getTodayKey, addDaysToKey, formatDayKey, parseDayKey, FULL_DAY_NAMES } 
 import { getClassesForDate, ScheduledClass } from '../utils/scheduleEngine';
 import { buildDayTimeline, TimelineBlock, FreeGap, minutesToTimeString } from '../utils/timelineEngine';
 import { saveAttendanceQuickMark } from '../utils/attendanceEngine';
+import { getDailyHabitsSummary } from '../utils/streakEngine';
+import { getScaleLabel } from '../utils/wellbeingEngine';
 import { NowIndicator } from '../components/timeline/NowIndicator';
 import { PlanDayModal } from '../components/timeline/PlanDayModal';
 import { ShutdownModal } from '../components/timeline/ShutdownModal';
@@ -22,6 +24,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Plus,
+  HeartPulse,
+  Feather,
 } from 'lucide-react';
 
 export const TodayPage: React.FC = () => {
@@ -52,6 +56,12 @@ export const TodayPage: React.FC = () => {
   const examsRaw = useLiveQuery(() => db.exams.toArray(), []);
   const focusSessionsRaw = useLiveQuery(() => db.focusSessions.toArray(), []);
   const habitsRaw = useLiveQuery(() => db.habits.toArray(), []);
+  const habitLogsRaw = useLiveQuery(() => db.habitLogs.toArray(), []);
+  const restDaysRaw = useLiveQuery(() => db.restDays.toArray(), []);
+  const selectedCheckIn = useLiveQuery(
+    () => db.dailyCheckIns.where('dateKey').equals(selectedDateKey).first(),
+    [selectedDateKey]
+  );
   const dailyPlan = useLiveQuery(
     () => db.dailyPlans.where('dateKey').equals(selectedDateKey).first(),
     [selectedDateKey]
@@ -72,6 +82,13 @@ export const TodayPage: React.FC = () => {
   const exams = examsRaw || [];
   const focusSessions = focusSessionsRaw || [];
   const habits = habitsRaw || [];
+  const habitLogs = habitLogsRaw || [];
+  const restDays = restDaysRaw || [];
+
+  const habitsSummary = useMemo(
+    () => getDailyHabitsSummary(habits, habitLogs, restDays, selectedDateKey),
+    [habits, habitLogs, restDays, selectedDateKey]
+  );
 
   const activeSemester = useMemo(
     () => semesters.find((s) => s.isActive) || semesters[0] || null,
@@ -241,6 +258,49 @@ export const TodayPage: React.FC = () => {
           >
             <Moon className="w-3.5 h-3.5" />
             <span>{dailyPlan?.shutdownAt ? 'Shutdown Done ✓' : 'Shutdown'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Read-Only Wellbeing & Habits Summary Strip */}
+      <div className="bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[rgb(var(--c-muted))]">
+          <span className="font-heading font-bold text-[rgb(var(--c-text))] inline-flex items-center gap-1.5">
+            <HeartPulse className="w-3.5 h-3.5 text-[rgb(var(--c-primary))]" />
+            <span>Wellbeing &amp; Habits</span>
+          </span>
+          {selectedCheckIn ? (
+            <span className="font-mono tabular-nums">
+              {selectedCheckIn.moodScore ? `Mood ${selectedCheckIn.moodScore}/5 (${getScaleLabel('mood', selectedCheckIn.moodScore)})` : ''}
+              {selectedCheckIn.energyScore ? ` · Energy ${selectedCheckIn.energyScore}/5` : ''}
+              {selectedCheckIn.stressScore ? ` · Stress ${selectedCheckIn.stressScore}/5` : ''}
+            </span>
+          ) : (
+            <span>No check-in logged for {isToday ? 'today' : selectedDateKey}</span>
+          )}
+          {habitsSummary.scheduledTodayCount > 0 && (
+            <span className="font-mono tabular-nums">
+              · Habits {habitsSummary.completedCount}/{habitsSummary.scheduledTodayCount}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setCurrentRoute('#/journal')}
+            className="min-h-[34px] px-2.5 py-1 rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-xs font-heading font-semibold text-[rgb(var(--c-text))] hover:border-[rgb(var(--c-primary))] inline-flex items-center gap-1 cursor-pointer"
+          >
+            <Feather className="w-3 h-3" />
+            <span>Journal</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentRoute('#/wellbeing')}
+            className="min-h-[34px] px-2.5 py-1 rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-xs font-heading font-semibold text-[rgb(var(--c-primary))] hover:border-[rgb(var(--c-primary))] inline-flex items-center gap-1 cursor-pointer"
+          >
+            <HeartPulse className="w-3 h-3" />
+            <span>Insights</span>
           </button>
         </div>
       </div>

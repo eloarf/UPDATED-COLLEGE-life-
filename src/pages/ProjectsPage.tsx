@@ -6,6 +6,7 @@ import { Project, ProjectMilestone, ProjectTask, Course } from '../types';
 import { getTodayKey, formatDisplayDate, addDaysToKey } from '../utils/dateUtils';
 import { awardXp, reverseXp, triggerLevelUpConfetti } from '../services/rpgService';
 import { generateId } from '../utils/idGenerator';
+import { reconcileAllReminders, cancelProjectReminders } from '../services/reminderEngine';
 import {
   Layers,
   Plus,
@@ -234,6 +235,7 @@ export const ProjectsPage: React.FC = () => {
     });
 
     showToast('Project commissioned! Default milestones generated.', 'success');
+    reconcileAllReminders().catch(console.warn);
     setIsNewProjectModalOpen(false);
     setSelectedProjectId(newId);
   };
@@ -264,6 +266,7 @@ export const ProjectsPage: React.FC = () => {
     });
 
     showToast('Project updated successfully.', 'success');
+    reconcileAllReminders().catch(console.warn);
     setIsEditProjectModalOpen(false);
   };
 
@@ -275,6 +278,7 @@ export const ProjectsPage: React.FC = () => {
     await db.projectTasks.where('projectId').equals(pId).delete();
     await db.projectMembers.where('projectId').equals(pId).delete();
     await db.projects.delete(pId);
+    cancelProjectReminders(pId).catch(console.warn);
 
     showToast(`Project "${projectToDelete.title}" and assets deleted.`, 'info');
     setProjectToDelete(null);
@@ -290,6 +294,12 @@ export const ProjectsPage: React.FC = () => {
       status: newStatus,
       updatedAt: new Date().toISOString(),
     });
+
+    if (isCompleted(newStatus)) {
+      cancelProjectReminders(activeProject.id).catch(console.warn);
+    } else {
+      reconcileAllReminders().catch(console.warn);
+    }
 
     if (!isCompleted(oldStatus) && isCompleted(newStatus)) {
       triggerLevelUpConfetti();

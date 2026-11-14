@@ -6,7 +6,8 @@ import {
   PomodoroPhase,
   formatDurationHuman,
 } from '../../utils/pomodoroEngine';
-import { playPomodoroChime, triggerHaptic, requestNotificationPermission } from '../../utils/pomodoroSound';
+import { playPomodoroChime, triggerHaptic } from '../../utils/pomodoroSound';
+import { isNativeAndroid, requestNotificationPermission } from '../../services/notificationService';
 
 interface FocusSettingsModalProps {
   isOpen: boolean;
@@ -402,10 +403,12 @@ export const FocusSettingsModal: React.FC<FocusSettingsModalProps> = ({
               <Bell className="w-4 h-4 text-[#B6E63E]" />
               <div>
                 <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
-                  Push / System Notifications
+                  Session Completion Alerts
                 </div>
                 <div className="text-[10px] text-[rgb(var(--c-muted))]">
-                  Background alerts when timer runs in background
+                  {isNativeAndroid()
+                    ? 'Logs in Notification Center and triggers Android local alerts'
+                    : 'Logs in Notification Center (Android APK adds system alerts)'}
                 </div>
               </div>
             </div>
@@ -414,10 +417,10 @@ export const FocusSettingsModal: React.FC<FocusSettingsModalProps> = ({
               checked={settings.notificationsEnabled}
               onChange={async (e) => {
                 const checked = e.target.checked;
-                if (checked) {
-                  const granted = await requestNotificationPermission();
-                  if (!granted) {
-                    showToast('Notification permission not granted by browser/system.', 'warning');
+                if (checked && isNativeAndroid()) {
+                  const res = await requestNotificationPermission();
+                  if (!res.granted) {
+                    showToast('Android notification permission not granted; alerts still appear in-app.', 'warning');
                   }
                 }
                 setSettings((prev) => ({ ...prev, notificationsEnabled: checked }));

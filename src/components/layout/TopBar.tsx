@@ -4,16 +4,22 @@ import { db } from '../../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getTotalXp } from '../../db/queries';
 import { calculateLevelFromTotalXp } from '../../services/rpgService';
+import { isNotificationVisibleInCenter } from '../../services/reminderEngine';
 import { getEthiopicDateString, getTimeGreeting } from '../../utils/dateUtils';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { Plus, Search, Palette, Bell, Sparkles, WifiOff } from 'lucide-react';
 
 export const TopBar: React.FC = () => {
-  const { setCurrentRoute, setQuickAddOpen, setSearchOpen, setThemeSwitcherOpen, showToast } = useUiStore();
+  const { setCurrentRoute, setQuickAddOpen, setSearchOpen, setThemeSwitcherOpen, setNotificationsOpen } = useUiStore();
   const settings = useLiveQuery(() => db.settings.get('current_user'));
   const totalXp = useLiveQuery(() => getTotalXp()) ?? 0;
+  const appNotifications = useLiveQuery(() => db.appNotifications.toArray(), []) || [];
   const heroInfo = calculateLevelFromTotalXp(totalXp);
   const userName = settings?.userName || 'Scholar';
+
+  const unreadCount = appNotifications.filter(
+    (n) => isNotificationVisibleInCenter(n) && !n.isRead
+  ).length;
 
   const [greeting, setGreeting] = useState('');
   const [ethiopicDate, setEthiopicDate] = useState('');
@@ -79,7 +85,7 @@ export const TopBar: React.FC = () => {
           {/* Quick Add Button */}
           <button
             onClick={() => setQuickAddOpen(true)}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition"
+            className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition cursor-pointer"
             title="Quick Add Anything"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -89,8 +95,9 @@ export const TopBar: React.FC = () => {
           {/* Search Button */}
           <button
             onClick={() => setSearchOpen(true)}
-            className="p-2 rounded-full text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] active:scale-95 transition"
+            className="p-2 rounded-full text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] active:scale-95 transition cursor-pointer"
             title="Global Search"
+            aria-label="Global Search"
           >
             <Search className="w-4 h-4" />
           </button>
@@ -98,8 +105,9 @@ export const TopBar: React.FC = () => {
           {/* Theme Quick Switcher */}
           <button
             onClick={() => setThemeSwitcherOpen(true)}
-            className="p-2 rounded-full text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] active:scale-95 transition"
+            className="p-2 rounded-full text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] active:scale-95 transition cursor-pointer"
             title="Change Theme Palette"
+            aria-label="Change Theme Palette"
           >
             <Palette className="w-4 h-4" />
           </button>
@@ -107,22 +115,27 @@ export const TopBar: React.FC = () => {
           {/* Statistics & Wrapped Shortcut */}
           <button
             onClick={() => setCurrentRoute('#/statistics')}
-            className="p-2 rounded-full text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] active:scale-95 transition"
-            title="Open Personal Statistics & Spotify Wrapped"
+            className="p-2 rounded-full text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] active:scale-95 transition cursor-pointer"
+            title="Open Personal Statistics & Analytics"
+            aria-label="Open Personal Statistics"
           >
             <Sparkles className="w-4 h-4 text-amber-500" />
           </button>
 
-          {/* Notifications / Backup status */}
+          {/* Notification Center Bell */}
           <button
-            onClick={() => {
-              showToast('Backup status: all data safely held in local IndexedDB.', 'info');
-            }}
-            className="p-2 rounded-full text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] active:scale-95 transition relative"
-            title="App Storage & Alerts"
+            type="button"
+            onClick={() => setNotificationsOpen(true)}
+            className="p-2 rounded-full text-[rgb(var(--c-text))] hover:bg-[rgb(var(--c-surface2))] active:scale-95 transition relative cursor-pointer"
+            title={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
+            aria-label={unreadCount > 0 ? `Open Notifications (${unreadCount} unread)` : 'Open Notifications'}
           >
             <Bell className="w-4 h-4" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[rgb(var(--c-accent2))]" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] text-[9px] font-mono font-bold tabular-nums flex items-center justify-center">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
           </button>
         </div>
       </div>

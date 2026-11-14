@@ -10,6 +10,7 @@ export interface ToastItem {
 interface UiState {
   currentRoute: string;
   isMoreSheetOpen: boolean;
+  isNotificationsOpen: boolean;
   isQuickAddOpen: boolean;
   isSearchOpen: boolean;
   isThemeSwitcherOpen: boolean;
@@ -19,6 +20,7 @@ interface UiState {
   setCurrentRoute: (route: string) => void;
   setActiveFocusTask: (task: { taskId?: string; taskTitle?: string; courseId?: string } | null) => void;
   setMoreSheetOpen: (open: boolean) => void;
+  setNotificationsOpen: (open: boolean) => void;
   setQuickAddOpen: (open: boolean) => void;
   setSearchOpen: (open: boolean) => void;
   setThemeSwitcherOpen: (open: boolean) => void;
@@ -30,6 +32,7 @@ interface UiState {
 export const useUiStore = create<UiState>((set) => ({
   currentRoute: window.location.hash || '#/',
   isMoreSheetOpen: false,
+  isNotificationsOpen: false,
   isQuickAddOpen: false,
   isSearchOpen: false,
   isThemeSwitcherOpen: false,
@@ -38,10 +41,11 @@ export const useUiStore = create<UiState>((set) => ({
   activeFocusTask: null,
   setCurrentRoute: (route) => {
     window.location.hash = route;
-    set({ currentRoute: route, isMoreSheetOpen: false });
+    set({ currentRoute: route, isMoreSheetOpen: false, isNotificationsOpen: false });
   },
   setActiveFocusTask: (task) => set({ activeFocusTask: task }),
   setMoreSheetOpen: (open) => set({ isMoreSheetOpen: open }),
+  setNotificationsOpen: (open) => set({ isNotificationsOpen: open }),
   setQuickAddOpen: (open) => set({ isQuickAddOpen: open }),
   setSearchOpen: (open) => set({ isSearchOpen: open }),
   setThemeSwitcherOpen: (open) => set({ isThemeSwitcherOpen: open }),

@@ -122,7 +122,7 @@ export function deriveHotelProgress(params: {
 
   const habitDateSet = new Set<string>();
   for (const log of habitLogs) {
-    if (log.date && (log.count > 0 || log.isPartial)) {
+    if (log.date && log.status !== 'skipped' && (log.count > 0 || log.isPartial)) {
       habitDateSet.add(log.date.slice(0, 10));
     }
   }

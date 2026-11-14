@@ -39,11 +39,13 @@ import {
   RecurringTransaction,
   AcademicGoal,
   ScheduledReminderRecord,
+  AppNotification,
   StudyBlock,
   DismissedStudySuggestion,
   DailyPlan,
   FlashcardDeck,
   Flashcard,
+  DailyCheckIn,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_ACCOUNT_BALANCES,
   DEFAULT_DEPARTMENTS,
@@ -88,11 +90,13 @@ export class CollegeLifeOSDatabase extends Dexie {
   dailyReflections!: Table<DailyReflection, string>;
   academicGoals!: Table<AcademicGoal, string>;
   scheduledReminders!: Table<ScheduledReminderRecord, string>;
+  appNotifications!: Table<AppNotification, string>;
   studyBlocks!: Table<StudyBlock, string>;
   dismissedStudySuggestions!: Table<DismissedStudySuggestion, string>;
   dailyPlans!: Table<DailyPlan, string>;
   flashcardDecks!: Table<FlashcardDeck, string>;
   flashcards!: Table<Flashcard, string>;
+  dailyCheckIns!: Table<DailyCheckIn, string>;
 
   constructor() {
     super('CollegeLifeOSDB');
@@ -217,6 +221,17 @@ export class CollegeLifeOSDatabase extends Dexie {
       flashcardDecks: 'id, courseId, examTopicId',
       flashcards: 'id, deckId, dueDate',
     });
+
+    this.version(11).stores({
+      dailyCheckIns: 'id, dateKey, journalEntryId',
+      journalEntries: 'id, date, isPinned, isFavorite, deletedAt, checkInId',
+      habits: 'id, category, type, status, sortOrder',
+      habitLogs: 'id, habitId, date, status',
+    });
+
+    this.version(12).stores({
+      appNotifications: 'id, category, isRead, isDismissed, scheduledFor, createdAt, entityId, sourceReminderId',
+    });
   }
 }
 
@@ -336,11 +351,13 @@ export interface EmergencyBackupPayload {
     dailyReflections?: DailyReflection[];
     academicGoals?: AcademicGoal[];
     scheduledReminders?: ScheduledReminderRecord[];
+    appNotifications?: AppNotification[];
     studyBlocks?: StudyBlock[];
     dismissedStudySuggestions?: DismissedStudySuggestion[];
     dailyPlans?: DailyPlan[];
     flashcardDecks?: FlashcardDeck[];
     flashcards?: Flashcard[];
+    dailyCheckIns?: DailyCheckIn[];
   };
 }
 
@@ -402,11 +419,14 @@ function attachDatabaseHooks() {
     db.restDays,
     db.dailyReflections,
     db.academicGoals,
+    db.scheduledReminders,
+    db.appNotifications,
     db.studyBlocks,
     db.dismissedStudySuggestions,
     db.dailyPlans,
     db.flashcardDecks,
     db.flashcards,
+    db.dailyCheckIns,
   ];
 
   for (const table of allTables) {
@@ -601,11 +621,14 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         restDays,
         dailyReflections,
         academicGoals,
+        scheduledReminders,
+        appNotifications,
         studyBlocks,
         dismissedStudySuggestions,
         dailyPlans,
         flashcardDecks,
         flashcards,
+        dailyCheckIns,
       ] = await Promise.all([
         db.settings.toArray().catch(() => []),
         db.courses.toArray().catch(() => []),
@@ -644,11 +667,14 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         db.restDays.toArray().catch(() => []),
         db.dailyReflections.toArray().catch(() => []),
         db.academicGoals.toArray().catch(() => []),
+        db.scheduledReminders.toArray().catch(() => []),
+        db.appNotifications.toArray().catch(() => []),
         db.studyBlocks.toArray().catch(() => []),
         db.dismissedStudySuggestions.toArray().catch(() => []),
         db.dailyPlans.toArray().catch(() => []),
         db.flashcardDecks.toArray().catch(() => []),
         db.flashcards.toArray().catch(() => []),
+        db.dailyCheckIns.toArray().catch(() => []),
       ]);
 
       const tableCounts: Record<string, number> = {
@@ -689,11 +715,14 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         restDays: restDays.length,
         dailyReflections: dailyReflections.length,
         academicGoals: academicGoals.length,
+        scheduledReminders: scheduledReminders.length,
+        appNotifications: appNotifications.length,
         studyBlocks: studyBlocks.length,
         dismissedStudySuggestions: dismissedStudySuggestions.length,
         dailyPlans: dailyPlans.length,
         flashcardDecks: flashcardDecks.length,
         flashcards: flashcards.length,
+        dailyCheckIns: dailyCheckIns.length,
       };
 
       const totalRecords = Object.values(tableCounts).reduce((a, b) => a + b, 0);
@@ -760,11 +789,14 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
           restDays,
           dailyReflections,
           academicGoals,
+          scheduledReminders,
+          appNotifications,
           studyBlocks,
           dismissedStudySuggestions,
           dailyPlans,
           flashcardDecks,
           flashcards,
+          dailyCheckIns,
         },
       };
 
@@ -886,11 +918,14 @@ export async function checkAndRestoreFromEmergencyBackup(
       { name: 'restDays', table: db.restDays, records: d.restDays },
       { name: 'dailyReflections', table: db.dailyReflections, records: d.dailyReflections },
       { name: 'academicGoals', table: db.academicGoals, records: d.academicGoals },
+      { name: 'scheduledReminders', table: db.scheduledReminders, records: d.scheduledReminders },
+      { name: 'appNotifications', table: db.appNotifications, records: d.appNotifications },
       { name: 'studyBlocks', table: db.studyBlocks, records: d.studyBlocks },
       { name: 'dismissedStudySuggestions', table: db.dismissedStudySuggestions, records: d.dismissedStudySuggestions },
       { name: 'dailyPlans', table: db.dailyPlans, records: d.dailyPlans },
       { name: 'flashcardDecks', table: db.flashcardDecks, records: d.flashcardDecks },
       { name: 'flashcards', table: db.flashcards, records: d.flashcards },
+      { name: 'dailyCheckIns', table: db.dailyCheckIns, records: d.dailyCheckIns },
     ];
 
     for (const { name, table, records } of tableDefs) {

@@ -22,6 +22,8 @@ import {
   Settings,
   Sparkles,
   Target,
+  Bell,
+  HeartPulse,
 } from 'lucide-react';
 
 interface NavSection {
@@ -65,6 +67,7 @@ export const SideNavRail: React.FC = () => {
       items: [
         { label: 'Habit Tracker', route: '#/habits', icon: Activity },
         { label: 'Journal', route: '#/journal', icon: Feather },
+        { label: 'Wellbeing Insights', route: '#/wellbeing', icon: HeartPulse },
         { label: 'Projects', route: '#/projects', icon: Layers },
         { label: 'Finance & Savings', route: '#/finance', icon: CreditCard },
         { label: 'Reading Library', route: '#/library', icon: Bookmark },
@@ -75,6 +78,8 @@ export const SideNavRail: React.FC = () => {
     {
       title: 'System & Tools',
       items: [
+        { label: 'Notifications', route: '#/notifications', icon: Bell },
+        { label: 'Reminder Settings', route: '#/notification-settings', icon: Clock },
         { label: 'Themes', route: '#/themes', icon: Palette },
         { label: 'Analytics & Stats', route: '#/statistics', icon: Sparkles },
         { label: 'XP & Levels', route: '#/levels', icon: Award },

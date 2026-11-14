@@ -25,6 +25,8 @@ import {
 import { Semester } from '../types';
 import { generateId } from '../utils/idGenerator';
 import { NotificationSettingsSection } from '../components/settings/NotificationSettingsSection';
+import { cancelNativeLocalNotifications } from '../services/notificationService';
+import { reconcileAllReminders } from '../services/reminderEngine';
 import {
   applyAppearanceMode,
   applyDesignStyle,
@@ -443,6 +445,7 @@ export const SettingsPage: React.FC = () => {
     try {
       const result = await restoreDatabase(pendingRestore.validation.backup);
       if (result.success) {
+        reconcileAllReminders().catch(console.warn);
         showToast(result.message, 'success');
         setPendingRestore(null);
       } else {
@@ -486,6 +489,16 @@ export const SettingsPage: React.FC = () => {
       await db.quests.clear();
       await db.xpEvents.clear();
       await db.semesters.clear();
+      await db.dailyPlans.clear();
+      await db.studyBlocks.clear();
+      await db.dailyCheckIns.clear();
+
+      const existingReminders = await db.scheduledReminders.toArray();
+      if (existingReminders.length > 0) {
+        await cancelNativeLocalNotifications(existingReminders.map((r) => r.numericId));
+      }
+      await db.scheduledReminders.clear();
+      await db.appNotifications.clear();
 
       setIsConfirmDeleteOpen(false);
       showToast('All local database records wiped clean.', 'info');

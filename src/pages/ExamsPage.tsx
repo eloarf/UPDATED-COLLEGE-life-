@@ -124,6 +124,7 @@ export const ExamsPage: React.FC = () => {
       }
 
       showToast('Exam boss battle updated!', 'success');
+      reconcileAllReminders().catch(console.warn);
     } else {
       const examId = generateId();
       await db.exams.add({
