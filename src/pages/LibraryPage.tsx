@@ -205,8 +205,22 @@ export const LibraryPage: React.FC = () => {
             </button>
           </div>
 
-          <div className="space-y-2">
-            {topics.map((topic) => {
+          {topics.length === 0 ? (
+            <div className="py-10 text-center space-y-3">
+              <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+                No curiosity topics queued yet. Save ideas or articles to explore during your morning brief.
+              </p>
+              <button
+                onClick={() => setIsAddTopicOpen(true)}
+                className="px-4 py-2 rounded-xl bg-[#4FA3A5] text-white font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition inline-flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add your first topic</span>
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {topics.map((topic) => {
               const isDone = topic.status === 'done';
               return (
                 <div
@@ -244,7 +258,8 @@ export const LibraryPage: React.FC = () => {
                 </div>
               );
             })}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -263,8 +278,22 @@ export const LibraryPage: React.FC = () => {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {books.map((b) => (
+          {books.length === 0 ? (
+            <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-10 text-center space-y-3">
+              <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+                Your reading shelf is empty. Add a book to track your pages and yearly reading goal.
+              </p>
+              <button
+                onClick={() => setIsAddBookOpen(true)}
+                className="px-4 py-2 rounded-xl bg-[#4FA3A5] text-white font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition inline-flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add your first book</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {books.map((b) => (
               <div
                 key={b.id}
                 className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-4 space-y-3"
@@ -320,7 +349,8 @@ export const LibraryPage: React.FC = () => {
                 </div>
               </div>
             ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -54,6 +54,7 @@ export const SideNavRail: React.FC = () => {
         { label: 'Semester Goals', route: '#/goals', icon: Target },
         { label: 'Courses & Syllabi', route: '#/courses', icon: BookOpen },
         { label: 'Exams & Deadlines', route: '#/exams', icon: ShieldAlert },
+        { label: 'Flashcards', route: '#/flashcards', icon: Layers },
         { label: 'Grades & GPA', route: '#/grades', icon: GraduationCap },
         { label: 'Master Week', route: '#/week', icon: LayoutGrid },
         { label: 'Calendar', route: '#/calendar', icon: CalendarDays },

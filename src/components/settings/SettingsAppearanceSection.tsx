@@ -10,6 +10,7 @@ import {
   Feather,
   Cpu,
   ZapOff,
+  Building2,
 } from 'lucide-react';
 import {
   APPEARANCE_MODES,
@@ -25,6 +26,8 @@ interface SettingsAppearanceSectionProps {
   onSelectDesignStyle: (style: DesignStyle) => void;
   reduceAnimations: boolean;
   onToggleReduceAnimations: () => void;
+  showVisibleProgress: boolean;
+  onToggleVisibleProgress: () => void;
 }
 
 export const SettingsAppearanceSection: React.FC<SettingsAppearanceSectionProps> = ({
@@ -34,6 +37,8 @@ export const SettingsAppearanceSection: React.FC<SettingsAppearanceSectionProps>
   onSelectDesignStyle,
   reduceAnimations,
   onToggleReduceAnimations,
+  showVisibleProgress,
+  onToggleVisibleProgress,
 }) => {
   return (
     <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-5 space-y-4">
@@ -179,6 +184,35 @@ export const SettingsAppearanceSection: React.FC<SettingsAppearanceSectionProps>
           }`}
         >
           {reduceAnimations ? '✓ Reduced Motion On' : 'Standard Motion'}
+        </button>
+      </div>
+
+      {/* Visible Forgiving Progress (Grand Hotel) Toggle */}
+      <div className="pt-3 border-t border-[rgb(var(--c-border))] flex items-center justify-between gap-4">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-3.5 h-3.5 text-[#E5C04B]" />
+            <span className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+              Visible Progress — The Grand Hotel
+            </span>
+          </div>
+          <p className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
+            Shows Grand Hotel wings derived from your consistent study days, mini wins, and rest tokens (never resets).
+          </p>
+        </div>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={showVisibleProgress}
+          onClick={onToggleVisibleProgress}
+          className={`min-h-[36px] px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold border transition active:scale-95 shrink-0 cursor-pointer ${
+            showVisibleProgress
+              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+              : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))]'
+          }`}
+        >
+          {showVisibleProgress ? '✓ Visible on Home' : 'Hidden'}
         </button>
       </div>
     </div>

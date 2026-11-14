@@ -45,6 +45,7 @@ const ThemesPage = React.lazy(() => import('./pages/ThemesPage').then((m) => ({ 
 const SettingsPage = React.lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const StatisticsPage = React.lazy(() => import('./pages/StatisticsPage').then((m) => ({ default: m.StatisticsPage })));
 const TodayPage = React.lazy(() => import('./pages/TodayPage').then((m) => ({ default: m.TodayPage })));
+const FlashcardsPage = React.lazy(() => import('./pages/FlashcardsPage').then((m) => ({ default: m.FlashcardsPage })));
 
 const PageLoadingFallback = () => (
   <div className="flex flex-col items-center justify-center py-24 space-y-3">
@@ -152,6 +153,8 @@ export default function App() {
         return <QuestsPage />;
       case '#/exams':
         return <ExamsPage />;
+      case '#/flashcards':
+        return <FlashcardsPage />;
       case '#/projects':
         return <ProjectsPage />;
       case '#/focus':

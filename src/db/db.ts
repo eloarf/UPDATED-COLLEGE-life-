@@ -42,6 +42,8 @@ import {
   StudyBlock,
   DismissedStudySuggestion,
   DailyPlan,
+  FlashcardDeck,
+  Flashcard,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_ACCOUNT_BALANCES,
   DEFAULT_DEPARTMENTS,
@@ -89,6 +91,8 @@ export class CollegeLifeOSDatabase extends Dexie {
   studyBlocks!: Table<StudyBlock, string>;
   dismissedStudySuggestions!: Table<DismissedStudySuggestion, string>;
   dailyPlans!: Table<DailyPlan, string>;
+  flashcardDecks!: Table<FlashcardDeck, string>;
+  flashcards!: Table<Flashcard, string>;
 
   constructor() {
     super('CollegeLifeOSDB');
@@ -208,6 +212,11 @@ export class CollegeLifeOSDatabase extends Dexie {
     this.version(9).stores({
       dailyPlans: 'id, dateKey',
     });
+
+    this.version(10).stores({
+      flashcardDecks: 'id, courseId, examTopicId',
+      flashcards: 'id, deckId, dueDate',
+    });
   }
 }
 
@@ -273,6 +282,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   accountBalances: DEFAULT_ACCOUNT_BALANCES,
   departmentOptions: DEFAULT_DEPARTMENTS,
   notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
+  showVisibleProgress: true,
 };
 
 // Storage Keys
@@ -329,6 +339,8 @@ export interface EmergencyBackupPayload {
     studyBlocks?: StudyBlock[];
     dismissedStudySuggestions?: DismissedStudySuggestion[];
     dailyPlans?: DailyPlan[];
+    flashcardDecks?: FlashcardDeck[];
+    flashcards?: Flashcard[];
   };
 }
 
@@ -393,6 +405,8 @@ function attachDatabaseHooks() {
     db.studyBlocks,
     db.dismissedStudySuggestions,
     db.dailyPlans,
+    db.flashcardDecks,
+    db.flashcards,
   ];
 
   for (const table of allTables) {
@@ -590,6 +604,8 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         studyBlocks,
         dismissedStudySuggestions,
         dailyPlans,
+        flashcardDecks,
+        flashcards,
       ] = await Promise.all([
         db.settings.toArray().catch(() => []),
         db.courses.toArray().catch(() => []),
@@ -631,6 +647,8 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         db.studyBlocks.toArray().catch(() => []),
         db.dismissedStudySuggestions.toArray().catch(() => []),
         db.dailyPlans.toArray().catch(() => []),
+        db.flashcardDecks.toArray().catch(() => []),
+        db.flashcards.toArray().catch(() => []),
       ]);
 
       const tableCounts: Record<string, number> = {
@@ -674,6 +692,8 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
         studyBlocks: studyBlocks.length,
         dismissedStudySuggestions: dismissedStudySuggestions.length,
         dailyPlans: dailyPlans.length,
+        flashcardDecks: flashcardDecks.length,
+        flashcards: flashcards.length,
       };
 
       const totalRecords = Object.values(tableCounts).reduce((a, b) => a + b, 0);
@@ -743,6 +763,8 @@ export async function saveEmergencyBackup(immediate: boolean = false): Promise<b
           studyBlocks,
           dismissedStudySuggestions,
           dailyPlans,
+          flashcardDecks,
+          flashcards,
         },
       };
 
@@ -867,6 +889,8 @@ export async function checkAndRestoreFromEmergencyBackup(
       { name: 'studyBlocks', table: db.studyBlocks, records: d.studyBlocks },
       { name: 'dismissedStudySuggestions', table: db.dismissedStudySuggestions, records: d.dismissedStudySuggestions },
       { name: 'dailyPlans', table: db.dailyPlans, records: d.dailyPlans },
+      { name: 'flashcardDecks', table: db.flashcardDecks, records: d.flashcardDecks },
+      { name: 'flashcards', table: db.flashcards, records: d.flashcards },
     ];
 
     for (const { name, table, records } of tableDefs) {

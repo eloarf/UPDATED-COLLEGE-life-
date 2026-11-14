@@ -4,7 +4,6 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../store/uiStore';
 import {
   getTodayKey,
-  getDayOfWeekIndex,
   addDaysToKey,
 } from '../utils/dateUtils';
 import {
@@ -15,37 +14,65 @@ import {
   triggerLevelUpConfetti,
 } from '../services/rpgService';
 import { Task, DailyReflection } from '../types';
-import { getClassesForDate, getNextClass, ScheduledClass } from '../utils/scheduleEngine';
+import { getClassesForDate, ScheduledClass } from '../utils/scheduleEngine';
 import { reconcileAllReminders } from '../services/reminderEngine';
 import {
   calculateDailyProgress,
-  getUpNextItem,
   buildTodayTimeline,
-  DailyProgressResult,
-  UpNextResult,
+  getDoThisNext,
+  getNextTimelineItems,
+  getDailyInsightSentence,
 } from '../utils/todayEngine';
+import { buildDayTimeline } from '../utils/timelineEngine';
 import { saveAttendanceQuickMark } from '../utils/attendanceEngine';
 import { getRemainingRestTokens, calculateHabitStreak } from '../utils/streakEngine';
+import { getDueFlashcardsCount } from '../utils/flashcardEngine';
+import { deriveHotelProgress } from '../utils/hotelProgressEngine';
 import { generateId } from '../utils/idGenerator';
 import {
-  getTotalXp,
   getRecentHabitLogs,
   getAttendanceByDateRange,
-  getFocusSessionsByDateRange,
 } from '../db/queries';
+import {
+  Sparkles,
+  Layers,
+  Feather,
+  CheckSquare,
+  Calendar,
+  Flame,
+  Building2,
+  Moon,
+  Compass,
+  ArrowRight,
+  CheckCircle2,
+} from 'lucide-react';
 
 import { LobbyHeroHeader } from '../components/lobby/LobbyHeroHeader';
-import { LobbyUpNextCard } from '../components/lobby/LobbyUpNextCard';
+import { LobbyDoThisNextCard } from '../components/lobby/LobbyDoThisNextCard';
+import { LobbyTopTimelinePreview } from '../components/lobby/LobbyTopTimelinePreview';
+import { CollapsibleLobbySection } from '../components/lobby/CollapsibleLobbySection';
+import { LobbyQuickJournalCard } from '../components/lobby/LobbyQuickJournalCard';
+import { LobbyHotelProgressCard } from '../components/lobby/LobbyHotelProgressCard';
 import { LobbyTodayTasksSection } from '../components/lobby/LobbyTodayTasksSection';
 import { LobbyClassesTimelineSection } from '../components/lobby/LobbyClassesTimelineSection';
 import { LobbyHabitsSection } from '../components/lobby/LobbyHabitsSection';
 import { LobbyShutdownSection } from '../components/lobby/LobbyShutdownSection';
 import { LobbyPostponeModal } from '../components/lobby/LobbyPostponeModal';
 
+const DEFAULT_LOBBY_SECTIONS: Record<string, boolean> = {
+  tasks: true,
+  habits: true,
+  quick_journal: true,
+  flashcards: true,
+  hotel_progress: false,
+  classes: false,
+  overview: false,
+  shutdown: false,
+};
+
 export const LobbyPage: React.FC = () => {
   const { setCurrentRoute, showToast, setActiveFocusTask } = useUiStore();
   const todayKey = getTodayKey();
-  const dayIndex = getDayOfWeekIndex();
 
   // Bounded & indexed database queries
   const settings = useLiveQuery(() => db.settings.get('current_user'));
@@ -59,12 +86,12 @@ export const LobbyPage: React.FC = () => {
   const allHabitLogs = useLiveQuery(() => getRecentHabitLogs(90, todayKey)) || [];
   const habitLogs = useLiveQuery(() => db.habitLogs.where('date').equals(todayKey).toArray()) || [];
   const restDays = useLiveQuery(() => db.restDays.toArray()) || [];
-  const totalXp = useLiveQuery(() => getTotalXp()) || 0;
-  const quests = useLiveQuery(() => db.quests.where('dayKey').equals(todayKey).toArray()) || [];
-  const focusSessions = useLiveQuery(() => getFocusSessionsByDateRange(todayKey, todayKey)) || [];
+  const studyBlocksToday = useLiveQuery(() => db.studyBlocks.where('date').equals(todayKey).toArray()) || [];
+  const masterWeekBlocks = useLiveQuery(() => db.masterWeekBlocks.toArray()) || [];
+  const allFocusSessions = useLiveQuery(() => db.focusSessions.toArray()) || [];
   const attendanceRecords = useLiveQuery(() => getAttendanceByDateRange(todayKey, todayKey)) || [];
-  const creativeProjects = useLiveQuery(() => db.creativeProjects.toArray()) || [];
-  const readingItems = useLiveQuery(() => db.readingItems.toArray()) || [];
+  const flashcards = useLiveQuery(() => db.flashcards.toArray()) || [];
+  const xpEvents = useLiveQuery(() => db.xpEvents.toArray()) || [];
   const reflections = useLiveQuery(() => db.dailyReflections.where('dateKey').equals(todayKey).toArray()) || [];
 
   const todayReflection = reflections[0] || null;
@@ -108,6 +135,25 @@ export const LobbyPage: React.FC = () => {
     }
   }, [settings, todayKey]);
 
+  const sectionStates: Record<string, boolean> = useMemo(
+    () => ({
+      ...DEFAULT_LOBBY_SECTIONS,
+      ...(settings?.lobbySectionStates || {}),
+    }),
+    [settings?.lobbySectionStates]
+  );
+
+  const handleToggleSection = async (sectionId: string) => {
+    const nextOpen = !sectionStates[sectionId];
+    const nextMap = {
+      ...sectionStates,
+      [sectionId]: nextOpen,
+    };
+    await db.settings.update('current_user', {
+      lobbySectionStates: nextMap,
+    });
+  };
+
   const activeSemester =
     semesters.find(
       (s) =>
@@ -123,28 +169,86 @@ export const LobbyPage: React.FC = () => {
 
   // Current time representation
   const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-  const remainingTokens = getRemainingRestTokens(restDays, todayKey);
+  const focusSessionsToday = useMemo(
+    () => allFocusSessions.filter((s) => (s.completedAt || s.startedAt || '').startsWith(todayKey)),
+    [allFocusSessions, todayKey]
+  );
 
-  // Up Next Recommendation Live
-  const upNext: UpNextResult = useMemo(() => {
-    return getUpNextItem({
+  const remainingTokens = getRemainingRestTokens(restDays, todayKey);
+  const dueFlashcardsCount = useMemo(
+    () => getDueFlashcardsCount(flashcards, todayKey),
+    [flashcards, todayKey]
+  );
+
+  // Block 1: "Do this next" pure selector
+  const doThisNext = useMemo(() => {
+    return getDoThisNext({
       now,
       todayKey,
       scheduledClasses: scheduledClassesToday,
       tasks,
-      exams,
       habits,
       habitLogs,
       restDays,
-      attendanceRecords,
-      creativeProjects,
-      readingItems,
     });
-  }, [now, todayKey, scheduledClassesToday, tasks, exams, habits, habitLogs, restDays, attendanceRecords, creativeProjects, readingItems]);
+  }, [now, todayKey, scheduledClassesToday, tasks, habits, habitLogs, restDays]);
 
-  // Chronological Today Timeline with Clash Detection
+  // Full day timeline engine for Block 2 (next 3 items) & gaps
+  const dayTimeline = useMemo(() => {
+    return buildDayTimeline({
+      date: todayKey,
+      classes: scheduledClassesToday,
+      tasks,
+      studyBlocks: studyBlocksToday,
+      masterWeekBlocks,
+      exams,
+      focusSessions: focusSessionsToday,
+      courses,
+      currentMinutes: nowMinutes,
+    });
+  }, [todayKey, scheduledClassesToday, tasks, studyBlocksToday, masterWeekBlocks, exams, focusSessionsToday, courses, nowMinutes]);
+
+  const nextThreeTimelineItems = useMemo(
+    () => getNextTimelineItems(dayTimeline.blocks, nowMinutes, 3),
+    [dayTimeline.blocks, nowMinutes]
+  );
+
+  const dailyProgress = useMemo(() => {
+    return calculateDailyProgress({
+      tasks,
+      habits,
+      habitLogs,
+      restDays,
+      scheduledClasses: scheduledClassesToday,
+      attendanceRecords,
+      focusSessions: focusSessionsToday,
+      todayKey,
+    });
+  }, [tasks, habits, habitLogs, restDays, scheduledClassesToday, attendanceRecords, focusSessionsToday, todayKey]);
+
+  const nextUpcomingGap = useMemo(() => {
+    return dayTimeline.freeGaps.find((g) => g.endMinutes > nowMinutes) || null;
+  }, [dayTimeline.freeGaps, nowMinutes]);
+
+  const streakHighlightsCount = useMemo(
+    () => habits.filter((h) => calculateHabitStreak(h.id, allHabitLogs, restDays, todayKey).currentStreak > 0).length,
+    [habits, allHabitLogs, restDays, todayKey]
+  );
+
+  // Block 3: One insight sentence
+  const dailyInsightSentence = useMemo(() => {
+    return getDailyInsightSentence({
+      dailyProgress,
+      nextGapMinutes: nextUpcomingGap ? nextUpcomingGap.durationMinutes : null,
+      focusMinutesToday: dailyProgress.actualFocusMinutes,
+      streakHighlightsCount,
+    });
+  }, [dailyProgress, nextUpcomingGap, streakHighlightsCount]);
+
+  // Chronological Today Timeline for Classes section
   const timeline = useMemo(() => {
     const examsToday = exams.filter((e) => e.examDate === todayKey);
     const tasksWithTime = tasks.filter((t) => t.dueDate === todayKey && t.dueTime);
@@ -155,6 +259,17 @@ export const LobbyPage: React.FC = () => {
       tasksWithTime,
     });
   }, [currentTimeStr, scheduledClassesToday, exams, tasks, todayKey]);
+
+  // Derived visible progress (Grand Hotel wings)
+  const hotelProgress = useMemo(() => {
+    return deriveHotelProgress({
+      habitLogs: allHabitLogs,
+      restDays,
+      focusSessions: allFocusSessions,
+      tasks,
+      xpEvents,
+    });
+  }, [allHabitLogs, restDays, allFocusSessions, tasks, xpEvents]);
 
   // Upcoming Exams & Deadlines
   const upcomingExams = exams
@@ -363,7 +478,6 @@ export const LobbyPage: React.FC = () => {
       });
     }
 
-    // Set attendance status to postponed for today's occurrence
     const existingAtt = attendanceRecords.find(
       (r) => r.courseId === postponeModalClass.course.id && r.date === todayKey
     );
@@ -385,14 +499,12 @@ export const LobbyPage: React.FC = () => {
       });
     }
 
-    // Reconcile reminders so notification cancels for today and schedules on new date
     reconcileAllReminders().catch(() => {});
-
     showToast(`Class postponed to ${postponeDate} at ${postponeStartTime}. Notifications updated.`, 'success');
     setPostponeModalClass(null);
   };
 
-  // Cancel Postponement (reverts back to original recurring timetable)
+  // Cancel Postponement
   const handleCancelPostponement = async (sessionId: string, courseId: string) => {
     const target = exceptions.find(
       (ex) => ex.sessionId === sessionId && ex.date === todayKey
@@ -401,7 +513,6 @@ export const LobbyPage: React.FC = () => {
       await db.classExceptions.delete(target.id);
     }
 
-    // Clear 'postponed' attendance mark
     const att = attendanceRecords.find(
       (r) => r.courseId === courseId && r.date === todayKey && r.status === 'postponed'
     );
@@ -464,9 +575,10 @@ export const LobbyPage: React.FC = () => {
     const tomorrowKey = addDaysToKey(todayKey, 1);
     await db.tasks.update(taskId, {
       dueDate: tomorrowKey,
+      isOverdueRolledOver: true,
       updatedAt: new Date().toISOString(),
     });
-    showToast('Task moved to tomorrow', 'info');
+    showToast('Task rolled over to tomorrow', 'info');
   };
 
   // Complete Shutdown flow
@@ -506,27 +618,14 @@ export const LobbyPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6 pb-24 animate-pop max-w-4xl mx-auto">
-      {/* 1. CLEAN TODAY HEADER */}
-      <LobbyHeroHeader
-        todayKey={todayKey}
-        settings={settings}
-        lowEnergy={lowEnergy}
-        toggleLowEnergy={toggleLowEnergy}
-        isDormDay={isDormDay}
-        toggleDormDay={toggleDormDay}
-        nextExam={nextExam}
-        isEditingIntention={isEditingIntention}
-        setIsEditingIntention={setIsEditingIntention}
-        intentionInput={intentionInput}
-        setIntentionInput={setIntentionInput}
-        handleSaveIntention={handleSaveIntention}
-        onNavigate={setCurrentRoute}
-      />
+    <div className="space-y-4 sm:space-y-5 pb-24 animate-pop max-w-4xl mx-auto">
+      {/* ===================================================================== */}
+      {/* TOP OF LOBBY: EXACTLY THREE FOCUSED BLOCKS                            */}
+      {/* ===================================================================== */}
 
-      {/* 2. UP NEXT PRIORITY CARD */}
-      <LobbyUpNextCard
-        upNext={upNext}
+      {/* BLOCK 1: Do this next */}
+      <LobbyDoThisNextCard
+        item={doThisNext}
         tasks={tasks}
         onStartFocus={setActiveFocusTask}
         onNavigate={setCurrentRoute}
@@ -534,53 +633,204 @@ export const LobbyPage: React.FC = () => {
         onToggleHabit={handleToggleHabit}
       />
 
-      {/* 3. TODAY'S TASKS & QUICK-ADD */}
-      <LobbyTodayTasksSection
-        todayTasks={todayTasks}
-        lowEnergy={lowEnergy}
-        quickTaskTitle={quickTaskTitle}
-        setQuickTaskTitle={setQuickTaskTitle}
-        handleQuickAddTask={handleQuickAddTask}
-        handleTaskClick={handleTaskClick}
+      {/* BLOCK 2: Next 3 items of today's timeline */}
+      <LobbyTopTimelinePreview
+        items={nextThreeTimelineItems}
+        isAllDone={dailyProgress.isAllDone}
         onNavigate={setCurrentRoute}
       />
 
-      {/* 4. TODAY'S CLASSES & TIMELINE */}
-      <LobbyClassesTimelineSection
-        timeline={timeline}
-        todayKey={todayKey}
-        attendanceRecords={attendanceRecords}
-        handleSetAttendance={handleSetAttendance}
-        handleOpenPostponeModal={handleOpenPostponeModal}
-        onNavigate={setCurrentRoute}
-      />
+      {/* BLOCK 3: One insight sentence (+ calm All Done badge when clear) */}
+      <div
+        className={`ticket-border rounded-2xl px-4 py-3 shadow-xs flex items-center justify-between gap-3 ${
+          dailyProgress.isAllDone
+            ? 'bg-emerald-50/40 dark:bg-emerald-950/15 border-emerald-500/40'
+            : 'bg-[rgb(var(--c-surface))]'
+        }`}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          {dailyProgress.isAllDone ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+          ) : (
+            <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+          )}
+          <p className="text-xs font-flourish text-[rgb(var(--c-text))] leading-snug">
+            {dailyInsightSentence}
+          </p>
+        </div>
+        {dailyProgress.isAllDone && (
+          <span className="text-[10px] font-heading font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 shrink-0">
+            All done
+          </span>
+        )}
+      </div>
 
-      {/* 5. TODAY'S HABITS */}
-      <LobbyHabitsSection
-        habits={habits}
-        habitLogs={habitLogs}
-        allHabitLogs={allHabitLogs}
-        restDays={restDays}
-        todayKey={todayKey}
-        remainingTokens={remainingTokens}
-        handleToggleHabit={handleToggleHabit}
-        onNavigate={setCurrentRoute}
-      />
+      {/* ===================================================================== */}
+      {/* COLLAPSIBLE SECTIONS BELOW (OPEN/CLOSED REMEMBERED PER SECTION)        */}
+      {/* ===================================================================== */}
 
-      {/* 6. EVENING SHUTDOWN CARD & MODAL */}
-      <LobbyShutdownSection
-        isShutdownOpen={isShutdownOpen}
-        setIsShutdownOpen={setIsShutdownOpen}
-        todayReflection={todayReflection}
-        completedTodayTasks={completedTodayTasks}
-        unfinishedTasks={unfinishedTasks}
-        shutdownWin={shutdownWin}
-        setShutdownWin={setShutdownWin}
-        shutdownTomorrowFocus={shutdownTomorrowFocus}
-        setShutdownTomorrowFocus={setShutdownTomorrowFocus}
-        handleRescheduleToTomorrow={handleRescheduleToTomorrow}
-        handleCompleteShutdown={handleCompleteShutdown}
-      />
+      {/* 1. Today's Tasks */}
+      <CollapsibleLobbySection
+        id="tasks"
+        title="Today's Tasks"
+        summary={`${unfinishedTasks.length} open`}
+        icon={<CheckSquare className="w-4 h-4 text-[#7A2E4A]" />}
+        isOpen={!!sectionStates.tasks}
+        onToggle={handleToggleSection}
+      >
+        <LobbyTodayTasksSection
+          todayTasks={todayTasks}
+          lowEnergy={lowEnergy}
+          quickTaskTitle={quickTaskTitle}
+          setQuickTaskTitle={setQuickTaskTitle}
+          handleQuickAddTask={handleQuickAddTask}
+          handleTaskClick={handleTaskClick}
+          onNavigate={setCurrentRoute}
+        />
+      </CollapsibleLobbySection>
+
+      {/* 2. Habits Check-In */}
+      <CollapsibleLobbySection
+        id="habits"
+        title="Habits Check-In"
+        summary={`${remainingTokens} rest left`}
+        icon={<Flame className="w-4 h-4 text-rose-500" />}
+        isOpen={!!sectionStates.habits}
+        onToggle={handleToggleSection}
+      >
+        <LobbyHabitsSection
+          habits={habits}
+          habitLogs={habitLogs}
+          allHabitLogs={allHabitLogs}
+          restDays={restDays}
+          todayKey={todayKey}
+          remainingTokens={remainingTokens}
+          handleToggleHabit={handleToggleHabit}
+          onNavigate={setCurrentRoute}
+        />
+      </CollapsibleLobbySection>
+
+      {/* 3. 1-Minute Quick Journal */}
+      <CollapsibleLobbySection
+        id="quick_journal"
+        title="1-Minute Quick Journal"
+        summary="Prompt + 1-tap mood"
+        icon={<Feather className="w-4 h-4 text-[rgb(var(--c-primary))]" />}
+        isOpen={!!sectionStates.quick_journal}
+        onToggle={handleToggleSection}
+      >
+        <LobbyQuickJournalCard todayKey={todayKey} onNavigate={setCurrentRoute} />
+      </CollapsibleLobbySection>
+
+      {/* 4. Flashcards Due */}
+      <CollapsibleLobbySection
+        id="flashcards"
+        title="Flashcards Spaced Repetition"
+        summary={dueFlashcardsCount > 0 ? `${dueFlashcardsCount} due today` : 'Caught up'}
+        icon={<Layers className="w-4 h-4 text-emerald-500" />}
+        isOpen={!!sectionStates.flashcards}
+        onToggle={handleToggleSection}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+          <div className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+            {dueFlashcardsCount > 0
+              ? `You have ${dueFlashcardsCount} flashcard${dueFlashcardsCount === 1 ? '' : 's'} ready for review today.`
+              : flashcards.length === 0
+              ? 'Create your first offline flashcard deck linked to a course or exam topic.'
+              : 'All due flashcards reviewed for today!'}
+          </div>
+          <button
+            onClick={() => setCurrentRoute('#/flashcards')}
+            className="px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer hover:opacity-90"
+          >
+            <span>{dueFlashcardsCount > 0 ? `Review Due (${dueFlashcardsCount})` : 'Open Flashcards'}</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </CollapsibleLobbySection>
+
+      {/* 5. Today's Classes & Schedule */}
+      <CollapsibleLobbySection
+        id="classes"
+        title="Today's Classes & Schedule"
+        summary={`${scheduledClassesToday.length} scheduled`}
+        icon={<Calendar className="w-4 h-4 text-[rgb(var(--c-primary))]" />}
+        isOpen={!!sectionStates.classes}
+        onToggle={handleToggleSection}
+      >
+        <LobbyClassesTimelineSection
+          timeline={timeline}
+          todayKey={todayKey}
+          attendanceRecords={attendanceRecords}
+          handleSetAttendance={handleSetAttendance}
+          handleOpenPostponeModal={handleOpenPostponeModal}
+          onNavigate={setCurrentRoute}
+        />
+      </CollapsibleLobbySection>
+
+      {/* 6. Visible, Forgiving Progress — Grand Hotel (optional Settings toggle) */}
+      {settings?.showVisibleProgress !== false && (
+        <CollapsibleLobbySection
+          id="hotel_progress"
+          title="The Grand Hotel"
+          summary={`${hotelProgress.unlockedCount}/${hotelProgress.totalWings} wings • ${hotelProgress.consistentDays}d`}
+          icon={<Building2 className="w-4 h-4 text-[#E5C04B]" />}
+          isOpen={!!sectionStates.hotel_progress}
+          onToggle={handleToggleSection}
+        >
+          <LobbyHotelProgressCard progress={hotelProgress} />
+        </CollapsibleLobbySection>
+      )}
+
+      {/* 7. Daily Intention & Modes */}
+      <CollapsibleLobbySection
+        id="overview"
+        title="Daily Intention & Energy Modes"
+        summary={lowEnergy ? 'Low-Energy On' : isDormDay ? 'Dorm Mode' : 'Desk Mode'}
+        icon={<Compass className="w-4 h-4 text-[rgb(var(--c-primary))]" />}
+        isOpen={!!sectionStates.overview}
+        onToggle={handleToggleSection}
+      >
+        <LobbyHeroHeader
+          todayKey={todayKey}
+          settings={settings}
+          lowEnergy={lowEnergy}
+          toggleLowEnergy={toggleLowEnergy}
+          isDormDay={isDormDay}
+          toggleDormDay={toggleDormDay}
+          nextExam={nextExam}
+          isEditingIntention={isEditingIntention}
+          setIsEditingIntention={setIsEditingIntention}
+          intentionInput={intentionInput}
+          setIntentionInput={setIntentionInput}
+          handleSaveIntention={handleSaveIntention}
+          onNavigate={setCurrentRoute}
+        />
+      </CollapsibleLobbySection>
+
+      {/* 8. Evening Shutdown */}
+      <CollapsibleLobbySection
+        id="shutdown"
+        title="Evening Shutdown Ritual"
+        summary={todayReflection ? 'Logged today ✓' : 'Reflect & roll over tasks'}
+        icon={<Moon className="w-4 h-4 text-[#7A2E4A]" />}
+        isOpen={!!sectionStates.shutdown}
+        onToggle={handleToggleSection}
+      >
+        <LobbyShutdownSection
+          isShutdownOpen={isShutdownOpen}
+          setIsShutdownOpen={setIsShutdownOpen}
+          todayReflection={todayReflection}
+          completedTodayTasks={completedTodayTasks}
+          unfinishedTasks={unfinishedTasks}
+          shutdownWin={shutdownWin}
+          setShutdownWin={setShutdownWin}
+          shutdownTomorrowFocus={shutdownTomorrowFocus}
+          setShutdownTomorrowFocus={setShutdownTomorrowFocus}
+          handleRescheduleToTomorrow={handleRescheduleToTomorrow}
+          handleCompleteShutdown={handleCompleteShutdown}
+        />
+      </CollapsibleLobbySection>
 
       {/* CLASS POSTPONEMENT MODAL */}
       <LobbyPostponeModal

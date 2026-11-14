@@ -42,28 +42,36 @@ export const TodayPage: React.FC = () => {
   }, []);
 
   // Reactive DB queries
-  const courses = useLiveQuery(() => db.courses.toArray(), []) || [];
-  const classSessions = useLiveQuery(() => db.classSessions.toArray(), []) || [];
-  const classExceptions = useLiveQuery(() => db.classExceptions.toArray(), []) || [];
-  const semesters = useLiveQuery(() => db.semesters.toArray(), []) || [];
-  const tasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
-  const studyBlocks = useLiveQuery(() => db.studyBlocks.toArray(), []) || [];
-  const masterWeekBlocks = useLiveQuery(() => db.masterWeekBlocks.toArray(), []) || [];
-  const exams = useLiveQuery(() => db.exams.toArray(), []) || [];
-  const focusSessions = useLiveQuery(() => db.focusSessions.toArray(), []) || [];
-  const habits = useLiveQuery(() => db.habits.where('archived').notEqual(1).toArray(), []) || [];
-  const habitLogs = useLiveQuery(
-    () => db.habitLogs.where('dateKey').equals(selectedDateKey).toArray(),
-    [selectedDateKey]
-  ) || [];
+  const coursesRaw = useLiveQuery(() => db.courses.toArray(), []);
+  const classSessionsRaw = useLiveQuery(() => db.classSessions.toArray(), []);
+  const classExceptionsRaw = useLiveQuery(() => db.classExceptions.toArray(), []);
+  const semestersRaw = useLiveQuery(() => db.semesters.toArray(), []);
+  const tasksRaw = useLiveQuery(() => db.tasks.toArray(), []);
+  const studyBlocksRaw = useLiveQuery(() => db.studyBlocks.toArray(), []);
+  const masterWeekBlocksRaw = useLiveQuery(() => db.masterWeekBlocks.toArray(), []);
+  const examsRaw = useLiveQuery(() => db.exams.toArray(), []);
+  const focusSessionsRaw = useLiveQuery(() => db.focusSessions.toArray(), []);
+  const habitsRaw = useLiveQuery(() => db.habits.toArray(), []);
   const dailyPlan = useLiveQuery(
     () => db.dailyPlans.where('dateKey').equals(selectedDateKey).first(),
     [selectedDateKey]
   );
-  const attendanceRecords = useLiveQuery(
-    () => db.attendance.where('date').equals(selectedDateKey).toArray(),
-    [selectedDateKey]
-  ) || [];
+
+  const isLoading =
+    coursesRaw === undefined ||
+    classSessionsRaw === undefined ||
+    tasksRaw === undefined;
+
+  const courses = coursesRaw || [];
+  const classSessions = classSessionsRaw || [];
+  const classExceptions = classExceptionsRaw || [];
+  const semesters = semestersRaw || [];
+  const tasks = tasksRaw || [];
+  const studyBlocks = studyBlocksRaw || [];
+  const masterWeekBlocks = masterWeekBlocksRaw || [];
+  const exams = examsRaw || [];
+  const focusSessions = focusSessionsRaw || [];
+  const habits = habitsRaw || [];
 
   const activeSemester = useMemo(
     () => semesters.find((s) => s.isActive) || semesters[0] || null,
@@ -83,6 +91,7 @@ export const TodayPage: React.FC = () => {
 
   // Build timeline result
   const timeline = useMemo(() => {
+    if (isLoading) return undefined;
     try {
       return buildDayTimeline({
         date: selectedDateKey,
@@ -101,6 +110,7 @@ export const TodayPage: React.FC = () => {
       return null;
     }
   }, [
+    isLoading,
     selectedDateKey,
     scheduledClasses,
     tasks,
@@ -146,9 +156,13 @@ export const TodayPage: React.FC = () => {
       });
 
       if (res.success) {
-        showToast(res.message, 'success');
+        const msg =
+          res.action === 'toggled_off'
+            ? `Cleared attendance mark for ${scheduledClass.course.code}`
+            : `Marked ${scheduledClass.course.code} as Present`;
+        showToast(msg, 'success');
       } else {
-        showToast(res.message, 'danger');
+        showToast(res.error || 'Could not save attendance.', 'warning');
       }
     } catch {
       showToast('Could not save attendance.', 'danger');
@@ -282,7 +296,14 @@ export const TodayPage: React.FC = () => {
 
       {/* Vertical Timeline Card */}
       <div className="bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] rounded-2xl p-4 sm:p-6 shadow-xs overflow-hidden">
-        {timeline === null ? (
+        {timeline === undefined ? (
+          <div className="p-10 text-center space-y-3 animate-pulse">
+            <div className="w-10 h-10 rounded-full bg-[rgb(var(--c-surface2))] mx-auto" />
+            <p className="text-xs font-mono text-[rgb(var(--c-muted))]">
+              Loading your day timeline...
+            </p>
+          </div>
+        ) : timeline === null ? (
           <div className="p-8 text-center text-rose-500 bg-rose-500/5 rounded-xl border border-rose-500/20">
             <AlertCircle className="w-6 h-6 mx-auto mb-2" />
             <p className="text-sm font-semibold">Could not render day timeline.</p>
@@ -461,28 +482,27 @@ export const TodayPage: React.FC = () => {
       />
 
       {/* Plan My Day Modal */}
-      <PlanDayModal
-        isOpen={isPlanModalOpen}
-        onClose={() => setIsPlanModalOpen(false)}
-        dateKey={selectedDateKey}
-        classes={scheduledClasses}
-        courses={courses}
-        tasks={tasks.filter((t) => t.dueDate === selectedDateKey || (!t.dueDate && t.status !== 'done'))}
-        habits={habits}
-        onPlanSaved={() => showToast('Daily plan committed! +20 XP', 'success')}
-      />
+      {isPlanModalOpen && (
+        <PlanDayModal
+          isOpen={isPlanModalOpen}
+          onClose={() => setIsPlanModalOpen(false)}
+          dateKey={selectedDateKey}
+          classes={scheduledClasses}
+          courses={courses}
+          tasks={tasks.filter((t) => t.dueDate === selectedDateKey || (!t.dueDate && t.status !== 'done'))}
+          habits={habits}
+          onPlanSaved={() => showToast('Daily plan committed! +20 XP', 'success')}
+        />
+      )}
 
       {/* Shutdown Modal */}
-      <ShutdownModal
-        isOpen={isShutdownModalOpen}
-        onClose={() => setIsShutdownModalOpen(false)}
-        dateKey={selectedDateKey}
-        tasks={tasks.filter((t) => t.dueDate === selectedDateKey)}
-        habits={habits}
-        habitLogs={habitLogs}
-        focusSessions={focusSessions}
-        onShutdownComplete={() => showToast('Day successfully shut down! +25 XP', 'success')}
-      />
+      {isShutdownModalOpen && (
+        <ShutdownModal
+          onClose={() => setIsShutdownModalOpen(false)}
+          dateKey={selectedDateKey}
+          onCompleted={() => showToast('Day successfully shut down! +25 XP', 'success')}
+        />
+      )}
     </div>
   );
 };

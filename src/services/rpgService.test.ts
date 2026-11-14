@@ -134,4 +134,37 @@ describe('rpgService - XP Fairness & Daily Rituals', () => {
     expect(l2.level).toBeGreaterThanOrEqual(2);
     expect(l2.totalXp).toBe(120);
   });
+
+  it('shares daily caps across normalized source aliases while preserving reversal', async () => {
+    // 'task' and 'task_complete' both count against the 300 XP task cap
+    await awardXp({
+      source: 'task',
+      sourceId: 't-big-1',
+      amount: 300,
+      stat: 'discipline',
+      dayKey: '2026-11-11',
+    });
+
+    const cappedSecond = await awardXp({
+      source: 'task_complete',
+      sourceId: 't-big-2',
+      amount: 30,
+      stat: 'discipline',
+      dayKey: '2026-11-11',
+    });
+    expect(cappedSecond).toBe(false);
+
+    // Reversal removes the event cleanly using its stored source string
+    const reversed = await reverseXp('task', 't-big-1');
+    expect(reversed).toBe(true);
+
+    const afterReversal = await awardXp({
+      source: 'task_complete',
+      sourceId: 't-big-2',
+      amount: 30,
+      stat: 'discipline',
+      dayKey: '2026-11-11',
+    });
+    expect(afterReversal).toBe(true);
+  });
 });

@@ -95,7 +95,7 @@ export interface Task {
   isOverdueRolledOver?: boolean;
   contextTag: 'phone' | 'laptop' | 'any';
   notes?: string;
-  subtasks?: { id: string; title: string; done: boolean }[];
+  subtasks?: { id: string; title: string; done: boolean; estimateMinutes?: number }[];
   repeatRule?: 'daily' | 'weekly' | 'none';
   createdAt: string;
   updatedAt: string;
@@ -598,6 +598,8 @@ export interface AppSettings {
   customFinanceCategories?: FinanceCategory[];
   sleepStartTime?: string; // default "23:00"
   sleepEndTime?: string; // default "07:00"
+  lobbySectionStates?: Record<string, boolean>;
+  showVisibleProgress?: boolean;
 }
 
 export interface StudyBlock {
@@ -655,6 +657,31 @@ export interface DailyPlan {
   createdAt: string;
   shutdownAt?: string;
   note?: string; // Optional reflection line
+}
+
+export interface FlashcardDeck {
+  id: string;
+  title: string;
+  description?: string;
+  courseId?: string;
+  examTopicId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Flashcard {
+  id: string;
+  deckId: string;
+  front: string;
+  back: string;
+  easeFactor: number;
+  intervalDays: number;
+  repetitions: number;
+  dueDate: string; // YYYY-MM-DD
+  lastReviewedDate?: string; // YYYY-MM-DD
+  lapsedCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface NotificationSettings {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useUiStore } from '../store/uiStore';
@@ -7,8 +7,10 @@ import {
   getAllLevelThresholds,
   reconcileXpLedger,
   INITIAL_ACHIEVEMENTS,
-  LevelThreshold,
+  DAILY_CAP_DISPLAY_SOURCES,
+  getDailySourceProgress,
 } from '../services/rpgService';
+import { getTodayKey } from '../utils/dateUtils';
 import {
   Award,
   Shield,
@@ -38,6 +40,36 @@ export const LevelsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'progression' | 'attributes' | 'history'>('progression');
   const [progressionFilter, setProgressionFilter] = useState<'all' | 'current_family' | 'unlocked' | 'upcoming'>('all');
   const [isReconciling, setIsReconciling] = useState(false);
+  const [dailyCaps, setDailyCaps] = useState<
+    Array<{
+      source: string;
+      label: string;
+      earned: number;
+      cap: number;
+      softThreshold: number;
+      percent: number;
+      isCapped: boolean;
+    }>
+  >([]);
+
+  const todayKey = getTodayKey();
+  useEffect(() => {
+    let active = true;
+    Promise.all(
+      DAILY_CAP_DISPLAY_SOURCES.map(async (item) => {
+        const prog = await getDailySourceProgress(item.source, todayKey);
+        return {
+          ...prog,
+          label: item.label,
+        };
+      })
+    ).then((rows) => {
+      if (active) setDailyCaps(rows);
+    });
+    return () => {
+      active = false;
+    };
+  }, [xpEvents.length, todayKey]);
 
   // Reconcile XP Ledger
   const handleReconcile = async () => {
@@ -338,6 +370,64 @@ export const LevelsPage: React.FC = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Daily XP Fairness Caps */}
+          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-6 space-y-4 shadow-xs">
+            <div className="flex items-center justify-between pb-2 border-b border-[rgb(var(--c-border))]">
+              <div>
+                <div className="font-heading text-xs uppercase font-bold text-[rgb(var(--c-text))]">
+                  Daily XP Caps &amp; Fairness ({todayKey})
+                </div>
+                <p className="text-[11px] text-[rgb(var(--c-muted))] font-flourish">
+                  Pacing limits prevent micro-action farming while keeping your earned XP permanent.
+                </p>
+              </div>
+              <TrendingUp className="w-4 h-4 text-[rgb(var(--c-primary))]" />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {dailyCaps.map((capRow) => {
+                const isSoft = !capRow.isCapped && capRow.earned >= capRow.softThreshold;
+                return (
+                  <div
+                    key={capRow.source}
+                    className="p-3 rounded-2xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between text-xs font-heading font-bold">
+                      <span className="text-[rgb(var(--c-text))]">{capRow.label}</span>
+                      <span
+                        className={
+                          capRow.isCapped
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : isSoft
+                            ? 'text-sky-600 dark:text-sky-400'
+                            : 'text-[rgb(var(--c-muted))]'
+                        }
+                      >
+                        {capRow.earned} / {capRow.cap} XP
+                      </span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          capRow.isCapped
+                            ? 'bg-amber-500'
+                            : isSoft
+                            ? 'bg-sky-500'
+                            : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${capRow.percent}%` }}
+                      />
+                    </div>
+                    <div className="text-[10px] text-[rgb(var(--c-muted))] font-flourish flex justify-between">
+                      <span>Diminishing returns at {capRow.softThreshold} XP</span>
+                      <span>{capRow.isCapped ? 'Daily cap reached' : isSoft ? 'Half-rate active' : 'Full rate'}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

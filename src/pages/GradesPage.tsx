@@ -474,8 +474,20 @@ export const GradesPage: React.FC = () => {
 
             {/* Courses List */}
             {courseStats.length === 0 ? (
-              <div className="text-center py-10 text-xs text-[rgb(var(--c-muted))] font-flourish">
-                No university courses registered yet. Click “New Course” to start your transcript!
+              <div className="text-center py-10 space-y-3">
+                <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+                  No university courses registered yet. Add one to start tracking your GPA and assessments.
+                </p>
+                <button
+                  onClick={() => {
+                    setCourseToEdit(null);
+                    setIsCourseModalOpen(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[#7A2E4A] text-white font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition inline-flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add your first course</span>
+                </button>
               </div>
             ) : (
               <div className="space-y-3">

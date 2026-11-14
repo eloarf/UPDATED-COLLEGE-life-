@@ -54,6 +54,7 @@ export const MoreSheet: React.FC = () => {
     { name: 'Courses & Syllabi', subtitle: 'Instructors, modules & lecture materials', route: '#/courses', icon: BookOpen, category: 'Academics' },
     { name: 'Semester Goals', subtitle: 'Roadmap objectives & milestone tracking', route: '#/goals', icon: Target, category: 'Academics' },
     { name: 'Exams & Deadlines', subtitle: 'Countdown timers & revision topics', route: '#/exams', icon: ShieldAlert, category: 'Academics' },
+    { name: 'Flashcards', subtitle: 'Spaced-repetition decks & exam topic cards', route: '#/flashcards', icon: Layers, category: 'Academics' },
     { name: 'Grades & GPA', subtitle: 'CGPA calculator & target projections', route: '#/grades', icon: GraduationCap, category: 'Academics' },
     { name: 'Master Week', subtitle: 'Dorm vs home timeblock templates', route: '#/week', icon: LayoutGrid, category: 'Academics' },
     { name: 'Calendar', subtitle: 'Monthly academic timeline & deadlines', route: '#/calendar', icon: CalendarDays, category: 'Academics' },

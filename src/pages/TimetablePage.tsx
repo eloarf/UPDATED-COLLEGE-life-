@@ -406,22 +406,13 @@ export const TimetablePage: React.FC = () => {
         {daySessions.length === 0 ? (
           <div className="text-center py-12 text-xs text-[rgb(var(--c-muted))] font-flourish space-y-3">
             <div>No classes scheduled on {FULL_DAY_NAMES[selectedDay]}.</div>
-            <div className="flex items-center justify-center gap-2">
-              <button
-                onClick={handleOpenAddSession}
-                className="px-3.5 py-1.5 rounded-full bg-[#B6E63E] text-stone-950 text-xs font-heading font-bold shadow-xs hover:opacity-90 transition"
-              >
-                + Schedule a Class
-              </button>
-              {courses.length === 0 && (
-                <button
-                  onClick={() => setCurrentRoute('settings')}
-                  className="px-3.5 py-1.5 rounded-full border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))] transition"
-                >
-                  ⚡ Load Section 12 Timetable
-                </button>
-              )}
-            </div>
+            <button
+              onClick={handleOpenAddSession}
+              className="px-4 py-2 rounded-xl bg-[#B6E63E] text-stone-950 text-xs font-heading font-bold shadow-xs hover:opacity-90 active:scale-95 transition inline-flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add your first class</span>
+            </button>
           </div>
         ) : (
           <div className="space-y-3">

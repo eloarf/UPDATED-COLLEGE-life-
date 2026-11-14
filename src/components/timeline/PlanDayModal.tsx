@@ -32,7 +32,6 @@ export const PlanDayModal: React.FC<PlanDayModalProps> = ({
   onPlanSaved,
 }) => {
   const { showToast } = useUiStore();
-  if (!isOpen) return null;
   const [selectedPriorities, setSelectedPriorities] = useState<string[]>([]);
   const [customPriorityText, setCustomPriorityText] = useState('');
   const [customPriorities, setCustomPriorities] = useState<{ id: string; title: string }[]>([]);
@@ -41,6 +40,8 @@ export const PlanDayModal: React.FC<PlanDayModalProps> = ({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!isOpen) return;
+    setLoading(true);
     db.dailyPlans
       .where('dateKey')
       .equals(dateKey)
@@ -50,11 +51,17 @@ export const PlanDayModal: React.FC<PlanDayModalProps> = ({
           setExistingPlan(plan);
           setSelectedPriorities(plan.priorityIds || []);
           if (plan.note) setNote(plan.note);
+        } else {
+          setExistingPlan(null);
+          setSelectedPriorities([]);
+          setNote('');
         }
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [dateKey]);
+  }, [dateKey, isOpen]);
+
+  if (!isOpen) return null;
 
   const toggleTaskPriority = (taskId: string) => {
     if (selectedPriorities.includes(taskId)) {
@@ -75,7 +82,7 @@ export const PlanDayModal: React.FC<PlanDayModalProps> = ({
       showToast('Maximum of 3 priorities allowed', 'warning');
       return;
     }
-    const customId = `custom-${Date.now()}`;
+    const customId = `custom:${trimmed}`;
     setCustomPriorities([...customPriorities, { id: customId, title: trimmed }]);
     setSelectedPriorities([...selectedPriorities, customId]);
     setCustomPriorityText('');
@@ -98,6 +105,7 @@ export const PlanDayModal: React.FC<PlanDayModalProps> = ({
         note: note.trim() || undefined,
       };
 
+      await db.dailyPlans.where('dateKey').equals(dateKey).delete();
       await db.dailyPlans.put(plan);
       await awardDailyPlanXp(dateKey);
 
@@ -192,6 +200,26 @@ export const PlanDayModal: React.FC<PlanDayModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* Today's Habits Snapshot */}
+          {habits.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-xs font-heading font-bold text-[rgb(var(--c-muted))] uppercase tracking-wider flex items-center space-x-1.5">
+                <Clock className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Active Habits ({habits.length})</span>
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {habits.map((h) => (
+                  <span
+                    key={h.id}
+                    className="px-2.5 py-1 rounded-lg bg-[rgb(var(--c-surface2))] border border-[rgb(var(--c-border))]/50 text-[11px] font-medium text-[rgb(var(--c-text))]"
+                  >
+                    {h.title}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Pick 1-3 Priorities */}
           <div className="space-y-3">

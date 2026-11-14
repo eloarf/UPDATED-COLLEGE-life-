@@ -23,6 +23,7 @@ import {
   FULL_DAY_NAMES,
   DAY_NAMES,
 } from './dateUtils';
+import { calculateHabitStreak } from './streakEngine';
 
 export type TimeRangeType = 'week' | 'month' | 'semester' | 'year' | 'all';
 
@@ -391,11 +392,12 @@ export function calculateComprehensiveStats(params: {
   const prevHabitsCompleted = prevRangeLogs.length;
   const habitsComparison = computeComparison(habitsCompletedCount, prevHabitsCompleted, true);
 
-  // Individual habit stats
+  // Individual habit stats (streaks read exclusively from streakEngine)
   const habitStats: HabitStatistic[] = habits.map((h) => {
     const hLogs = rangeLogs.filter((l) => l.habitId === h.id);
     const completed = hLogs.length;
     const rate = totalDaysElapsed > 0 ? Math.round((completed / totalDaysElapsed) * 100) : 0;
+    const streak = calculateHabitStreak(h.id, habitLogs, restDays, referenceDateKey);
     return {
       habitId: h.id,
       title: h.title,
@@ -404,8 +406,8 @@ export function calculateComprehensiveStats(params: {
       completedCount: completed,
       scheduledCount: totalDaysElapsed,
       completionRate: Math.min(100, rate),
-      currentStreak: h.currentStreak || 0,
-      bestStreak: h.bestStreak || 0,
+      currentStreak: streak.currentStreak,
+      bestStreak: streak.bestStreak,
     };
   });
   habitStats.sort((a, b) => b.completionRate - a.completionRate);
@@ -552,13 +554,13 @@ export function calculateComprehensiveStats(params: {
 
   // 8. Personal Records in Period
   const records: PersonalRecord[] = [];
-  // Longest habit streak
+  // Longest habit streak (computed from streakEngine via habitStats)
   let maxBestStreak = 0;
   let maxStreakHabit = '';
-  habits.forEach((h) => {
-    if (h.bestStreak > maxBestStreak) {
-      maxBestStreak = h.bestStreak;
-      maxStreakHabit = h.title;
+  habitStats.forEach((hs) => {
+    if (hs.bestStreak > maxBestStreak) {
+      maxBestStreak = hs.bestStreak;
+      maxStreakHabit = hs.title;
     }
   });
   if (maxBestStreak > 0) {
@@ -884,4 +886,68 @@ export function calculateComprehensiveStats(params: {
     insights,
     wrappedCards,
   };
+}
+
+function formatFocusDurationText(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hrs = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
+}
+
+/**
+ * Pure rule engine: Produces 3 plain-language sentences summarising
+ * study time vs previous period, attendance vs threshold, and habit consistency.
+ */
+export function generateStatisticsMeanings(
+  stats: ComprehensivePeriodStats,
+  attendanceThreshold: number = 80
+): [string, string, string] {
+  // Sentence 1: Study time vs previous period
+  const curFocus = stats.trackedFocusMinutes;
+  const prevFocus = stats.focusComparison.previous;
+  let studySentence: string;
+  if (curFocus === 0 && prevFocus === 0) {
+    studySentence = `No study sessions logged in ${stats.bounds.label.toLowerCase()} yet — start one focus block to establish your baseline.`;
+  } else if (curFocus === prevFocus) {
+    studySentence = `You matched your ${stats.bounds.prevLabel.toLowerCase()} study pace with ${formatFocusDurationText(curFocus)} of focused work.`;
+  } else if (prevFocus === 0) {
+    studySentence = `You logged ${formatFocusDurationText(curFocus)} of focused study so far (${stats.focusSessionCount} ${stats.focusSessionCount === 1 ? 'session' : 'sessions'}).`;
+  } else if (curFocus > prevFocus) {
+    const diff = curFocus - prevFocus;
+    studySentence = `Study time is up by ${formatFocusDurationText(diff)} compared to ${stats.bounds.prevLabel.toLowerCase()} (${formatFocusDurationText(curFocus)} total).`;
+  } else {
+    const diff = prevFocus - curFocus;
+    studySentence = `Study time is ${formatFocusDurationText(diff)} lighter than ${stats.bounds.prevLabel.toLowerCase()} (${formatFocusDurationText(curFocus)} vs ${formatFocusDurationText(prevFocus)}).`;
+  }
+
+  // Sentence 2: Attendance vs threshold
+  let attendanceSentence: string;
+  if (stats.classesRecordedCount === 0) {
+    attendanceSentence = `No class attendance marked in this period yet (target threshold: ${attendanceThreshold}%).`;
+  } else if (stats.attendanceRate === attendanceThreshold) {
+    attendanceSentence = `Your class attendance sits right at your ${attendanceThreshold}% goal (${stats.classesAttendedCount}/${stats.classesRecordedCount} classes).`;
+  } else if (stats.attendanceRate > attendanceThreshold) {
+    attendanceSentence = `Class attendance is a healthy ${stats.attendanceRate}%, clearing your ${attendanceThreshold}% goal across ${stats.classesRecordedCount} recorded classes.`;
+  } else {
+    attendanceSentence = `Class attendance is at ${stats.attendanceRate}% against your ${attendanceThreshold}% goal — marking upcoming lectures will lift this smoothly.`;
+  }
+
+  // Sentence 3: Habit consistency
+  let habitSentence: string;
+  if (stats.habitStats.length === 0) {
+    habitSentence = 'Add your first daily habit to begin tracking consistency across the semester.';
+  } else if (stats.habitsCompletedCount === 0 && stats.habitsComparison.previous === 0) {
+    habitSentence = `Your ${stats.habitStats.length} tracked ${stats.habitStats.length === 1 ? 'habit is' : 'habits are'} waiting for a first check-in this period.`;
+  } else if (stats.habitsCompletedCount === stats.habitsComparison.previous) {
+    habitSentence = `Habit consistency held steady at ${stats.habitsCompletedCount} check-ins (${stats.habitOverallRate}% overall rate).`;
+  } else if (stats.habitsCompletedCount > stats.habitsComparison.previous) {
+    habitSentence = `Habit consistency reached ${stats.habitOverallRate}% with ${stats.habitsCompletedCount} check-ins${
+      stats.strongestHabit ? `, anchored by ${stats.strongestHabit.title}` : ''
+    }.`;
+  } else {
+    habitSentence = `You logged ${stats.habitsCompletedCount} habit check-ins (${stats.habitOverallRate}% rate) — minimum-version days and rest tokens keep momentum intact.`;
+  }
+
+  return [studySentence, attendanceSentence, habitSentence];
 }

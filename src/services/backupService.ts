@@ -44,6 +44,8 @@ import {
   StudyBlock,
   DismissedStudySuggestion,
   DailyPlan,
+  FlashcardDeck,
+  Flashcard,
 } from '../types';
 
 export const CURRENT_BACKUP_VERSION = 2;
@@ -92,6 +94,8 @@ export interface BackupData {
     studyBlocks?: StudyBlock[];
     dismissedStudySuggestions?: DismissedStudySuggestion[];
     dailyPlans?: DailyPlan[];
+    flashcardDecks?: FlashcardDeck[];
+    flashcards?: Flashcard[];
   };
 }
 
@@ -136,6 +140,8 @@ const ALL_TABLES = [
   db.studyBlocks,
   db.dismissedStudySuggestions,
   db.dailyPlans,
+  db.flashcardDecks,
+  db.flashcards,
 ];
 
 export async function exportDatabaseToJson(): Promise<string> {
@@ -183,6 +189,8 @@ export async function exportDatabaseToJson(): Promise<string> {
       studyBlocks: await db.studyBlocks.toArray(),
       dismissedStudySuggestions: await db.dismissedStudySuggestions.toArray(),
       dailyPlans: await db.dailyPlans.toArray(),
+      flashcardDecks: await db.flashcardDecks.toArray(),
+      flashcards: await db.flashcards.toArray(),
     },
   };
 
@@ -449,6 +457,8 @@ export async function restoreDatabase(
         if (d.studyBlocks?.length) await db.studyBlocks.bulkPut(d.studyBlocks);
         if (d.dismissedStudySuggestions?.length) await db.dismissedStudySuggestions.bulkPut(d.dismissedStudySuggestions);
         if (d.dailyPlans?.length) await db.dailyPlans.bulkPut(d.dailyPlans);
+        if (d.flashcardDecks?.length) await db.flashcardDecks.bulkPut(d.flashcardDecks);
+        if (d.flashcards?.length) await db.flashcards.bulkPut(d.flashcards);
       });
     } else {
       // Merge mode
@@ -494,6 +504,8 @@ export async function restoreDatabase(
         if (d.studyBlocks?.length) await db.studyBlocks.bulkPut(d.studyBlocks);
         if (d.dismissedStudySuggestions?.length) await db.dismissedStudySuggestions.bulkPut(d.dismissedStudySuggestions);
         if (d.dailyPlans?.length) await db.dailyPlans.bulkPut(d.dailyPlans);
+        if (d.flashcardDecks?.length) await db.flashcardDecks.bulkPut(d.flashcardDecks);
+        if (d.flashcards?.length) await db.flashcards.bulkPut(d.flashcards);
       });
     }
 

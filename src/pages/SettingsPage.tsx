@@ -90,6 +90,13 @@ export const SettingsPage: React.FC = () => {
     showToast(nextVal ? 'Reduced motion enabled' : 'Standard motion restored', 'info');
   };
 
+  const showVisibleProgress = settings?.showVisibleProgress !== false;
+  const handleToggleVisibleProgress = async () => {
+    const nextVal = !showVisibleProgress;
+    await db.settings.update('current_user', { showVisibleProgress: nextVal });
+    showToast(nextVal ? 'Grand Hotel progress enabled on Lobby' : 'Grand Hotel progress hidden', 'info');
+  };
+
   // Sync state when settings load
   useEffect(() => {
     if (settings) {
@@ -537,6 +544,8 @@ export const SettingsPage: React.FC = () => {
         onSelectDesignStyle={handleSelectDesignStyle}
         reduceAnimations={reduceAnimations}
         onToggleReduceAnimations={handleToggleReduceAnimations}
+        showVisibleProgress={showVisibleProgress}
+        onToggleVisibleProgress={handleToggleVisibleProgress}
       />
 
       {/* 5. Academic Identity Form */}

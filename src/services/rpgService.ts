@@ -213,18 +213,73 @@ export const SOURCE_DAILY_XP_CAPS: Record<string, DailyXpCapConfig> = {
   focus_session: { cap: 250, softThreshold: 180 },
   attendance_mark: { cap: 100, softThreshold: 75 },
   journal_entry: { cap: 80, softThreshold: 50 },
+  flashcard_review: { cap: 80, softThreshold: 50 },
+  goal_and_milestone: { cap: 150, softThreshold: 100 },
+  creative_work: { cap: 120, softThreshold: 80 },
+  setup_and_logs: { cap: 60, softThreshold: 40 },
   default: { cap: 250, softThreshold: 180 },
 };
 
+const SOURCE_ALIAS_MAP: Record<string, string> = {
+  task: 'task_complete',
+  task_complete: 'task_complete',
+  habit: 'habit_complete',
+  habit_complete: 'habit_complete',
+  focus: 'focus_session',
+  focus_session: 'focus_session',
+  attendance: 'attendance_mark',
+  attendance_mark: 'attendance_mark',
+  ritual: 'daily_shutdown',
+  daily_shutdown: 'daily_shutdown',
+  daily_plan: 'daily_plan',
+  journal_entry: 'journal_entry',
+  flashcard: 'flashcard_review',
+  flashcard_review: 'flashcard_review',
+  goal_created: 'setup_and_logs',
+  book_added: 'setup_and_logs',
+  finance_tx: 'setup_and_logs',
+  finance_debt: 'setup_and_logs',
+  finance_goal: 'setup_and_logs',
+  course_resource: 'setup_and_logs',
+  course_topic: 'setup_and_logs',
+  exam_topic: 'setup_and_logs',
+  project_created: 'setup_and_logs',
+  milestone_done: 'goal_and_milestone',
+  goal_completed: 'goal_and_milestone',
+  exam_defeated: 'goal_and_milestone',
+  book_finished: 'goal_and_milestone',
+  course_grade: 'goal_and_milestone',
+  project_task: 'goal_and_milestone',
+  studio_session: 'creative_work',
+  creative_milestone: 'creative_work',
+};
+
+export const DAILY_CAP_DISPLAY_SOURCES: Array<{ source: string; label: string }> = [
+  { source: 'task_complete', label: 'Tasks & Quests' },
+  { source: 'habit_complete', label: 'Daily Habits' },
+  { source: 'focus_session', label: 'Focus Study' },
+  { source: 'attendance_mark', label: 'Class Attendance' },
+  { source: 'flashcard_review', label: 'Flashcard Reviews' },
+  { source: 'journal_entry', label: 'Journal Reflections' },
+  { source: 'daily_plan', label: 'Plan My Day' },
+  { source: 'daily_shutdown', label: 'Evening Shutdown' },
+];
+
+export function getCanonicalXpSource(source: string): string {
+  return SOURCE_ALIAS_MAP[source] || source;
+}
+
 export function getSourceCapConfig(source: string): DailyXpCapConfig {
-  return SOURCE_DAILY_XP_CAPS[source] || SOURCE_DAILY_XP_CAPS.default;
+  const canonical = getCanonicalXpSource(source);
+  return SOURCE_DAILY_XP_CAPS[canonical] || SOURCE_DAILY_XP_CAPS.default;
 }
 
 export async function getDailySourceXp(source: string, dayKey: string = getTodayKey()): Promise<number> {
+  const canonical = getCanonicalXpSource(source);
   const events = await db.xpEvents
     .where('dayKey')
     .equals(dayKey)
-    .filter((e) => e.source === source)
+    .filter((e) => getCanonicalXpSource(e.source) === canonical)
     .toArray();
   return events.reduce((sum, e) => sum + (e.amount || 0), 0);
 }
@@ -237,11 +292,12 @@ export async function getDailySourceProgress(source: string, dayKey: string = ge
   percent: number;
   isCapped: boolean;
 }> {
-  const config = getSourceCapConfig(source);
-  const earned = await getDailySourceXp(source, dayKey);
+  const canonical = getCanonicalXpSource(source);
+  const config = getSourceCapConfig(canonical);
+  const earned = await getDailySourceXp(canonical, dayKey);
   const percent = Math.min(100, Math.round((earned / config.cap) * 100));
   return {
-    source,
+    source: canonical,
     earned,
     cap: config.cap,
     softThreshold: config.softThreshold,

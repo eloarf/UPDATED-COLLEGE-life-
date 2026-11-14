@@ -5,11 +5,10 @@ import { useUiStore } from '../store/uiStore';
 import { getTodayKey, formatDisplayDate } from '../utils/dateUtils';
 import {
   calculateComprehensiveStats,
+  generateStatisticsMeanings,
   TimeRangeType,
   ComprehensivePeriodStats,
-  WrappedStoryCard,
   HeatmapDay,
-  EvidenceInsight,
 } from '../utils/statisticsEngine';
 import {
   Sparkles,
@@ -181,6 +180,26 @@ export const StatisticsPage: React.FC = () => {
     }
   };
 
+  const meaningSentences = useMemo(() => {
+    const threshold = settings?.attendanceThresholdPercent ?? 80;
+    return generateStatisticsMeanings(stats, threshold);
+  }, [stats, settings?.attendanceThresholdPercent]);
+
+  const hasHeatmapActivity = useMemo(
+    () => stats.heatmap.some((d) => d.compositeScore > 0),
+    [stats.heatmap]
+  );
+
+  const hasWeekdayActivity = useMemo(
+    () => stats.weekdayActivity.some((w) => w.tasks > 0 || w.focusMins > 0),
+    [stats.weekdayActivity]
+  );
+
+  const hasFocusModes = useMemo(
+    () => stats.focusByMode.some((m) => m.count > 0 || m.minutes > 0),
+    [stats.focusByMode]
+  );
+
   const currentStoryCard = stats.wrappedCards[wrappedIndex] || stats.wrappedCards[0];
 
   return (
@@ -272,6 +291,24 @@ export const StatisticsPage: React.FC = () => {
       {/* TAB 1: OVERVIEW & MOMENTUM */}
       {activeTab === 'overview' && (
         <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-200">
+          {/* Lead with Meaning: 3 Plain-Language Sentences */}
+          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-5 sm:p-6 shadow-xs space-y-3">
+            <div className="flex items-center gap-2 text-xs font-heading uppercase tracking-wider text-[rgb(var(--c-primary))] font-bold">
+              <Lightbulb className="w-4 h-4 text-amber-500" />
+              <span>What Your Numbers Say ({stats.bounds.label})</span>
+            </div>
+            <ul className="space-y-2 text-xs sm:text-sm text-[rgb(var(--c-text))] font-flourish leading-relaxed">
+              {meaningSentences.map((sentence, idx) => (
+                <li key={idx} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))]">
+                  <span className="w-5 h-5 rounded-full bg-[rgb(var(--c-surface2))] text-[rgb(var(--c-primary))] font-heading text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                    {idx + 1}
+                  </span>
+                  <span>{sentence}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
           {/* Top 4 Metric Comparison Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {/* 1. Tasks Conquered */}
@@ -387,62 +424,78 @@ export const StatisticsPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Heatmap Grid View */}
-            <div className="overflow-x-auto pb-2">
-              <div className="inline-grid grid-rows-7 grid-flow-col gap-1.5 min-w-full">
-                {stats.heatmap.map((day) => {
-                  const levelClasses = [
-                    'bg-[rgb(var(--c-surface2))] border border-[rgb(var(--c-border))]/60 opacity-60',
-                    'bg-emerald-200 dark:bg-emerald-950/80 border border-emerald-400/40 text-emerald-900 dark:text-emerald-300',
-                    'bg-emerald-400/70 dark:bg-emerald-700/80 border border-emerald-500 text-white',
-                    'bg-emerald-600 dark:bg-emerald-500 border border-emerald-400 text-white shadow-xs',
-                    'bg-emerald-500 dark:bg-[#B6E63E] text-stone-950 font-bold border-2 border-emerald-300 dark:border-white shadow-xs',
-                  ];
-
-                  const isSelected = selectedHeatmapDay?.dateKey === day.dateKey;
-
-                  return (
-                    <button
-                      key={day.dateKey}
-                      onClick={() => setSelectedHeatmapDay(day)}
-                      className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md transition-all flex items-center justify-center text-[9px] cursor-pointer hover:scale-115 hover:z-10 focus:outline-none ${
-                        levelClasses[day.level]
-                      } ${day.isToday ? 'ring-2 ring-[rgb(var(--c-primary))] font-bold' : ''} ${
-                        isSelected ? 'scale-120 z-20 ring-2 ring-amber-400' : ''
-                      }`}
-                      title={`${day.dateKey}: Composite Score ${day.compositeScore}`}
-                    >
-                      {day.dayNum}
-                    </button>
-                  );
-                })}
+            {!hasHeatmapActivity ? (
+              <div className="py-10 text-center space-y-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))]">
+                <p className="text-xs text-[rgb(var(--c-muted))] font-flourish max-w-md mx-auto">
+                  Your consistency heatmap lights up automatically as you complete tasks, log habits, run focus sprints, or mark attendance.
+                </p>
+                <button
+                  onClick={() => setCurrentRoute('#/today')}
+                  className="px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold shadow-xs hover:opacity-90 transition cursor-pointer"
+                >
+                  Open Today&apos;s Plan →
+                </button>
               </div>
-            </div>
+            ) : (
+              <>
+                {/* Heatmap Grid View */}
+                <div className="overflow-x-auto pb-2">
+                  <div className="inline-grid grid-rows-7 grid-flow-col gap-1.5 min-w-full">
+                    {stats.heatmap.map((day) => {
+                      const levelClasses = [
+                        'bg-[rgb(var(--c-surface2))] border border-[rgb(var(--c-border))]/60 opacity-60',
+                        'bg-emerald-200 dark:bg-emerald-950/80 border border-emerald-400/40 text-emerald-900 dark:text-emerald-300',
+                        'bg-emerald-400/70 dark:bg-emerald-700/80 border border-emerald-500 text-white',
+                        'bg-emerald-600 dark:bg-emerald-500 border border-emerald-400 text-white shadow-xs',
+                        'bg-emerald-500 dark:bg-[#B6E63E] text-stone-950 font-bold border-2 border-emerald-300 dark:border-white shadow-xs',
+                      ];
 
-            {/* Selected Day Inspector */}
-            {selectedHeatmapDay && (
-              <div className="mt-4 p-3.5 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in">
-                <div>
-                  <span className="font-heading font-bold text-[rgb(var(--c-text))]">
-                    {formatDisplayDate(selectedHeatmapDay.dateKey)}
-                  </span>
-                  <span className="text-[rgb(var(--c-muted))] ml-2">
-                    Composite Score: <strong className="text-[rgb(var(--c-primary))]">+{selectedHeatmapDay.compositeScore} pts</strong>
-                  </span>
+                      const isSelected = selectedHeatmapDay?.dateKey === day.dateKey;
+
+                      return (
+                        <button
+                          key={day.dateKey}
+                          onClick={() => setSelectedHeatmapDay(day)}
+                          className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md transition-all flex items-center justify-center text-[9px] cursor-pointer hover:scale-115 hover:z-10 focus:outline-none ${
+                            levelClasses[day.level]
+                          } ${day.isToday ? 'ring-2 ring-[rgb(var(--c-primary))] font-bold' : ''} ${
+                            isSelected ? 'scale-120 z-20 ring-2 ring-amber-400' : ''
+                          }`}
+                          title={`${day.dateKey}: Composite Score ${day.compositeScore}`}
+                        >
+                          {day.dayNum}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 text-[11px] text-[rgb(var(--c-muted))] flex-wrap">
-                  <span>✅ {selectedHeatmapDay.tasksCount} Tasks</span>
-                  <span>🔥 {selectedHeatmapDay.habitsCount} Habits</span>
-                  <span>⏱️ {selectedHeatmapDay.focusMinutes}m Study</span>
-                  <span>🏛️ {selectedHeatmapDay.classesAttended} Classes</span>
-                  <button
-                    onClick={() => setSelectedHeatmapDay(null)}
-                    className="text-rose-500 font-heading font-bold text-xs hover:underline ml-2"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
+
+                {/* Selected Day Inspector */}
+                {selectedHeatmapDay && (
+                  <div className="mt-4 p-3.5 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in">
+                    <div>
+                      <span className="font-heading font-bold text-[rgb(var(--c-text))]">
+                        {formatDisplayDate(selectedHeatmapDay.dateKey)}
+                      </span>
+                      <span className="text-[rgb(var(--c-muted))] ml-2">
+                        Composite Score: <strong className="text-[rgb(var(--c-primary))]">+{selectedHeatmapDay.compositeScore} pts</strong>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-[11px] text-[rgb(var(--c-muted))] flex-wrap">
+                      <span>✅ {selectedHeatmapDay.tasksCount} Tasks</span>
+                      <span>🔥 {selectedHeatmapDay.habitsCount} Habits</span>
+                      <span>⏱️ {selectedHeatmapDay.focusMinutes}m Study</span>
+                      <span>🏛️ {selectedHeatmapDay.classesAttended} Classes</span>
+                      <button
+                        onClick={() => setSelectedHeatmapDay(null)}
+                        className="text-rose-500 font-heading font-bold text-xs hover:underline ml-2"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -545,8 +598,16 @@ export const StatisticsPage: React.FC = () => {
             </div>
 
             {stats.focusByCourse.length === 0 ? (
-              <div className="text-center py-10 text-xs text-[rgb(var(--c-muted))] font-flourish">
-                No focus blocks recorded in this period. Start a 25m or 45m session from the Focus page!
+              <div className="text-center py-10 space-y-3">
+                <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+                  No focus blocks recorded in this period yet. Start a session to visualize study allocation by course.
+                </p>
+                <button
+                  onClick={() => setCurrentRoute('#/focus')}
+                  className="px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold cursor-pointer"
+                >
+                  Log your first focus session
+                </button>
               </div>
             ) : (
               <div className="space-y-3.5">
@@ -586,21 +647,29 @@ export const StatisticsPage: React.FC = () => {
           </div>
 
           {/* Focus Modes Breakdown */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {stats.focusByMode.map((m) => (
-              <div key={m.mode} className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-4 text-center">
-                <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
-                  {m.mode}
+          {!hasFocusModes ? (
+            <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-6 text-center space-y-2">
+              <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+                No Pomodoro or custom timer modes logged in this window yet.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {stats.focusByMode.map((m) => (
+                <div key={m.mode} className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-4 text-center">
+                  <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                    {m.mode}
+                  </div>
+                  <div className="text-xl font-heading font-bold text-[rgb(var(--c-primary))] mt-1">
+                    {m.minutes}m
+                  </div>
+                  <div className="text-[10px] text-[rgb(var(--c-muted))] mt-0.5 font-flourish">
+                    {m.count} completed sessions
+                  </div>
                 </div>
-                <div className="text-xl font-heading font-bold text-[rgb(var(--c-primary))] mt-1">
-                  {m.minutes}m
-                </div>
-                <div className="text-[10px] text-[rgb(var(--c-muted))] mt-0.5 font-flourish">
-                  {m.count} completed sessions
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -667,29 +736,43 @@ export const StatisticsPage: React.FC = () => {
                 Productivity by Day of the Week
               </h3>
 
-              <div className="space-y-2.5">
-                {stats.weekdayActivity.map((w) => {
-                  const maxTasks = Math.max(...stats.weekdayActivity.map((x) => x.tasks), 1);
-                  const barWidth = Math.round((w.tasks / maxTasks) * 100);
+              {!hasWeekdayActivity ? (
+                <div className="py-10 text-center space-y-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))]">
+                  <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+                    No weekday rhythm chart yet — complete a task or focus session to see your strongest study days.
+                  </p>
+                  <button
+                    onClick={() => setCurrentRoute('#/tasks')}
+                    className="px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold cursor-pointer"
+                  >
+                    Add your first task
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {stats.weekdayActivity.map((w) => {
+                    const maxTasks = Math.max(...stats.weekdayActivity.map((x) => x.tasks), 1);
+                    const barWidth = Math.round((w.tasks / maxTasks) * 100);
 
-                  return (
-                    <div key={w.dayName} className="space-y-0.5">
-                      <div className="flex items-center justify-between text-xs font-heading">
-                        <span className="font-bold text-[rgb(var(--c-text))]">{w.dayName}</span>
-                        <span className="text-[rgb(var(--c-muted))] font-mono text-[11px]">
-                          {w.tasks} tasks • {w.focusMins}m study
-                        </span>
+                    return (
+                      <div key={w.dayName} className="space-y-0.5">
+                        <div className="flex items-center justify-between text-xs font-heading">
+                          <span className="font-bold text-[rgb(var(--c-text))]">{w.dayName}</span>
+                          <span className="text-[rgb(var(--c-muted))] font-mono text-[11px]">
+                            {w.tasks} tasks • {w.focusMins}m study
+                          </span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                            style={{ width: `${barWidth}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="w-full h-2 rounded-full bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] overflow-hidden">
-                        <div
-                          className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                          style={{ width: `${barWidth}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -718,8 +801,16 @@ export const StatisticsPage: React.FC = () => {
             </div>
 
             {stats.habitStats.length === 0 ? (
-              <div className="text-center py-10 text-xs text-[rgb(var(--c-muted))] font-flourish">
-                No habits configured yet. Add your daily rituals on the Habits page!
+              <div className="text-center py-10 space-y-3">
+                <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+                  No habits configured yet. Add a daily routine to track forgiving consistency scorecards.
+                </p>
+                <button
+                  onClick={() => setCurrentRoute('#/habits')}
+                  className="px-4 py-2 rounded-xl bg-[#B6E63E] text-stone-950 font-heading text-xs font-bold cursor-pointer"
+                >
+                  Add your first habit
+                </button>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

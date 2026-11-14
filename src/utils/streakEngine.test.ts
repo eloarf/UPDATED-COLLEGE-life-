@@ -3,6 +3,7 @@ import {
   calculateHabitStreak,
   getRemainingRestTokens,
   calculateCourseAttendance,
+  getHabitComebackState,
   MAX_WEEKLY_REST_TOKENS,
 } from './streakEngine';
 import { HabitLog, RestDay, AttendanceRecord } from '../types';
@@ -96,5 +97,28 @@ describe('streakEngine', () => {
     expect(stats.absentCount).toBe(1);
     expect(stats.percentage).toBe(75);
     expect(stats.isBelowThreshold).toBe(true); // 75% < 80%
+  });
+
+  it('detects gentle back-on-track comeback state after a break without shaming language', () => {
+    const habitId = 'h1';
+    const logsAfterBreak: HabitLog[] = [
+      { id: 'l1', habitId, date: '2026-10-10', count: 1, isPartial: false },
+      // 3-day break on Oct 11, 12, 13
+      { id: 'l2', habitId, date: '2026-10-14', count: 1, isPartial: true },
+    ];
+    const comeback = getHabitComebackState(habitId, logsAfterBreak, [], '2026-10-14');
+    expect(comeback.state).toBe('back_on_track');
+    expect(comeback.hadRecentBreak).toBe(true);
+    expect(comeback.message?.toLowerCase()).toContain('back on track');
+
+    // Before logging today after a break -> gentle restart prompt
+    const restart = getHabitComebackState(
+      habitId,
+      [{ id: 'l1', habitId, date: '2026-10-10', count: 1, isPartial: false }],
+      [],
+      '2026-10-14'
+    );
+    expect(restart.state).toBe('gentle_restart');
+    expect(restart.message?.toLowerCase()).toContain('minimum version');
   });
 });

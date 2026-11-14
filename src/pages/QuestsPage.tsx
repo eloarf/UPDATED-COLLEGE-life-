@@ -13,6 +13,7 @@ import {
 } from '../services/rpgService';
 import { generateId } from '../utils/idGenerator';
 import { cancelTaskReminder, reconcileAllReminders } from '../services/reminderEngine';
+import { TASK_BREAKDOWN_TEMPLATES, TaskBreakdownTemplate } from '../data/taskTemplates';
 import {
   Plus,
   Circle,
@@ -60,6 +61,7 @@ export const QuestsPage: React.FC = () => {
   const [formEffort, setFormEffort] = useState<'small' | 'medium' | 'large'>('medium');
   const [formDueTime, setFormDueTime] = useState('');
   const [formNotes, setFormNotes] = useState('');
+  const [formSubtasks, setFormSubtasks] = useState<Array<{ id: string; title: string; done: boolean; estimateMinutes?: number }>>([]);
 
   // Edit Task Modal State
   const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
@@ -70,6 +72,7 @@ export const QuestsPage: React.FC = () => {
   const [editEffort, setEditEffort] = useState<'small' | 'medium' | 'large'>('medium');
   const [editDueTime, setEditDueTime] = useState('');
   const [editNotes, setEditNotes] = useState('');
+  const [editSubtasks, setEditSubtasks] = useState<Array<{ id: string; title: string; done: boolean; estimateMinutes?: number }>>([]);
 
   // Delete Confirmation State
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
@@ -118,6 +121,7 @@ export const QuestsPage: React.FC = () => {
     setFormEffort('medium');
     setFormDueTime('');
     setFormNotes('');
+    setFormSubtasks([]);
     setIsAddModalOpen(true);
   };
 
@@ -131,6 +135,36 @@ export const QuestsPage: React.FC = () => {
     setEditEffort(task.effort || 'medium');
     setEditDueTime(task.dueTime || '');
     setEditNotes(task.notes || '');
+    setEditSubtasks(task.subtasks || []);
+  };
+
+  const buildSubtasksFromTemplate = (tpl: TaskBreakdownTemplate) =>
+    tpl.steps.map((step) => ({
+      id: generateId(),
+      title: step.title,
+      done: false,
+      estimateMinutes: step.estimateMinutes,
+    }));
+
+  const handleApplyTemplateToExistingTask = async (task: Task, tpl: TaskBreakdownTemplate) => {
+    const newSteps = buildSubtasksFromTemplate(tpl);
+    const merged = [...(task.subtasks || []), ...newSteps];
+    await db.tasks.update(task.id, {
+      subtasks: merged,
+      updatedAt: new Date().toISOString(),
+    });
+    setExpandedTask(task.id);
+    showToast(`Added "${tpl.name}" breakdown (${newSteps.length} steps)`, 'success');
+  };
+
+  const handleToggleSubtask = async (task: Task, subtaskId: string) => {
+    const nextSubtasks = (task.subtasks || []).map((st) =>
+      st.id === subtaskId ? { ...st, done: !st.done } : st
+    );
+    await db.tasks.update(task.id, {
+      subtasks: nextSubtasks,
+      updatedAt: new Date().toISOString(),
+    });
   };
 
   // Quick Add for today or selected day
@@ -180,6 +214,7 @@ export const QuestsPage: React.FC = () => {
       effort: formEffort,
       contextTag: 'any',
       notes: formNotes.trim() || undefined,
+      subtasks: formSubtasks.length > 0 ? formSubtasks : undefined,
       status: 'todo',
       createdAt: now,
       updatedAt: now,
@@ -204,6 +239,7 @@ export const QuestsPage: React.FC = () => {
       priority: editPriority,
       effort: editEffort,
       notes: editNotes.trim() || undefined,
+      subtasks: editSubtasks.length > 0 ? editSubtasks : undefined,
       updatedAt: now,
     });
 
@@ -451,7 +487,7 @@ export const QuestsPage: React.FC = () => {
                 className="min-h-[44px] px-4 py-2 rounded-xl bg-[#7A2E4A] text-white font-heading text-xs font-bold hover:opacity-90 active:scale-95 transition inline-flex items-center gap-1.5 shadow-xs"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Create Task</span>
+                <span>Add your first task</span>
               </button>
             )}
           </div>
@@ -533,6 +569,11 @@ export const QuestsPage: React.FC = () => {
                             <Clock className="w-3 h-3" /> {task.dueTime}
                           </span>
                         )}
+                        {task.subtasks && task.subtasks.length > 0 && (
+                          <span className="text-[10px] font-heading font-semibold px-1.5 py-0.5 rounded bg-[rgb(var(--c-surface2))]">
+                            {task.subtasks.filter((s) => s.done).length}/{task.subtasks.length} steps ({task.subtasks.reduce((sum, s) => sum + (s.estimateMinutes || 0), 0)}m)
+                          </span>
+                        )}
                         <span>·</span>
                         <span className="text-[10px] font-heading font-bold text-[rgb(var(--c-xp))]">
                           +{xpReward} XP
@@ -541,7 +582,7 @@ export const QuestsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Actions: Edit, Delete, Expand */}
+                  {/* Actions: Edit, Delete, Expand Breakdown/Notes */}
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => openEditModal(task)}
@@ -557,23 +598,68 @@ export const QuestsPage: React.FC = () => {
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                    {task.notes && (
-                      <button
-                        onClick={() => setExpandedTask(isExpanded ? null : task.id)}
-                        className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
-                        title={isExpanded ? 'Hide notes' : 'View notes'}
-                      >
-                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setExpandedTask(isExpanded ? null : task.id)}
+                      className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
+                      title={isExpanded ? 'Hide details & breakdown' : 'Breakdown steps & notes'}
+                    >
+                      {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
 
-                {/* Notes Expansion */}
-                {isExpanded && task.notes && (
-                  <div className="mt-2.5 pt-2.5 border-t border-[rgb(var(--c-border))] text-xs">
-                    <div className="p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] whitespace-pre-wrap">
-                      {task.notes}
+                {/* Notes, Subtasks & One-Tap Breakdown Templates */}
+                {isExpanded && (
+                  <div className="mt-2.5 pt-2.5 border-t border-[rgb(var(--c-border))] text-xs space-y-2.5">
+                    {task.notes && (
+                      <div className="p-2.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] whitespace-pre-wrap">
+                        {task.notes}
+                      </div>
+                    )}
+
+                    {task.subtasks && task.subtasks.length > 0 && (
+                      <div className="space-y-1">
+                        {task.subtasks.map((st) => (
+                          <button
+                            key={st.id}
+                            type="button"
+                            onClick={() => handleToggleSubtask(task, st.id)}
+                            className="w-full flex items-center justify-between gap-2 p-2 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] hover:border-[#7A2E4A] text-left"
+                          >
+                            <span className="flex items-center gap-2 min-w-0">
+                              {st.done ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                              ) : (
+                                <Circle className="w-3.5 h-3.5 text-[rgb(var(--c-muted))] shrink-0" />
+                              )}
+                              <span className={st.done ? 'line-through text-[rgb(var(--c-muted))] truncate' : 'text-[rgb(var(--c-text))] truncate'}>
+                                {st.title}
+                              </span>
+                            </span>
+                            {st.estimateMinutes && (
+                              <span className="text-[10px] font-mono text-[rgb(var(--c-muted))] shrink-0">
+                                {st.estimateMinutes}m
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-[10px] font-heading font-bold uppercase text-[rgb(var(--c-muted))] mr-1">
+                        Templates:
+                      </span>
+                      {TASK_BREAKDOWN_TEMPLATES.map((tpl) => (
+                        <button
+                          key={tpl.id}
+                          type="button"
+                          onClick={() => handleApplyTemplateToExistingTask(task, tpl)}
+                          className="px-2 py-1 rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[10px] font-heading font-bold text-[rgb(var(--c-text))] hover:border-[#7A2E4A] transition cursor-pointer"
+                        >
+                          + {tpl.name}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -666,6 +752,37 @@ export const QuestsPage: React.FC = () => {
                     <option value="high">High Priority</option>
                   </select>
                 </div>
+              </div>
+
+              {/* One-Tap Breakdown Templates */}
+              <div className="space-y-2 p-3 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))]">
+                <label className="block font-heading font-bold text-[11px] uppercase text-[rgb(var(--c-muted))]">
+                  Breakdown Templates (with time estimates)
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {TASK_BREAKDOWN_TEMPLATES.map((tpl) => (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      onClick={() => setFormSubtasks(buildSubtasksFromTemplate(tpl))}
+                      className="px-2.5 py-1 rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface))] text-[11px] font-heading font-bold hover:border-[#7A2E4A] transition cursor-pointer"
+                    >
+                      {tpl.name}
+                    </button>
+                  ))}
+                </div>
+                {formSubtasks.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    {formSubtasks.map((st) => (
+                      <div key={st.id} className="flex items-center justify-between text-[11px] text-[rgb(var(--c-text))] px-2 py-1 rounded bg-[rgb(var(--c-surface))]">
+                        <span className="truncate">{st.title}</span>
+                        <span className="text-[10px] font-mono text-[rgb(var(--c-muted))] shrink-0 ml-2">
+                          {st.estimateMinutes}m
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -780,6 +897,40 @@ export const QuestsPage: React.FC = () => {
                     <option value="high">High Priority</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="space-y-2 p-3 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))]">
+                <label className="block font-heading font-bold text-[11px] uppercase text-[rgb(var(--c-muted))]">
+                  Breakdown Steps ({editSubtasks.length})
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {TASK_BREAKDOWN_TEMPLATES.map((tpl) => (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      onClick={() => setEditSubtasks((prev) => [...prev, ...buildSubtasksFromTemplate(tpl)])}
+                      className="px-2.5 py-1 rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-surface))] text-[11px] font-heading font-bold hover:border-[#7A2E4A] transition cursor-pointer"
+                    >
+                      + {tpl.name}
+                    </button>
+                  ))}
+                </div>
+                {editSubtasks.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    {editSubtasks.map((st) => (
+                      <div key={st.id} className="flex items-center justify-between text-[11px] px-2 py-1 rounded bg-[rgb(var(--c-surface))]">
+                        <span className="truncate">{st.title} ({st.estimateMinutes || 0}m)</span>
+                        <button
+                          type="button"
+                          onClick={() => setEditSubtasks((prev) => prev.filter((x) => x.id !== st.id))}
+                          className="text-rose-500 text-[10px] font-bold ml-2"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>

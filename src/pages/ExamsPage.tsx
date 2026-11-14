@@ -235,13 +235,14 @@ export const ExamsPage: React.FC = () => {
       {/* Boss Cards */}
       <div className="space-y-4">
         {exams.length === 0 ? (
-          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-12 text-center text-xs text-[rgb(var(--c-muted))] font-flourish space-y-2">
-            <div>No exam boss battles summoned yet. Add your midterms or lab finals to generate a study syllabus!</div>
+          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-12 text-center text-xs text-[rgb(var(--c-muted))] font-flourish space-y-3">
+            <div>No exams scheduled yet. Add your midterms or finals to track study topics.</div>
             <button
               onClick={handleOpenAddExam}
-              className="text-xs font-heading font-bold text-[rgb(var(--c-primary))] underline"
+              className="px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition inline-flex items-center gap-1.5"
             >
-              + Summon first examination
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add your first exam</span>
             </button>
           </div>
         ) : (

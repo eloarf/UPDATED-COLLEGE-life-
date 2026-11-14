@@ -565,6 +565,106 @@ export const NotificationSettingsSection: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {/* Category 7: Plan My Day Ritual */}
+              <div className="p-3.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                      Plan My Day Ritual
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={notifSettings.categories.planMyDay?.enabled ?? true}
+                    onChange={(e) =>
+                      updateSettings((p) => ({
+                        ...p,
+                        categories: {
+                          ...p.categories,
+                          planMyDay: {
+                            time: p.categories.planMyDay?.time || '08:00',
+                            enabled: e.target.checked,
+                          },
+                        },
+                      }))
+                    }
+                    className="accent-[rgb(var(--c-primary))]"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2 text-[11px] text-[rgb(var(--c-muted))]">
+                  <span>Morning Plan Reminder:</span>
+                  <input
+                    type="time"
+                    disabled={!(notifSettings.categories.planMyDay?.enabled ?? true)}
+                    value={notifSettings.categories.planMyDay?.time || '08:00'}
+                    onChange={(e) =>
+                      updateSettings((p) => ({
+                        ...p,
+                        categories: {
+                          ...p.categories,
+                          planMyDay: {
+                            enabled: p.categories.planMyDay?.enabled ?? true,
+                            time: e.target.value,
+                          },
+                        },
+                      }))
+                    }
+                    className="px-2 py-1 rounded bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] text-[rgb(var(--c-text))] font-bold text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Category 8: Evening Shutdown Ritual */}
+              <div className="p-3.5 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Moon className="w-3.5 h-3.5 text-indigo-400" />
+                    <span className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                      Evening Shutdown Ritual
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={notifSettings.categories.shutdownRitual?.enabled ?? true}
+                    onChange={(e) =>
+                      updateSettings((p) => ({
+                        ...p,
+                        categories: {
+                          ...p.categories,
+                          shutdownRitual: {
+                            time: p.categories.shutdownRitual?.time || '21:00',
+                            enabled: e.target.checked,
+                          },
+                        },
+                      }))
+                    }
+                    className="accent-[rgb(var(--c-primary))]"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2 text-[11px] text-[rgb(var(--c-muted))]">
+                  <span>Evening Shutdown Time:</span>
+                  <input
+                    type="time"
+                    disabled={!(notifSettings.categories.shutdownRitual?.enabled ?? true)}
+                    value={notifSettings.categories.shutdownRitual?.time || '21:00'}
+                    onChange={(e) =>
+                      updateSettings((p) => ({
+                        ...p,
+                        categories: {
+                          ...p.categories,
+                          shutdownRitual: {
+                            enabled: p.categories.shutdownRitual?.enabled ?? true,
+                            time: e.target.value,
+                          },
+                        },
+                      }))
+                    }
+                    className="px-2 py-1 rounded bg-[rgb(var(--c-surface))] border border-[rgb(var(--c-border))] text-[rgb(var(--c-text))] font-bold text-xs"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 

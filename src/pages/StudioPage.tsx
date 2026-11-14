@@ -168,8 +168,17 @@ export const StudioPage: React.FC = () => {
         </div>
 
         {projects.length === 0 ? (
-          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-10 text-center text-xs text-[rgb(var(--c-muted))] font-flourish">
-            No creative pipelines opened. Capture that melody, EP idea, or fiction draft above!
+          <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-2xl p-10 text-center space-y-3">
+            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish">
+              No creative pipelines opened yet. Capture a melody, EP idea, or writing draft to start!
+            </p>
+            <button
+              onClick={() => setIsNewProjectOpen(true)}
+              className="px-4 py-2 rounded-xl bg-[#BBA6E0] text-stone-950 font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition inline-flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add your first project</span>
+            </button>
           </div>
         ) : (
           projects.map((p) => (

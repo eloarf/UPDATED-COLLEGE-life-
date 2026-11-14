@@ -15,7 +15,12 @@ import {
   ReflectionTemplate,
 } from '../utils/journalEngine';
 import { THEMES } from '../theme/themeUtils';
-import { getJournalSummaries, JournalEntrySummary } from '../db/queries';
+import {
+  getJournalSummaries,
+  getJournalEntriesForDate,
+  getJournalEntryById,
+  JournalEntrySummary,
+} from '../db/queries';
 
 import { JournalHeaderStats } from '../components/journal/JournalHeaderStats';
 import { JournalArchiveView } from '../components/journal/JournalArchiveView';
@@ -145,14 +150,46 @@ export const JournalPage: React.FC = () => {
   // Content Textarea Ref
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Archive Search & Filter State
+  // Archive Search & Filter State (with 250ms debounced query)
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedMoodFilter, setSelectedMoodFilter] = useState<number | 'all'>('all');
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>('all');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [onlyPinned, setOnlyPinned] = useState(false);
   const [calendarFilterDate, setCalendarFilterDate] = useState<string | null>(null);
+  const [selectedDayEntries, setSelectedDayEntries] = useState<JournalEntry[] | null>(null);
+
+  // 1-Minute Quick Mode state on Journal page
+  const [quickMood, setQuickMood] = useState(4);
+  const [quickText, setQuickText] = useState('');
+  const [quickPromptIdx, setQuickPromptIdx] = useState(0);
+
+  // Bounded & lightweight queries: Load summaries without full text bodies for archive list
+  const summariesRaw = useLiveQuery(() => getJournalSummaries()) || [];
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Load full entry text only when a specific day is selected in the strip
+  useEffect(() => {
+    let active = true;
+    if (!calendarFilterDate) {
+      setSelectedDayEntries(null);
+      return;
+    }
+    getJournalEntriesForDate(calendarFilterDate).then((rows) => {
+      if (active) setSelectedDayEntries(rows.filter((e) => !e.deletedAt));
+    });
+    return () => {
+      active = false;
+    };
+  }, [calendarFilterDate, summariesRaw.length]);
 
   // Modals & Confirmation States
   const [entryToView, setEntryToView] = useState<JournalEntry | null>(null);
@@ -160,9 +197,6 @@ export const JournalPage: React.FC = () => {
   const [isPermanentDelete, setIsPermanentDelete] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportMonthInput, setExportMonthInput] = useState(currentMonthKey);
-
-  // Bounded & lightweight queries: Load summaries without full text bodies for archive list
-  const summariesRaw = useLiveQuery(() => getJournalSummaries()) || [];
 
   // Separate active entries from trash
   const activeEntries = useMemo(() => {
@@ -222,8 +256,8 @@ export const JournalPage: React.FC = () => {
       if (selectedMoodFilter !== 'all' && entry.moodScore !== selectedMoodFilter) return false;
       if (selectedTagFilter !== 'all' && (!entry.tags || !entry.tags.includes(selectedTagFilter))) return false;
 
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
+      if (debouncedSearchQuery.trim()) {
+        const q = debouncedSearchQuery.toLowerCase();
         const matchesSnippet = entry.previewText?.toLowerCase().includes(q);
         const matchesTitle = entry.title?.toLowerCase().includes(q);
         const matchesPrompt = entry.promptQuestion?.toLowerCase().includes(q);
@@ -240,7 +274,7 @@ export const JournalPage: React.FC = () => {
     selectedMonth,
     selectedMoodFilter,
     selectedTagFilter,
-    searchQuery,
+    debouncedSearchQuery,
   ]);
 
   const wordCount = useMemo(() => {
@@ -428,7 +462,7 @@ export const JournalPage: React.FC = () => {
     if (isDirtyRef.current) {
       executeAutosave();
     }
-    const full = await db.journalEntries.get(entryOrSummary.id);
+    const full = await getJournalEntryById(entryOrSummary.id);
     if (!full) return;
 
     activeEntryIdRef.current = full.id;
@@ -449,10 +483,48 @@ export const JournalPage: React.FC = () => {
   };
 
   const handleSelectEntryToView = async (summary: JournalEntrySummary) => {
-    const full = await db.journalEntries.get(summary.id);
+    const full = await getJournalEntryById(summary.id);
     if (full) {
       setEntryToView(full);
     }
+  };
+
+  const quickModePrompt = useMemo(
+    () => getPromptForCategory('reflection', quickPromptIdx),
+    [quickPromptIdx]
+  );
+
+  const handleSaveQuickMode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickText.trim()) {
+      showToast('Write a quick line first.', 'info');
+      return;
+    }
+    const targetDate = calendarFilterDate || todayKey;
+    const nowIso = new Date().toISOString();
+    const id = generateId();
+    await db.journalEntries.add({
+      id,
+      title: `Quick Note (${targetDate})`,
+      date: targetDate,
+      moodScore: quickMood,
+      energyScore: quickMood,
+      content: quickText.trim(),
+      wordCount: quickText.trim().split(/\s+/).length,
+      tags: ['quick-mode'],
+      promptQuestion: quickModePrompt.prompt,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+    await awardXp({
+      source: 'journal_entry',
+      sourceId: `quick_${targetDate}`,
+      amount: 10,
+      stat: 'creativity',
+      dayKey: targetDate,
+    });
+    setQuickText('');
+    showToast('1-minute note saved!', 'success');
   };
 
   const handleReturnToArchive = async () => {
@@ -750,34 +822,131 @@ End of Archive for ${monthKey}
         />
       )}
 
-      {/* 3. Archive View */}
+      {/* 3. Archive View + Default 1-Minute Quick Mode */}
       {activeView === 'archive' && (
-        <JournalArchiveView
-          entries={filteredEntries}
-          activityStripDays={activityStripDays}
-          calendarFilterDate={calendarFilterDate}
-          onSelectCalendarFilterDate={setCalendarFilterDate}
-          searchQuery={searchQuery}
-          onSearchQueryChange={setSearchQuery}
-          onlyFavorites={onlyFavorites}
-          onToggleOnlyFavorites={() => setOnlyFavorites(!onlyFavorites)}
-          onlyPinned={onlyPinned}
-          onToggleOnlyPinned={() => setOnlyPinned(!onlyPinned)}
-          selectedMonth={selectedMonth}
-          onSelectMonth={setSelectedMonth}
-          availableMonths={availableMonths}
-          selectedMoodFilter={selectedMoodFilter}
-          onSelectMoodFilter={setSelectedMoodFilter}
-          allTags={journalStats.allTags}
-          tagCounts={tagCounts}
-          selectedTagFilter={selectedTagFilter}
-          onSelectTagFilter={setSelectedTagFilter}
-          onSelectEntry={handleSelectEntryToView}
-          onToggleFavorite={handleToggleFavoriteCard}
-          onTogglePin={handleTogglePinCard}
-          onExportSingleEntry={handleExportSingleEntry}
-          onStartNewEntry={handleStartNewEntry}
-        />
+        <div className="space-y-5">
+          {/* 1-Minute Quick Journal Mode */}
+          <form
+            onSubmit={handleSaveQuickMode}
+            className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-4 sm:p-5 shadow-xs space-y-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                1-Minute Quick Entry ({calendarFilterDate || todayKey})
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuickPromptIdx((i) => i + 1)}
+                  className="text-[11px] font-heading font-semibold text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-primary))] cursor-pointer"
+                >
+                  New prompt ↻
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStartNewEntry}
+                  className="text-[11px] font-heading font-bold text-[rgb(var(--c-primary))] hover:underline cursor-pointer"
+                >
+                  Open Full Editor →
+                </button>
+              </div>
+            </div>
+
+            <div className="text-xs font-flourish text-[rgb(var(--c-muted))]">
+              “{quickModePrompt.prompt}”
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[1, 2, 3, 4, 5].map((score) => (
+                <button
+                  key={score}
+                  type="button"
+                  onClick={() => setQuickMood(score)}
+                  className={`px-2.5 py-1 rounded-xl text-xs border transition cursor-pointer ${
+                    quickMood === score
+                      ? 'border-[rgb(var(--c-primary))] bg-[rgb(var(--c-surface2))] font-bold'
+                      : 'border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))]'
+                  }`}
+                >
+                  {MOOD_EMOJIS[score - 1]}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <textarea
+                rows={2}
+                value={quickText}
+                onChange={(e) => setQuickText(e.target.value)}
+                placeholder="Write a quick 1-minute thought..."
+                className="flex-1 px-3 py-2 text-xs rounded-xl border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-text))] focus:outline-none focus:ring-1 focus:ring-[rgb(var(--c-primary))]"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-[rgb(var(--c-primary))] text-[rgb(var(--c-on-primary))] font-heading text-xs font-bold self-end sm:self-stretch cursor-pointer hover:opacity-90"
+              >
+                Save Quick Note
+              </button>
+            </div>
+          </form>
+
+          {/* Selected Day Full Entries (loaded strictly for the selected day) */}
+          {calendarFilterDate && selectedDayEntries && selectedDayEntries.length > 0 && (
+            <div className="ticket-border bg-[rgb(var(--c-surface))] rounded-3xl p-4 sm:p-5 space-y-2.5">
+              <div className="flex items-center justify-between text-xs font-heading font-bold text-[rgb(var(--c-primary))]">
+                <span>Entries for {formatDisplayDate(calendarFilterDate)} ({selectedDayEntries.length})</span>
+                <button
+                  type="button"
+                  onClick={() => setCalendarFilterDate(null)}
+                  className="text-[11px] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))]"
+                >
+                  Show All Days
+                </button>
+              </div>
+              {selectedDayEntries.map((entry) => (
+                <div
+                  key={entry.id}
+                  onClick={() => setEntryToView(entry)}
+                  className="p-3 rounded-2xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] cursor-pointer hover:border-[rgb(var(--c-primary))] space-y-1"
+                >
+                  <div className="text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+                    {entry.title || 'Untitled Reflection'}
+                  </div>
+                  <p className="text-xs text-[rgb(var(--c-muted))] font-flourish whitespace-pre-wrap">
+                    {entry.content}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <JournalArchiveView
+            entries={filteredEntries}
+            activityStripDays={activityStripDays}
+            calendarFilterDate={calendarFilterDate}
+            onSelectCalendarFilterDate={setCalendarFilterDate}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            onlyFavorites={onlyFavorites}
+            onToggleOnlyFavorites={() => setOnlyFavorites(!onlyFavorites)}
+            onlyPinned={onlyPinned}
+            onToggleOnlyPinned={() => setOnlyPinned(!onlyPinned)}
+            selectedMonth={selectedMonth}
+            onSelectMonth={setSelectedMonth}
+            availableMonths={availableMonths}
+            selectedMoodFilter={selectedMoodFilter}
+            onSelectMoodFilter={setSelectedMoodFilter}
+            allTags={journalStats.allTags}
+            tagCounts={tagCounts}
+            selectedTagFilter={selectedTagFilter}
+            onSelectTagFilter={setSelectedTagFilter}
+            onSelectEntry={handleSelectEntryToView}
+            onToggleFavorite={handleToggleFavoriteCard}
+            onTogglePin={handleTogglePinCard}
+            onExportSingleEntry={handleExportSingleEntry}
+            onStartNewEntry={handleStartNewEntry}
+          />
+        </div>
       )}
 
       {/* 4. Trash View */}

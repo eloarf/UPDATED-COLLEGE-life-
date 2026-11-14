@@ -7,7 +7,7 @@ import { getTodayKey, addDaysToKey, formatDisplayDate } from '../utils/dateUtils
 import {
   calculateHabitStreak,
   getRemainingRestTokens,
-  getWeekBounds,
+  getHabitComebackState,
   MAX_WEEKLY_REST_TOKENS,
 } from '../utils/streakEngine';
 import { awardXp, reverseXp } from '../services/rpgService';
@@ -41,6 +41,8 @@ export const HabitsPage: React.FC = () => {
   const [customCategory, setCustomCategory] = useState('');
   const [minimumVersion, setMinimumVersion] = useState('');
   const [habitToDelete, setHabitToDelete] = useState<Habit | null>(null);
+  const [skipPromptHabit, setSkipPromptHabit] = useState<Habit | null>(null);
+  const [dismissedSkipIds, setDismissedSkipIds] = useState<Record<string, boolean>>({});
 
   // Selected habit for visual calendar matrix
   const [selectedCalendarHabitId, setSelectedCalendarHabitId] = useState<string | null>(null);
@@ -51,7 +53,6 @@ export const HabitsPage: React.FC = () => {
 
   const todayLogs = logs.filter((l) => l.date === todayKey);
   const remainingTokens = getRemainingRestTokens(restDays, todayKey);
-  const { mondayKey, sundayKey } = getWeekBounds(todayKey);
 
   // Default selected calendar habit to the first habit if none selected
   const activeCalendarHabit =
@@ -113,6 +114,45 @@ export const HabitsPage: React.FC = () => {
 
       showToast(`Habit stamped! +10 XP (Streak: ${newStreak.currentStreak} days)`, 'success');
     }
+  };
+
+  // Log low-energy minimum version (counts toward streak, non-shaming)
+  const handleLogMinimumVersion = async (habit: Habit) => {
+    const existing = todayLogs.find((l) => l.habitId === habit.id);
+    if (existing) {
+      showToast('Already logged for today!', 'info');
+      setSkipPromptHabit(null);
+      return;
+    }
+
+    const newLogId = generateId();
+    await db.habitLogs.add({
+      id: newLogId,
+      habitId: habit.id,
+      date: todayKey,
+      count: 1,
+      isPartial: true,
+    });
+
+    const updatedLogs = [
+      ...logs,
+      { id: newLogId, habitId: habit.id, date: todayKey, count: 1, isPartial: true },
+    ];
+    const newStreak = calculateHabitStreak(habit.id, updatedLogs, restDays, todayKey);
+    await db.habits.update(habit.id, {
+      currentStreak: newStreak.currentStreak,
+      bestStreak: newStreak.bestStreak,
+    });
+
+    await awardXp({
+      source: 'habit',
+      sourceId: habit.id + '_' + todayKey,
+      amount: 5,
+      stat: habit.category === 'creative' ? 'creativity' : habit.category === 'health' ? 'vitality' : 'discipline',
+    });
+
+    setSkipPromptHabit(null);
+    showToast(`Minimum version logged! +5 XP (${newStreak.currentStreak}d streak)`, 'success');
   };
 
   // Apply Rest Token to a specific dateKey (defaults to yesterday or today if missed)
@@ -354,8 +394,11 @@ export const HabitsPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {habits.map((habit) => {
               const streak = calculateHabitStreak(habit.id, logs, restDays, todayKey);
+              const comeback = getHabitComebackState(habit.id, logs, restDays, todayKey);
+              const todayLog = todayLogs.find((l) => l.habitId === habit.id);
               const isDoneToday = streak.isCompletedToday;
               const isRestToday = streak.isRestDayToday;
+              const isSkippedQuietly = !!dismissedSkipIds[habit.id];
               const todayRestRecord = restDays.find(
                 (r) => r.habitId === habit.id && r.dateKey === todayKey
               );
@@ -401,6 +444,10 @@ export const HabitsPage: React.FC = () => {
                             {streak.currentStreak}d streak
                           </span>
                           <span>•</span>
+                          <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                            {remainingTokens} rest left
+                          </span>
+                          <span>•</span>
                           <span>Best: {streak.bestStreak}d</span>
                         </div>
                       </div>
@@ -437,13 +484,21 @@ export const HabitsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {habit.minimumVersionText && (
-                    <div className="p-2 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-[11px] text-[rgb(var(--c-muted))] font-flourish">
-                      “Low-energy mini: {habit.minimumVersionText}”
+                  {/* Gentle Comeback / Back-on-Track Banner (non-shaming) */}
+                  {comeback.hadRecentBreak && comeback.message && (
+                    <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-700 dark:text-emerald-300 font-flourish flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                      <span>{comeback.message}</span>
                     </div>
                   )}
 
-                  {/* Stamp / Rest Button Bar */}
+                  {habit.minimumVersionText && (
+                    <div className="p-2 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-[11px] text-[rgb(var(--c-muted))] font-flourish">
+                      “Minimum version: {habit.minimumVersionText}”
+                    </div>
+                  )}
+
+                  {/* Stamp / Minimum Version / Rest Button Bar */}
                   <div className="space-y-1.5">
                     <button
                       onClick={() => handleToggleHabit(habit)}
@@ -456,36 +511,51 @@ export const HabitsPage: React.FC = () => {
                       {isDoneToday ? (
                         <>
                           <Check className="w-3.5 h-3.5 stroke-[3]" />
-                          <span>Stamped Today! (+10 XP) • Tap to Undo</span>
+                          <span>
+                            {todayLog?.isPartial
+                              ? 'Minimum Version Logged (+5 XP) • Tap to Undo'
+                              : "Stamped Today! (+10 XP) • Tap to Undo"}
+                          </span>
                         </>
                       ) : (
                         <>
                           <Flame className="w-3.5 h-3.5 text-amber-500" />
-                          <span>Stamp Today's Rep (+10 XP)</span>
+                          <span>Stamp Today&apos;s Rep (+10 XP)</span>
                         </>
                       )}
                     </button>
 
-                    {/* Rest Day Token Action */}
+                    {/* Skip / Minimum Version + Rest Day Token Row */}
                     {!isDoneToday && (
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1.5">
                         {isRestToday && todayRestRecord ? (
                           <button
                             onClick={() => handleRemoveRestToken(todayRestRecord.id)}
                             className="w-full py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-heading text-[11px] font-bold hover:bg-amber-500/20 transition flex items-center justify-center gap-1"
                           >
                             <Undo2 className="w-3 h-3" />
-                            <span>Undo Today's Rest Token ({remainingTokens} left)</span>
+                            <span>Undo Rest Token ({remainingTokens} left)</span>
                           </button>
-                        ) : remainingTokens > 0 ? (
-                          <button
-                            onClick={() => handleApplyRestToken(habit.id, todayKey)}
-                            className="w-full py-1.5 rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))] hover:text-amber-600 hover:border-amber-500/40 font-heading text-[11px] transition flex items-center justify-center gap-1"
-                          >
-                            <Shield className="w-3 h-3 text-amber-500" />
-                            <span>Use 1 Rest Token for Today ({remainingTokens} left this week)</span>
-                          </button>
-                        ) : null}
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => setSkipPromptHabit(habit)}
+                              className="flex-1 py-1.5 rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] hover:border-[rgb(var(--c-primary))] font-heading text-[11px] transition flex items-center justify-center gap-1"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              <span>{isSkippedQuietly ? 'Resting today' : 'Skip / Mini'}</span>
+                            </button>
+                            {remainingTokens > 0 && (
+                              <button
+                                onClick={() => handleApplyRestToken(habit.id, todayKey)}
+                                className="flex-1 py-1.5 rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-bg))] text-[rgb(var(--c-muted))] hover:text-amber-600 hover:border-amber-500/40 font-heading text-[11px] transition flex items-center justify-center gap-1"
+                              >
+                                <Shield className="w-3 h-3 text-amber-500" />
+                                <span>Rest ({remainingTokens} left)</span>
+                              </button>
+                            )}
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -614,6 +684,64 @@ export const HabitsPage: React.FC = () => {
                 className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-heading font-bold transition shadow-xs"
               >
                 Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Optional Minimum Version Prompt when Skipping */}
+      {skipPromptHabit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-pop">
+          <div className="w-full max-w-sm bg-[rgb(var(--c-surface))] border-2 border-[rgb(var(--c-border))] rounded-2xl shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="font-heading font-bold text-sm text-[rgb(var(--c-text))] flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-500" />
+                <span>Gentle Option for Today</span>
+              </div>
+              <button
+                onClick={() => setSkipPromptHabit(null)}
+                className="p-1 rounded-full text-[rgb(var(--c-muted))] hover:bg-[rgb(var(--c-surface2))]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[rgb(var(--c-muted))] font-flourish leading-relaxed">
+              Low on energy for <strong className="text-[rgb(var(--c-text))]">{skipPromptHabit.title}</strong>? Try the lighter minimum version instead — it keeps your streak alive:
+            </p>
+
+            <div className="p-3 rounded-xl bg-[rgb(var(--c-bg))] border border-[rgb(var(--c-border))] text-xs font-heading font-bold text-[rgb(var(--c-text))]">
+              {skipPromptHabit.minimumVersionText || 'Do just a 2-minute starter version today'}
+            </div>
+
+            <div className="space-y-2">
+              <button
+                onClick={() => handleLogMinimumVersion(skipPromptHabit)}
+                className="w-full py-2 rounded-xl bg-[#B6E63E] text-stone-950 font-heading text-xs font-bold hover:opacity-90 transition"
+              >
+                Log Minimum Version (+5 XP)
+              </button>
+              {remainingTokens > 0 && (
+                <button
+                  onClick={() => {
+                    handleApplyRestToken(skipPromptHabit.id, todayKey);
+                    setSkipPromptHabit(null);
+                  }}
+                  className="w-full py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300 font-heading text-xs font-bold hover:bg-amber-500/20 transition"
+                >
+                  Use 1 Rest Token ({remainingTokens} left)
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setDismissedSkipIds((prev) => ({ ...prev, [skipPromptHabit.id]: true }));
+                  setSkipPromptHabit(null);
+                  showToast('Skipped cleanly for today — ready whenever you return.', 'info');
+                }}
+                className="w-full py-2 rounded-xl border border-[rgb(var(--c-border))] text-[rgb(var(--c-muted))] hover:text-[rgb(var(--c-text))] font-heading text-xs font-bold transition"
+              >
+                Rest for today (no guilt)
               </button>
             </div>
           </div>

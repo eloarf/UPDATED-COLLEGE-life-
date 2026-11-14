@@ -11,6 +11,8 @@ import {
 } from '../types';
 import { ScheduledClass } from './scheduleEngine';
 import { checkTimeClash, getDayOfWeekIndex, getTodayKey } from './dateUtils';
+import { calculateHabitStreak } from './streakEngine';
+import type { TimelineBlock } from './timelineEngine';
 
 export interface DailyProgressResult {
   tasksCompleted: number;
@@ -433,24 +435,24 @@ export function getUpNextItem(params: {
     };
   }
 
-  // 5. Uncompleted core habits to protect streak
+  // 5. Uncompleted core habits to protect streak (streaks read strictly from streakEngine)
   const unstampedHabits = habits
-    .filter((h) => {
-      const isStamped = habitLogs.some((l) => l.habitId === h.id && l.date === todayKey && (l.count > 0 || l.isPartial));
-      const isRested = restDays.some((r) => r.habitId === h.id && r.dateKey === todayKey);
-      return !isStamped && !isRested;
-    })
-    .sort((a, b) => (b.currentStreak || 0) - (a.currentStreak || 0));
+    .map((h) => ({
+      habit: h,
+      streak: calculateHabitStreak(h.id, habitLogs, restDays, todayKey),
+    }))
+    .filter(({ streak }) => !streak.isCompletedToday && !streak.isRestDayToday)
+    .sort((a, b) => b.streak.currentStreak - a.streak.currentStreak);
 
   if (unstampedHabits.length > 0) {
-    const topHabit = unstampedHabits[0];
+    const { habit: topHabit, streak } = unstampedHabits[0];
     return {
       id: topHabit.id,
       type: 'habit_check',
       title: topHabit.title,
-      subtitle: topHabit.currentStreak > 0 ? `Protect ${topHabit.currentStreak}-day streak!` : 'Build daily consistency',
+      subtitle: streak.currentStreak > 0 ? `Protect ${streak.currentStreak}-day streak!` : 'Build daily consistency',
       category: 'Habit Passport',
-      badgeText: `${topHabit.currentStreak}d Streak`,
+      badgeText: `${streak.currentStreak}d Streak`,
       badgeColor: '#B6E63E',
       estimatedDuration: '5-15m',
       reason: topHabit.minimumVersionText
@@ -696,4 +698,300 @@ export function buildTodayTimeline(params: {
   }
 
   return { items: rawItems, hasConflicts };
+}
+
+export type DoThisNextKind =
+  | 'class_in_progress'
+  | 'class_soon'
+  | 'task_due_today'
+  | 'task_due_soonest'
+  | 'habit_pending'
+  | 'all_clear';
+
+export interface DoThisNextResult {
+  id: string;
+  kind: DoThisNextKind;
+  title: string;
+  subtitle: string;
+  badgeText: string;
+  actionLabel: string;
+  actionType: 'focus' | 'complete_task' | 'stamp_habit' | 'navigate';
+  route: string;
+  accentColor: string;
+  courseId?: string;
+  taskId?: string;
+  habitId?: string;
+}
+
+function parseHHMMToMinutes(timeStr?: string): number | null {
+  if (!timeStr) return null;
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
+}
+
+const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+/**
+ * Pure function: Chooses ONE single item for the Lobby "Do this next" block
+ * in strict priority order:
+ *  1. Class in progress
+ *  2. Next class within 90 minutes
+ *  3. Task due today
+ *  4. Task due soonest
+ *  5. Habit not yet done today
+ *  6. Else "All clear"
+ *
+ * Skips cancelled classes, postponed classes, and finished classes.
+ */
+export function getDoThisNext(params: {
+  now?: Date;
+  todayKey?: string;
+  scheduledClasses: ScheduledClass[];
+  tasks: Task[];
+  habits: Habit[];
+  habitLogs: HabitLog[];
+  restDays: RestDay[];
+}): DoThisNextResult {
+  const {
+    now = new Date(),
+    todayKey = getTodayKey(),
+    scheduledClasses = [],
+    tasks = [],
+    habits = [],
+    habitLogs = [],
+    restDays = [],
+  } = params;
+
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+  const validClasses = scheduledClasses
+    .filter((c) => !c.isCancelled && !c.isPostponed)
+    .map((c) => ({
+      item: c,
+      startMins: parseHHMMToMinutes(c.startTime),
+      endMins: parseHHMMToMinutes(c.endTime),
+    }))
+    .filter((x): x is { item: ScheduledClass; startMins: number; endMins: number } =>
+      x.startMins !== null && x.endMins !== null && x.endMins > nowMinutes
+    )
+    .sort((a, b) => a.startMins - b.startMins);
+
+  // 1. Class in progress
+  const inProgress = validClasses.find(
+    ({ startMins, endMins }) => nowMinutes >= startMins && nowMinutes < endMins
+  );
+  if (inProgress) {
+    const c = inProgress.item;
+    const roomStr = [c.room, c.building].filter(Boolean).join(' • ') || 'Room TBA';
+    return {
+      id: `class-${c.session.id}`,
+      kind: 'class_in_progress',
+      title: `${c.course.code} — ${c.course.name}`,
+      subtitle: `${c.startTime}–${c.endTime} • ${roomStr}`,
+      badgeText: 'In Progress',
+      actionLabel: 'Open Today Timeline',
+      actionType: 'navigate',
+      route: '#/today',
+      accentColor: c.course.color || '#E5C04B',
+      courseId: c.course.id,
+    };
+  }
+
+  // 2. Next class within 90 minutes
+  const soonClass = validClasses.find(
+    ({ startMins }) => startMins > nowMinutes && startMins - nowMinutes <= 90
+  );
+  if (soonClass) {
+    const c = soonClass.item;
+    const minsUntil = soonClass.startMins - nowMinutes;
+    const roomStr = [c.room, c.building].filter(Boolean).join(' • ') || 'Room TBA';
+    return {
+      id: `class-${c.session.id}`,
+      kind: 'class_soon',
+      title: `${c.course.code} — ${c.course.name}`,
+      subtitle: `Starts at ${c.startTime} • ${roomStr}`,
+      badgeText: `In ${minsUntil}m`,
+      actionLabel: 'View Schedule',
+      actionType: 'navigate',
+      route: '#/today',
+      accentColor: c.course.color || '#F6A8BE',
+      courseId: c.course.id,
+    };
+  }
+
+  // 3. Task due today
+  const openTasks = tasks.filter((t) => t.status === 'todo');
+  const dueToday = openTasks
+    .filter((t) => t.dueDate === todayKey)
+    .sort((a, b) => {
+      const pDiff = (PRIORITY_RANK[a.priority] ?? 1) - (PRIORITY_RANK[b.priority] ?? 1);
+      if (pDiff !== 0) return pDiff;
+      if (a.dueTime && b.dueTime) return a.dueTime.localeCompare(b.dueTime);
+      if (a.dueTime) return -1;
+      if (b.dueTime) return 1;
+      return a.title.localeCompare(b.title);
+    });
+
+  if (dueToday.length > 0) {
+    const top = dueToday[0];
+    return {
+      id: top.id,
+      kind: 'task_due_today',
+      title: top.title,
+      subtitle: top.dueTime
+        ? `Due today at ${top.dueTime} • ~${getTaskEstimatedMinutes(top.effort)}m`
+        : `Due today • ${top.priority} priority • ~${getTaskEstimatedMinutes(top.effort)}m`,
+      badgeText: 'Due Today',
+      actionLabel: 'Complete Task',
+      actionType: 'complete_task',
+      route: '#/tasks',
+      accentColor: '#B6E63E',
+      taskId: top.id,
+      courseId: top.courseId,
+    };
+  }
+
+  // 4. Task due soonest (dated tasks ordered by dueDate ascending, then undated)
+  const otherTasks = openTasks
+    .filter((t) => t.dueDate !== todayKey)
+    .sort((a, b) => {
+      if (a.dueDate && b.dueDate) {
+        const dDiff = a.dueDate.localeCompare(b.dueDate);
+        if (dDiff !== 0) return dDiff;
+      } else if (a.dueDate) {
+        return -1;
+      } else if (b.dueDate) {
+        return 1;
+      }
+      const pDiff = (PRIORITY_RANK[a.priority] ?? 1) - (PRIORITY_RANK[b.priority] ?? 1);
+      if (pDiff !== 0) return pDiff;
+      if (a.dueTime && b.dueTime) return a.dueTime.localeCompare(b.dueTime);
+      return a.title.localeCompare(b.title);
+    });
+
+  if (otherTasks.length > 0) {
+    const soonest = otherTasks[0];
+    const whenText = soonest.dueDate
+      ? soonest.dueDate < todayKey
+        ? `Rolled from ${soonest.dueDate}`
+        : `Due ${soonest.dueDate}`
+      : 'Unscheduled task';
+    return {
+      id: soonest.id,
+      kind: 'task_due_soonest',
+      title: soonest.title,
+      subtitle: `${whenText} • ${soonest.priority} priority`,
+      badgeText: soonest.dueDate && soonest.dueDate < todayKey ? 'Needs Attention' : 'Up Soon',
+      actionLabel: 'Start Focus',
+      actionType: 'focus',
+      route: '#/focus',
+      accentColor: '#8EC5E8',
+      taskId: soonest.id,
+      courseId: soonest.courseId,
+    };
+  }
+
+  // 5. Habit not yet done today (read streaks exclusively via streakEngine)
+  const pendingHabits = habits
+    .map((h) => ({
+      habit: h,
+      streak: calculateHabitStreak(h.id, habitLogs, restDays, todayKey),
+    }))
+    .filter(({ streak }) => !streak.isCompletedToday && !streak.isRestDayToday)
+    .sort((a, b) => {
+      const sDiff = b.streak.currentStreak - a.streak.currentStreak;
+      if (sDiff !== 0) return sDiff;
+      return a.habit.title.localeCompare(b.habit.title);
+    });
+
+  if (pendingHabits.length > 0) {
+    const { habit, streak } = pendingHabits[0];
+    return {
+      id: habit.id,
+      kind: 'habit_pending',
+      title: habit.title,
+      subtitle:
+        streak.currentStreak > 0
+          ? `${streak.currentStreak}-day streak ready to extend`
+          : habit.minimumVersionText
+          ? `Minimum version: ${habit.minimumVersionText}`
+          : 'Ready to check off today',
+      badgeText: streak.currentStreak > 0 ? `${streak.currentStreak}d Streak` : 'Daily Habit',
+      actionLabel: 'Check Off Habit',
+      actionType: 'stamp_habit',
+      route: '#/habits',
+      accentColor: habit.color || '#B6E63E',
+      habitId: habit.id,
+    };
+  }
+
+  // 6. All clear
+  return {
+    id: 'all-clear',
+    kind: 'all_clear',
+    title: 'All clear',
+    subtitle: 'No classes pressing, tasks queued, or habits left for today. Rest well.',
+    badgeText: 'All Clear',
+    actionLabel: 'Review Day',
+    actionType: 'navigate',
+    route: '#/today',
+    accentColor: '#B6E63E',
+  };
+}
+
+/**
+ * Pure helper: Returns the next up to `limit` active (non-cancelled) blocks from the day timeline.
+ */
+export function getNextTimelineItems(
+  blocks: TimelineBlock[],
+  nowMinutes: number,
+  limit: number = 3
+): TimelineBlock[] {
+  return blocks
+    .filter((b) => b.status !== 'cancelled' && b.endMinutes > nowMinutes)
+    .sort((a, b) => a.startMinutes - b.startMinutes)
+    .slice(0, limit);
+}
+
+/**
+ * Pure helper: Generates ONE calm, factual insight sentence for the top of the Lobby.
+ */
+export function getDailyInsightSentence(params: {
+  dailyProgress: DailyProgressResult;
+  nextGapMinutes?: number | null;
+  focusMinutesToday: number;
+  streakHighlightsCount?: number;
+}): string {
+  const { dailyProgress, nextGapMinutes = null, focusMinutesToday, streakHighlightsCount = 0 } = params;
+
+  if (dailyProgress.isAllDone) {
+    return 'Everything planned for today is settled — take a quiet breath or log a 1-minute reflection.';
+  }
+
+  if (nextGapMinutes && nextGapMinutes >= 45 && nextGapMinutes < 180) {
+    return `You have a ${nextGapMinutes}-minute clear window coming up — enough for a single deep focus sprint.`;
+  }
+
+  if (focusMinutesToday >= 50) {
+    return `You have already logged ${focusMinutesToday} minutes of focused study today — steady momentum pays off.`;
+  }
+
+  if (dailyProgress.tasksPlanned > 0) {
+    const remaining = Math.max(0, dailyProgress.tasksPlanned - dailyProgress.tasksCompleted);
+    if (remaining > 0) {
+      return `${remaining} planned ${remaining === 1 ? 'task' : 'tasks'} remaining today, plus ${
+        dailyProgress.habitsTotal - dailyProgress.habitsCompleted
+      } open ${dailyProgress.habitsTotal - dailyProgress.habitsCompleted === 1 ? 'habit' : 'habits'}.`;
+    }
+  }
+
+  if (streakHighlightsCount > 0) {
+    return `${streakHighlightsCount} active habit ${streakHighlightsCount === 1 ? 'streak is' : 'streaks are'} thriving today.`;
+  }
+
+  return 'One small finished step builds the whole day — start with whatever is right in front of you.';
 }

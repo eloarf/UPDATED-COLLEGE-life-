@@ -182,6 +182,14 @@ export async function getJournalEntryById(id: string): Promise<JournalEntry | un
 }
 
 /**
+ * Returns full journal entries strictly for the selected day (avoids loading essay text for other days).
+ */
+export async function getJournalEntriesForDate(dateKey: string): Promise<JournalEntry[]> {
+  if (!dateKey) return [];
+  return db.journalEntries.where('date').equals(dateKey).toArray();
+}
+
+/**
  * Returns journal entries within a bounded date range.
  */
 export async function getJournalEntriesByDateRange(

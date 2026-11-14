@@ -346,18 +346,13 @@ export const MasterWeekPage: React.FC = () => {
             <p className="text-xs text-[rgb(var(--c-muted))] font-flourish max-w-sm mx-auto">
               Map your university lectures with building and class numbers, or add custom routine blocks for library, music, or workouts.
             </p>
-            <div className="flex items-center justify-center gap-2 pt-1">
+            <div className="flex items-center justify-center pt-1">
               <button
-                onClick={() => handleOpenAddModal('class')}
-                className="px-3.5 py-1.5 rounded-xl border border-[rgb(var(--c-border))] text-xs font-heading font-bold hover:bg-[rgb(var(--c-surface2))]"
+                onClick={() => handleOpenAddModal(activeFilter === 'classes' ? 'class' : 'routine')}
+                className="px-4 py-2 rounded-xl bg-[#8B5A3C] text-white text-xs font-heading font-bold shadow-xs hover:opacity-90 active:scale-95 transition inline-flex items-center gap-1.5"
               >
-                + Map Class
-              </button>
-              <button
-                onClick={() => handleOpenAddModal('routine')}
-                className="px-3.5 py-1.5 rounded-xl bg-[#8B5A3C] text-white text-xs font-heading font-bold shadow-xs hover:opacity-90"
-              >
-                + Add Routine Block
+                <Plus className="w-3.5 h-3.5" />
+                <span>{activeFilter === 'classes' ? 'Add your first class' : 'Add your first block'}</span>
               </button>
             </div>
           </div>

@@ -63,7 +63,7 @@ export const BottomTabBar: React.FC = () => {
             <Menu className="w-5 h-5 stroke-[2.2]" />
           </div>
           <span className="text-[11px] mt-0.5 tracking-tight font-heading">
-            Menu
+            More
           </span>
         </button>
       </div>

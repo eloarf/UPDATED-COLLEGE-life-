@@ -175,3 +175,76 @@ export function calculateCourseAttendance(
     isBelowThreshold,
   };
 }
+
+export interface HabitComebackState {
+  state: 'steady' | 'back_on_track' | 'gentle_restart';
+  hadRecentBreak: boolean;
+  message?: string;
+}
+
+/**
+ * Pure function: Detects whether a user recently returned after a break or has room
+ * for a gentle minimum-version restart — never using shaming language.
+ */
+export function getHabitComebackState(
+  habitId: string,
+  logs: HabitLog[] = [],
+  restDays: RestDay[] = [],
+  referenceDateKey: string = getTodayKey()
+): HabitComebackState {
+  const streak = calculateHabitStreak(habitId, logs, restDays, referenceDateKey);
+  const completedDates = logs
+    .filter((l) => l.habitId === habitId && (l.count > 0 || l.isPartial) && l.date <= referenceDateKey)
+    .map((l) => l.date)
+    .sort();
+
+  if (completedDates.length === 0) {
+    return { state: 'steady', hadRecentBreak: false };
+  }
+
+  const completedSet = new Set(completedDates);
+  const restSet = new Set(
+    restDays.filter((r) => r.habitId === habitId).map((r) => r.dateKey)
+  );
+
+  // Check if user returned today or yesterday after at least a 2-day unbridged break
+  if (streak.currentStreak >= 1 && streak.currentStreak <= 3) {
+    const startOfStreak = addDaysToKey(
+      streak.isCompletedToday || streak.isRestDayToday
+        ? referenceDateKey
+        : addDaysToKey(referenceDateKey, -1),
+      -(streak.currentStreak - 1)
+    );
+    const dayBeforeStreak = addDaysToKey(startOfStreak, -1);
+    const twoDaysBefore = addDaysToKey(startOfStreak, -2);
+    const hadEarlierActivity = completedDates.some((d) => d < twoDaysBefore);
+    const hadBreak =
+      hadEarlierActivity &&
+      !completedSet.has(dayBeforeStreak) &&
+      !restSet.has(dayBeforeStreak) &&
+      !completedSet.has(twoDaysBefore) &&
+      !restSet.has(twoDaysBefore);
+
+    if (hadBreak) {
+      return {
+        state: 'back_on_track',
+        hadRecentBreak: true,
+        message: 'Back on track — one steady day at a time.',
+      };
+    }
+  }
+
+  // If current streak is 0 despite past activity, offer gentle encouragement
+  if (streak.currentStreak === 0 && !streak.isCompletedToday && !streak.isRestDayToday) {
+    const yesterday = addDaysToKey(referenceDateKey, -1);
+    if (completedDates.some((d) => d < yesterday)) {
+      return {
+        state: 'gentle_restart',
+        hadRecentBreak: true,
+        message: 'Ready when you are — even the 2-minute minimum version counts.',
+      };
+    }
+  }
+
+  return { state: 'steady', hadRecentBreak: false };
+}

@@ -132,7 +132,7 @@ describe('DailyPlan & Ritual Flows (Chunk 4)', () => {
     await db.dailyPlans.clear();
     expect(await db.dailyPlans.count()).toBe(0);
 
-    const restoreRes = await restoreDatabaseFromJson(jsonBackup, false);
+    const restoreRes = await restoreDatabaseFromJson(jsonBackup, 'replace');
     expect(restoreRes.success).toBe(true);
 
     const restoredPlans = await db.dailyPlans.toArray();

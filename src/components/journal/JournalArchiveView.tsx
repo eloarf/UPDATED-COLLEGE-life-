@@ -252,7 +252,11 @@ export const JournalArchiveView: React.FC<JournalArchiveViewProps> = ({
             className="mt-2 px-5 py-2.5 rounded-2xl bg-[rgb(var(--c-primary))] text-white font-heading text-xs font-bold shadow-xs hover:opacity-90 active:scale-95 transition inline-flex items-center gap-1.5 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>Start Today's Entry</span>
+            <span>
+              {searchQuery || selectedMonth !== 'all' || selectedMoodFilter !== 'all'
+                ? "Start Today's Entry"
+                : 'Add your first entry'}
+            </span>
           </button>
         </div>
       ) : (
